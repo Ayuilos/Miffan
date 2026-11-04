@@ -240,6 +240,108 @@ def test_kde_list_from_a_kwin_snapshot():
     assert [d["active"] for d in listed["workspaces"]] == [False, True]
 
 
+class FakeKWin:
+    """A Wayland socket offering KWin's screencast and fake input globals; records the requests it gets."""
+
+    def __init__(self, globals_):
+        import struct
+        self.struct = struct
+        self.globals = globals_
+        self.dir = tempfile.mkdtemp()
+        self.path = os.path.join(self.dir, "wayland-test")
+        self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.server.bind(self.path)
+        self.server.listen(4)
+        self.requests = []
+        self.bound = {}
+        threading.Thread(target=self._accept, daemon=True).start()
+
+    def _string(self, text):
+        raw = text.encode() + b"\0"
+        return self.struct.pack("<I", len(raw)) + raw + b"\0" * (-len(raw) % 4)
+
+    def _event(self, conn, obj, op, body=b""):
+        conn.sendall(self.struct.pack("<IHH", obj, op, 8 + len(body)) + body)
+
+    def _accept(self):
+        while True:
+            conn, _ = self.server.accept()
+            threading.Thread(target=self._serve, args=(conn,), daemon=True).start()
+
+    def _serve(self, conn):
+        st, buf = self.struct, b""
+        while True:
+            chunk = conn.recv(65536)
+            if not chunk:
+                return
+            buf += chunk
+            while len(buf) >= 8:
+                obj, op, size = st.unpack("<IHH", buf[:8])
+                if len(buf) < size:
+                    break
+                body, buf = buf[8:size], buf[size:]
+                self.requests.append((obj, op, body))
+                if obj == 1 and op == 1:  # get_registry
+                    registry = st.unpack("<I", body)[0]
+                    for name, (interface, version) in enumerate(self.globals, 1):
+                        self._event(conn, registry, 0, st.pack("<I", name) + self._string(interface) + st.pack("<I", version))
+                elif obj == 1 and op == 0:  # sync
+                    self._event(conn, st.unpack("<I", body)[0], 0, st.pack("<I", 1))
+                elif op == 0 and obj == 2:  # registry.bind
+                    n = st.unpack("<I", body[4:8])[0]
+                    interface = body[8:8 + n - 1].decode()
+                    self.bound[interface] = st.unpack("<II", body[8 + n + (-n % 4):][:8])
+                elif self.bound.get("zkde_screencast_unstable_v1", (0, -1))[1] == obj and op == 1:  # stream_window
+                    stream = st.unpack("<I", body[:4])[0]
+                    self._event(conn, stream, 3, st.pack("<II", 0, 7))  # serial, as KWin 6 sends first
+                    self._event(conn, stream, 1, st.pack("<I", 4242))  # created(node)
+
+
+def test_kde_direct_records_one_window_and_injects_input():
+    import struct
+    w = program()
+    kwin = FakeKWin([("wl_compositor", 6), ("zkde_screencast_unstable_v1", 6), ("org_kde_kwin_fake_input", 6)])
+    saved = os.environ.get("WAYLAND_DISPLAY")
+    os.environ["WAYLAND_DISPLAY"] = kwin.path
+    try:
+        check_kde_direct(w, kwin)
+    finally:
+        if saved is None:
+            os.environ.pop("WAYLAND_DISPLAY", None)
+        else:
+            os.environ["WAYLAND_DISPLAY"] = saved
+
+
+def check_kde_direct(w, kwin):
+    import struct
+    wl = w.kde_direct()
+    assert wl is not None
+    closed = []
+    cast = w.KwinCast(wl, "708d5d37-b7d0-4508-a139-8c42f605b068", on_closed=lambda: closed.append(True))
+    assert cast.node == 4242
+    fake = w.FakeInput(wl)
+    fake.pointer(None, 100.5, 20)
+    fake.key(30, True)
+    fake.keysym(0x1000000 + ord("中"), True)
+    fake.scroll(0, -100)
+    wl.roundtrip()
+    screencast, fake_input = kwin.bound["zkde_screencast_unstable_v1"][1], kwin.bound["org_kde_kwin_fake_input"][1]
+    sent = [(op, body) for obj, op, body in kwin.requests if obj == fake_input]
+    assert sent[0][0] == 0  # authenticate first
+    assert (9, struct.pack("<ii", int(100.5 * 256), 20 * 256)) in sent
+    assert (10, struct.pack("<II", 30, 1)) in sent
+    assert (12, struct.pack("<II", 0x1000000 + ord("中"), 1)) in sent
+    assert (3, struct.pack("<Ii", 0, int(-15 * 256))) in sent  # a notch up
+    window = [body for obj, op, body in kwin.requests if obj == screencast and op == 1][0]
+    assert b"708d5d37-b7d0-4508-a139-8c42f605b068\0" in window and window.endswith(struct.pack("<I", 2))
+    cast.stop()
+    wl.close()
+    # Without the globals (an older KWin hiding them), the portal path is used.
+    old = FakeKWin([("wl_compositor", 6), ("org_kde_kwin_fake_input", 4)])
+    os.environ["WAYLAND_DISPLAY"] = old.path
+    assert w.kde_direct() is None
+
+
 def test_kde_window_ids_must_be_uuids():
     w = program()
     assert w.UUID.match("708d5d37-b7d0-4508-a139-8c42f605b068")

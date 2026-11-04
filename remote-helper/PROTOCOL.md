@@ -375,7 +375,7 @@ stderr 追加到 `connector.log`。`relay run` 只供计划任务使用，不输
 摘要：macOS/Linux 为 `cksum` 的 `<crc>-<大小>`，Windows 为 MD5 十六进制；App 只接受 `[0-9a-f-]{1,80}`。
 stdin EOF 结束进程并退出 0。编码器的 stdin 接 `/dev/null`，不会读走后续请求。
 
-## 单个窗口（POSIX `window`：helper 39 起支持 niri，40 起支持 KDE Plasma，41 起支持 GNOME 和 X11，42 修复切换桌面会话后 KDE 打不开）
+## 单个窗口（POSIX `window`：helper 39 起支持 niri，40 起支持 KDE Plasma，41 起支持 GNOME 和 X11，42 修复切换桌面会话后 KDE 打不开，44 起 KDE 优先用 KWin 自己的单窗口录制和输入）
 
 在手机上只看、只操作 Linux 电脑的一个窗口。画面来自合成器的 `org.gnome.Mutter.ScreenCast`
 （`RecordWindow`，不弹选择框，也无需授权），经 PipeWire 由 GStreamer 缩放并编码为 H.264
@@ -383,7 +383,13 @@ stdin EOF 结束进程并退出 0。编码器的 stdin 接 `/dev/null`，不会�
 输入走 `/dev/uinput`：一个绝对坐标指针，加一个键盘。文本优先用 `wtype` 输入，没有时用 `wl-copy`
 加 Ctrl+V 粘贴。niri 下的窗口列出、聚焦、改尺寸走它的 IPC 套接字 `NIRI_SOCKET`。
 
-KDE Plasma（`XDG_CURRENT_DESKTOP` 含 KDE，且没有 niri）上，KWin 只把窗口录制开放给它信任的程序，所以这条路不同：
+KDE Plasma（`XDG_CURRENT_DESKTOP` 含 KDE，且没有 niri）上，helper 44 起先走 KWin 自己的接口。Plasma 6 只对沙箱里的程序
+限制这些接口，普通程序也能用。helper 自己用 Wayland 线协议连 KWin（不依赖额外的库）：
+`zkde_screencast_unstable_v1.stream_window(窗口 UUID, 指针嵌入)` 给出只含这个窗口（含标题栏）的 PipeWire 流，
+在别的桌面上或被遮挡时也照常出画面，走和 niri 相同的 GL 缩放管线；输入用 `org_kde_kwin_fake_input` 6
+（`pointer_motion_absolute` 按窗口框的全局逻辑坐标，`button`、`axis` 每格 15，`keyboard_key`，文字用 `keyboard_keysym`），
+不需要任何授权；`shots` 用 `org.kde.KWin.ScreenShot2.CaptureWindow`（含标题栏，不含阴影），任何没有最小化的窗口都有图。
+KWin 没有提供这两个全局对象（较旧的 Plasma 对不信任的程序隐藏它们）或建流失败时，退回下面的 portal 路线：
 helper 通过 RemoteDesktop portal 录窗口所在的输出（按 `mapping_id` 选流），再用 `videocrop` 按 KWin 给出的
 窗口框（含标题栏）裁出窗口。打开时先把窗口提到最前；之后每 0.5 秒读一次位置，窗口移动、改尺寸时裁剪跟着变，
 最小化时发 `suspended minimized`。输入也走同一个 portal 会话：`NotifyPointerMotionAbsolute`、按键码、
@@ -425,13 +431,13 @@ x264enc 用 `repeat-headers=1` 自己重复 SPS/PPS。
 
 | 子命令 | 输出 |
 |---|---|
-| `probe` | 一行 JSON：`supported`、`desktop`（`"niri"`、`"kde"`、`"gnome"`、`"x11"` 或 null）、`encoder`、`capture`、`input`（niri 时是 `/dev/uinput` 是否可写，KDE 总为 true）；KDE 另有 `authorized`，GNOME 另有 `extension`（`active`、`installed`、`missing`） |
+| `probe` | 一行 JSON：`supported`、`desktop`（`"niri"`、`"kde"`、`"gnome"`、`"x11"` 或 null）、`encoder`、`capture`、`input`（niri 时是 `/dev/uinput` 是否可写，KDE 总为 true）；KDE 另有 `direct`（KWin 是否提供单窗口录制和输入，是则不需要授权）和 `authorized`（`direct` 为真时也为真），GNOME 另有 `extension`（`active`、`installed`、`missing`） |
 | `list` | 一行 JSON：`windows[]`（`id` 字符串、`pid`、`app` 为 desktop 文件里按 LANG 取的名称、`app_id`、`title`、`workspace`、`focused`、`width`、`height` 逻辑像素；KDE 另有 `minimized` 和 `visible`，后者表示窗口在当前桌面上没有被别的窗口挡住），`workspaces[]`（`id`、`index`、`output`、`name`、`active`），`current`（聚焦输出上的活动工作区），`outputs[]`；不支持时为 `{"error":"unsupported"}` |
 | `focus ID` | 聚焦窗口（KDE 会先还原最小化的窗口，并切到它所在的桌面）；退出码表示成败 |
 | `authorize` | 仅 KDE：写入上述预授权，输出 `{"authorized":bool}` |
 | `install-extension` | 仅 GNOME：写入扩展文件，并加进 `org.gnome.shell enabled-extensions`，输出 `{"installed":bool,"extension":状态}` |
 | `resize ID W H` | 设置窗口的逻辑尺寸（平铺时宽度作用于整列），输出实际得到的 `W H` |
-| `shots` | 每读到一行 `ID 最长边 JPEG质量`，就回一行 `jpeg 长度` 再跟字节，或者回 `error no_window`、`error no_picture`、`error usage`。等第一帧最多 2.5 秒：niri 只在重绘时出帧，完全静止的窗口可能拿不到；KDE 只给 `visible` 的窗口截图，其余回 `error no_picture` |
+| `shots` | 每读到一行 `ID 最长边 JPEG质量`，就回一行 `jpeg 长度` 再跟字节，或者回 `error no_window`、`error no_picture`、`error usage`。等第一帧最多 2.5 秒：niri 只在重绘时出帧，完全静止的窗口可能拿不到；KDE 用 KWin 截图时最小化的窗口回 `error no_picture`，退回 portal 路线时只给 `visible` 的窗口截图 |
 | `locate ID` | 输出窗口在全局逻辑坐标中的 `X Y W H`，找不到时退出 1（见下文） |
 | `serve ID 最长边 FPS KBPS` | 推流，并接收输入（见下文） |
 
@@ -455,7 +461,7 @@ stdin 每行一条，坐标是窗口内 0–1 的比例：`move X Y`、`down 按
 
 ## 版本与安装
 
-当前 POSIX helper 为 43，Windows 为 20。POSIX 39 新增 `window` 命令，40 让它支持 KDE Plasma，41 支持 GNOME 和 X11，42 在 KDE 下重启为别的桌面启动的 portal，43 找会话环境时只认已登录（active/online）会话里的进程。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
+当前 POSIX helper 为 44，Windows 为 20。POSIX 39 新增 `window` 命令，40 让它支持 KDE Plasma，41 支持 GNOME 和 X11，42 在 KDE 下重启为别的桌面启动的 portal，43 找会话环境时只认已登录（active/online）会话里的进程，44 在 KDE 下优先用 KWin 自己的单窗口录制和输入。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
 
 `RemoteMiffanHelper.ensureInstalled` 每次读取打包脚本原始 bytes，用
 `MIFFAN_HELPER_VERSION=(\d+)` 或 `HelperVersion = (\d+)` 抽版本。远端 version 查询

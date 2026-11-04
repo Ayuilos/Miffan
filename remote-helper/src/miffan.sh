@@ -26,7 +26,7 @@
 #   miffan window probe|list|focus|resize|shots|serve|locate
 #                           one window of a Linux desktop on the phone (niri), video and input
 
-MIFFAN_HELPER_VERSION=43
+MIFFAN_HELPER_VERSION=44
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -1397,6 +1397,241 @@ class Portal:
             pass
 
 
+class Wayland:
+    """
+    A bare Wayland client (the wire protocol over the compositor's socket), enough to bind KWin's own
+    globals. A reader thread hands each event to the handler registered for its object.
+    """
+
+    def __init__(self):
+        name = os.environ.get("WAYLAND_DISPLAY") or "wayland-0"
+        path = name if name.startswith("/") else os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "", name)
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.connect(path)
+        self.send_lock = threading.Lock()
+        self.last_id = 1  # wl_display
+        self.handlers = {}
+        self.globals = {}
+        self.on_lost = None
+        self.registry = self.new_id()
+        self.handlers[self.registry] = self._registry
+        self.send(1, 1, struct.pack("<I", self.registry))  # wl_display.get_registry
+        threading.Thread(target=self._read, daemon=True).start()
+        self.roundtrip()
+
+    def new_id(self):
+        with self.send_lock:
+            self.last_id += 1
+            return self.last_id
+
+    @staticmethod
+    def string(text):
+        raw = text.encode() + b"\0"
+        return struct.pack("<I", len(raw)) + raw + b"\0" * (-len(raw) % 4)
+
+    def send(self, obj, op, body=b""):
+        with self.send_lock:
+            self.sock.sendall(struct.pack("<IHH", obj, op, 8 + len(body)) + body)
+
+    def roundtrip(self, timeout=5):
+        done = threading.Event()
+        callback = self.new_id()
+        self.handlers[callback] = lambda _op, _body: done.set()
+        self.send(1, 0, struct.pack("<I", callback))  # wl_display.sync
+        if not done.wait(timeout):
+            raise TimeoutError("wayland")
+        self.handlers.pop(callback, None)
+
+    def _registry(self, op, body):
+        if op == 0:  # global(name, interface, version)
+            name, n = struct.unpack("<II", body[:8])
+            interface = body[8:8 + n - 1].decode(errors="replace")
+            self.globals[interface] = (name, struct.unpack("<I", body[8 + n + (-n % 4):][:4])[0])
+
+    def version(self, interface):
+        return self.globals.get(interface, (0, 0))[1]
+
+    def bind(self, interface, lowest, highest):
+        """A new object for [interface] at the highest version both sides know, or None below [lowest]."""
+        name, offered = self.globals.get(interface, (0, 0))
+        if offered < lowest:
+            return None
+        obj = self.new_id()
+        self.send(self.registry, 0, struct.pack("<I", name) + self.string(interface) + struct.pack("<II", min(offered, highest), obj))
+        return obj
+
+    def _read(self):
+        buf = b""
+        try:
+            while True:
+                chunk = self.sock.recv(65536)
+                if not chunk:
+                    break
+                buf += chunk
+                while len(buf) >= 8:
+                    obj, op, size = struct.unpack("<IHH", buf[:8])
+                    if len(buf) < size:
+                        break
+                    body, buf = buf[8:max(8, size)], buf[max(8, size):]
+                    if obj == 1 and op == 0:  # wl_display.error
+                        n = struct.unpack("<I", body[8:12])[0]
+                        sys.stderr.write("wayland error: %s\n" % body[12:12 + n - 1].decode(errors="replace"))
+                    else:
+                        handler = self.handlers.get(obj)
+                        if handler:
+                            handler(op, body)
+        except OSError:
+            pass
+        if self.on_lost:
+            self.on_lost()
+
+    def close(self):
+        self.on_lost = None
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        self.sock.close()
+
+
+def kde_direct():
+    """
+    A Wayland connection on which KWin offers this program its window recording and input injection.
+    Plasma 6 keeps them from sandboxed apps only; older KWin hides them from anything it does not trust,
+    and then the portal path is used instead.
+    """
+    try:
+        wl = Wayland()
+    except Exception:
+        return None
+    if wl.version("zkde_screencast_unstable_v1") >= 1 and wl.version("org_kde_kwin_fake_input") >= 6:
+        return wl
+    wl.close()
+    return None
+
+
+class KwinCast:
+    """One window recorded by KWin itself (zkde_screencast stream_window): a PipeWire node of just that window."""
+
+    def __init__(self, wl, window_id, on_closed=None):
+        self.wl, self.on_closed = wl, on_closed
+        self.manager = wl.bind("zkde_screencast_unstable_v1", 1, 6)
+        self.stream = wl.new_id()
+        box, ready = {}, threading.Event()
+
+        def event(op, body):
+            if op == 1:  # created(node)
+                box["node"] = struct.unpack("<I", body[:4])[0]
+                ready.set()
+            elif op == 2:  # failed(error)
+                n = struct.unpack("<I", body[:4])[0]
+                box["error"] = body[4:4 + n - 1].decode(errors="replace")
+                ready.set()
+            elif op == 0:  # closed: the window went away
+                ready.set()
+                if "node" in box and self.on_closed:
+                    self.on_closed()
+        wl.handlers[self.stream] = event
+        # stream_window(stream, window uuid, pointer: embedded), as the other desktops show the pointer.
+        wl.send(self.manager, 1, struct.pack("<I", self.stream) + wl.string(window_id) + struct.pack("<I", 2))
+        if not ready.wait(5) or "node" not in box:
+            self.stop()
+            raise RuntimeError(box.get("error") or "no_stream")
+        self.node = box["node"]
+
+    def stop(self):
+        self.on_closed = None
+        try:
+            self.wl.send(self.stream, 0)   # close
+            self.wl.send(self.manager, 2)  # destroy
+        except OSError:
+            pass
+
+
+class FakeInput:
+    """KWin's input injection (org_kde_kwin_fake_input 6): the pointer at global logical positions, keys, keysyms."""
+
+    def __init__(self, wl):
+        self.wl = wl
+        self.obj = wl.bind("org_kde_kwin_fake_input", 6, 6)
+        wl.send(self.obj, 0, wl.string("Miffan") + wl.string("Control from the Miffan phone app"))  # authenticate
+
+    @staticmethod
+    def fixed(value):
+        return struct.pack("<i", int(round(value * 256)))
+
+    def pointer(self, _node, x, y):
+        self.wl.send(self.obj, 9, self.fixed(x) + self.fixed(y))  # pointer_motion_absolute
+
+    def button(self, code, down):
+        self.wl.send(self.obj, 2, struct.pack("<II", code, 1 if down else 0))
+
+    def scroll(self, dx, dy):
+        # KWin's positive axis scrolls down and right, as the phone's delta does; 15 per notch (100 from
+        # the phone), what a real wheel click gives.
+        if dy:
+            self.wl.send(self.obj, 3, struct.pack("<I", 0) + self.fixed(float(dy) * 0.15))
+        if dx:
+            self.wl.send(self.obj, 3, struct.pack("<I", 1) + self.fixed(float(dx) * 0.15))
+
+    def key(self, code, down):
+        self.wl.send(self.obj, 10, struct.pack("<II", code, 1 if down else 0))  # keyboard_key
+
+    def keysym(self, sym, down):
+        self.wl.send(self.obj, 12, struct.pack("<II", sym, 1 if down else 0))  # keyboard_keysym
+
+
+KWIN_IMAGE_FORMATS = {4: "BGRx", 5: "BGRA", 6: "BGRA", 16: "RGBx", 17: "RGBA", 18: "RGBA"}  # QImage formats
+
+
+def kde_window_picture(Gio, GLib, Gst, window_id, limit, quality):
+    """KWin's own picture of one window with its title bar (ScreenShot2), as a JPEG, or None."""
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+    r, w = os.pipe()
+    fds = Gio.UnixFDList.new()
+    index = fds.append(w)
+    os.close(w)
+    chunks = []
+    reader = threading.Thread(target=lambda: chunks.extend(iter(lambda: os.read(r, 1 << 20), b"")), daemon=True)
+    reader.start()
+    V = GLib.Variant
+    try:
+        reply = bus.call_with_unix_fd_list_sync(
+            "org.kde.KWin", "/org/kde/KWin/ScreenShot2", "org.kde.KWin.ScreenShot2", "CaptureWindow",
+            V("(sa{sv}h)", (window_id, {"include-decoration": V("b", True), "include-shadow": V("b", False)}, index)),
+            None, 0, 5000, fds, None)
+        info = reply[0].unpack()[0]
+    except Exception:
+        info = None
+    del fds
+    reader.join(5)
+    os.close(r)
+    if not info:
+        return None
+    data, fmt = b"".join(chunks), KWIN_IMAGE_FORMATS.get(info.get("format"))
+    width, height, stride = int(info.get("width", 0)), int(info.get("height", 0)), int(info.get("stride", 0))
+    if not fmt or width < 2 or height < 2 or len(data) < stride * height:
+        return None
+    if stride != width * 4:
+        data = b"".join(data[row * stride:row * stride + width * 4] for row in range(height))
+    pipeline = Gst.parse_launch(
+        "appsrc name=src caps=video/x-raw,format=%s,width=%d,height=%d,framerate=0/1 ! videoconvert ! videoscale ! "
+        "video/x-raw,width=%d,height=%d ! jpegenc quality=%d ! appsink name=sink sync=false"
+        % ((fmt, width, height) + scaled(width, height, limit) + (quality,)))
+    pipeline.set_state(Gst.State.PLAYING)
+    try:
+        src = pipeline.get_by_name("src")
+        src.emit("push-buffer", Gst.Buffer.new_wrapped(data[:width * 4 * height]))
+        src.emit("end-of-stream")
+        sample = pipeline.get_by_name("sink").emit("try-pull-sample", 3 * Gst.SECOND)
+        if not sample:
+            return None
+        buf = sample.get_buffer()
+        return buf.extract_dup(0, buf.get_size())
+    finally:
+        pipeline.set_state(Gst.State.NULL)
+
+
 def crop_box(rect, origin, size, frame_w, frame_h):
     """[rect] (global logical) inside a stream of [size] at [origin], as videocrop's left, top, right, bottom pixels."""
     k = frame_w / float(size[0] or frame_w)
@@ -1421,7 +1656,10 @@ def keysym_of(ch):
 
 
 class KdeInput(LockGuard):
-    """Applies input lines through the portal session, raising the window when something else is in front."""
+    """
+    Applies input lines through KWin's fake input or the portal session (both take the same calls),
+    raising the window when something else is in front.
+    """
 
     def __init__(self, window_id, kwin, portal, view):
         LockGuard.__init__(self)
@@ -1483,7 +1721,10 @@ class KdeInput(LockGuard):
 
 
 def kde_shots(Gio, GLib, Gst):
-    """Pictures of windows fully shown on the current desktop, cropped from their output; others give none."""
+    """
+    Pictures of windows: KWin's own picture of each one (any desktop, covered or not). Where KWin keeps
+    that from this program, only windows fully shown on the current desktop, cropped from their output.
+    """
     kwin = KWin(Gio, GLib)
     portal = None
     try:
@@ -1499,6 +1740,10 @@ def kde_shots(Gio, GLib, Gst):
             w = next((x for x in snap["windows"] if x["id"] == window_id), None)
             if w is None:
                 emit("error no_window")
+                continue
+            picture = None if w["minimized"] else kde_window_picture(Gio, GLib, Gst, window_id, limit, quality)
+            if picture:
+                emit("jpeg %d" % len(picture), picture)
                 continue
             if not w["visible"]:
                 emit("error no_picture")
@@ -2668,16 +2913,23 @@ def serve(window_id, limit, fps, kbps):
     def setup(pipeline, resized, closed):
         ending.append(closed)
         follow_size(Gst, pipeline, limit, lambda new_size, first: resized(new_size) if not first or new_size != (w, h) else None)
-    run_stream(Gio, GLib, Gst, GstVideo,
-               "pipewiresrc name=src path=%d do-timestamp=true keepalive-time=1000 ! "
-               "queue max-size-buffers=1 leaky=downstream ! glupload ! glcolorconvert ! glcolorscale ! "
-               "capsfilter name=size caps=video/x-raw(memory:GLMemory),format=RGBA,width=%d,height=%d ! glcolorconvert ! gldownload ! "
-               "video/x-raw,format=NV12" % (cast.node, w, h),
+    run_stream(Gio, GLib, Gst, GstVideo, window_pipeline(cast.node, w, h),
                encoder, fps, kbps, Input(window_id), setup, (w, h), cast.stop)
 
 
+def window_pipeline(node, w, h):
+    """A window's own PipeWire stream (the compositor's buffers, DMA-BUF or not), scaled in GL to NV12."""
+    return ("pipewiresrc name=src path=%d do-timestamp=true keepalive-time=1000 ! "
+            "queue max-size-buffers=1 leaky=downstream ! glupload ! glcolorconvert ! glcolorscale ! "
+            "capsfilter name=size caps=video/x-raw(memory:GLMemory),format=RGBA,width=%d,height=%d ! glcolorconvert ! gldownload ! "
+            "video/x-raw,format=NV12" % (node, w, h))
+
+
 def serve_kde(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, kbps):
-    """A KDE window: raised, then cropped from its output's portal stream, following it as it moves."""
+    """
+    A KDE window: raised, then recorded by KWin on its own with input through KWin's fake input. Where
+    KWin keeps those from this program, cropped from its output's portal stream instead.
+    """
     if not UUID.match(window_id):
         emit("closed no_window")
         return
@@ -2690,6 +2942,16 @@ def serve_kde(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, kbps):
     if g is None:
         emit("closed window_closed")
         return
+    wl, ending = kde_direct(), []
+    if wl is not None:
+        try:
+            cast = KwinCast(wl, window_id, on_closed=lambda: ending and ending[0]("window_closed"))
+            fake = FakeInput(wl)
+        except Exception:
+            wl.close()
+            wl = None
+    if wl is not None:
+        return serve_kde_window(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, kbps, kwin, g, wl, cast, fake, ending)
     try:
         portal = open_portal(Gio, GLib)
     except NotAuthorized:
@@ -2758,6 +3020,36 @@ def serve_kde(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, kbps):
                encoder, fps, kbps, KdeInput(window_id, kwin, portal, view), setup, (w, h), portal.close)
 
 
+def serve_kde_window(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, kbps, kwin, g, wl, cast, fake, ending):
+    """KWin's stream of the window alone; input lands at its frame's global position, read every 0.5 s."""
+    view = {"rect": (g["x"], g["y"], g["width"], g["height"]), "node": cast.node, "origin": (0, 0), "minimized": False}
+    # A starting size; the stream's caps (device pixels, title bar included) set the real one.
+    w, h = scaled(g["width"], g["height"], limit)
+
+    def setup(pipeline, resized, closed):
+        ending.append(closed)
+        wl.on_lost = lambda: closed("capture_failed")
+        follow_size(Gst, pipeline, limit, lambda new_size, first: resized(new_size) if not first or new_size != (w, h) else None)
+
+        def follow():
+            g = kwin.geometry(window_id)
+            if g is None:
+                closed("window_closed")
+                return False
+            if g["minimized"] != view["minimized"]:
+                view["minimized"] = g["minimized"]
+                emit("suspended minimized" if g["minimized"] else "resumed")
+            view["rect"] = (g["x"], g["y"], g["width"], g["height"])
+            return True
+        GLib.timeout_add(500, follow)
+
+    def cleanup():
+        cast.stop()
+        wl.close()
+    run_stream(Gio, GLib, Gst, GstVideo, window_pipeline(cast.node, w, h),
+               encoder, fps, kbps, KdeInput(window_id, kwin, fake, view), setup, (w, h), cleanup)
+
+
 # ---------- commands ----------
 
 def desktop_kind():
@@ -2790,7 +3082,11 @@ def probe():
         info["input"] = True
     elif info["desktop"] == "kde":
         info["input"] = True
-        info["authorized"] = bool(Gio) and kde_authorized(Gio, GLib)
+        wl = kde_direct()
+        info["direct"] = wl is not None
+        if wl:
+            wl.close()
+        info["authorized"] = info["direct"] or (bool(Gio) and kde_authorized(Gio, GLib))
     else:
         info["input"] = os.access("/dev/uinput", os.W_OK)
     info["supported"] = bool(info["desktop"] and info["encoder"] and info["capture"])

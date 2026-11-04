@@ -14,8 +14,8 @@ import me.rerere.workspace.RemoteWorkspaceSession
 
 /**
  * Single windows of a Linux computer through the helper's `window` command (remote-helper/PROTOCOL.md
- * 「单个窗口」): niri records one window, KDE Plasma's is cropped from its output; the helper encodes it
- * and applies input.
+ * 「单个窗口」): the compositor records one window (KDE Plasma's only cropped from its output where KWin
+ * keeps window recording to itself); the helper encodes it and applies input.
  */
 internal object LinuxHostWindows {
     private val json = Json { ignoreUnknownKeys = true }
