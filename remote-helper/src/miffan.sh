@@ -105,17 +105,21 @@ in_login_session() {
 
 # Whether logind session $1 is a person's own session (class user, or a user-* variant; not the
 # class=manager one systemd 256+ makes for the user manager, nor a greeter or background session)
-# that is active or online. Older logind without classes: the state alone decides.
+# that is active or online. Older logind without classes: the state alone decides. With $2 = local,
+# also one at this computer (a seat, or a graphical type): the helper's own SSH login is neither.
 login_session_ok() {
     case "$1" in ''|*[!0-9A-Za-z]*) return 1 ;; esac
-    info=$(loginctl show-session "$1" -p State -p Class 2>/dev/null) || return 1
+    info=$(loginctl show-session "$1" -p State -p Class -p Seat -p Type 2>/dev/null) || return 1
     case "$(printf '%s\n' "$info" | sed -n 's/^Class=//p')" in ''|user|user-*) ;; *) return 1 ;; esac
-    case "$(printf '%s\n' "$info" | sed -n 's/^State=//p')" in active|online) return 0 ;; esac
+    case "$(printf '%s\n' "$info" | sed -n 's/^State=//p')" in active|online) ;; *) return 1 ;; esac
+    [ "${2:-}" = local ] || return 0
+    [ -n "$(printf '%s\n' "$info" | sed -n 's/^Seat=//p')" ] && return 0
+    case "$(printf '%s\n' "$info" | sed -n 's/^Type=//p')" in x11|wayland|mir) return 0 ;; esac
     return 1
 }
 
-# Whether this user has a session that login_session_ok accepts. Without logind this cannot be
-# told, so the answer is yes.
+# Whether this user is logged in at this computer: a session that login_session_ok accepts as local
+# (the SSH session running this does not count). Without logind this cannot be told, so the answer is yes.
 user_logged_in() {
     command -v loginctl >/dev/null 2>&1 || return 0
     if ! sessions=$(loginctl show-user "$(id -u)" -p Sessions --value 2>/dev/null); then
@@ -124,7 +128,7 @@ user_logged_in() {
         return 0
     fi
     for sid in $sessions; do
-        login_session_ok "$sid" && return 0
+        login_session_ok "$sid" local && return 0
     done
     return 1
 }

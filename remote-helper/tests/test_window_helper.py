@@ -1358,7 +1358,9 @@ def session_shell(tmp, sessions, systemd_env, processes, logind=True):
         if found and not (bin_dir / tool).exists():
             (bin_dir / tool).symlink_to(found)
     uid = os.getuid()
-    lines = "\n".join("%s %s %s" % (sid, state, cls) for sid, (state, cls) in sessions.items())
+    # (state, class) or (state, class, seat, type); "-" for a property logind leaves empty or lacks.
+    lines = "\n".join("%s %s %s %s %s" % ((sid,) + tuple(info) + ("seat0", "wayland")[len(info) - 2:])
+                      for sid, info in sessions.items())
     (bin_dir / "loginctl").write_text("""#!/bin/sh
 sessions='%s'
 %s
@@ -1370,7 +1372,8 @@ case "$1" in
   show-session)
     line=$(printf '%%s\\n' "$sessions" | grep "^$2 ") || exit 1
     set -- $line
-    echo "State=$2"; [ "$3" = "-" ] || echo "Class=$3" ;;
+    echo "State=$2"; [ "$3" = "-" ] || echo "Class=$3"
+    [ "$4" = "-" ] && echo "Seat=" || echo "Seat=$4"; [ "$5" = "-" ] || echo "Type=$5" ;;
 esac
 """ % (lines, "" if logind else "exit 1", uid))
     (bin_dir / "systemctl").write_text("#!/bin/sh\n[ \"$2\" = show-environment ] && printf '%%s' '%s'\n" % systemd_env)
@@ -1410,6 +1413,13 @@ def test_shell_session_env_needs_a_logged_in_session():
         # A process in the manager's session (a service's Xvfb) is not taken.
         out = session_shell(tmp, {"7": ("active", "manager")}, "", {700: (7, ["DISPLAY=:99"])})
         assert out == ""
+    with tempfile.TemporaryDirectory() as tmp:
+        # Logged out at the computer, only the phone's own SSH login left (no seat, type tty): not a
+        # session, though logind calls it active. A tty login on the seat (niri started from a console) is.
+        out = session_shell(tmp, {"12": ("active", "user", "-", "tty")}, systemd, {})
+        assert out == ""
+        out = session_shell(tmp, {"12": ("active", "user", "-", "tty"), "2": ("active", "user", "seat0", "tty")}, systemd, {})
+        assert "WAYLAND_DISPLAY='wayland-1'" in out
     with tempfile.TemporaryDirectory() as tmp:
         # Older logind without classes: the state decides.
         out = session_shell(tmp, {"4": ("active", "-")}, systemd, {})
