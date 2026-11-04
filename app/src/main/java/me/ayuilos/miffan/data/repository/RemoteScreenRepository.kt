@@ -919,16 +919,25 @@ class RemoteScreenRepository(
      * desktop the helper supports.
      */
     suspend fun hostWindowsAvailable(workspaceId: String): Boolean = withContext(Dispatchers.IO) {
-        hostEndpoints.remove(workspaceId)
-        linuxWindowHosts.remove(workspaceId)
-        runCatching {
-            withRemote(workspaceId) { ssh ->
-                if (HostDesktopSpace.endpoint(ssh)?.also { hostEndpoints[workspaceId] = it } != null) return@withRemote true
-                if (ssh.platform != me.rerere.workspace.RemotePlatform.POSIX) return@withRemote false
+        // Probed first and recorded after: another screen of this computer may be using what is known
+        // meanwhile, and a failed probe (the connection dropped) changes nothing.
+        val probed = runCatching {
+            withRemote<Any?>(workspaceId) { ssh ->
+                HostDesktopSpace.endpoint(ssh)?.let { return@withRemote it }
+                if (ssh.platform != me.rerere.workspace.RemotePlatform.POSIX) return@withRemote null
                 ensureHelper(ssh)
-                LinuxHostWindows.available(ssh).also { if (it) linuxWindowHosts += workspaceId }
+                LinuxHostWindows.available(ssh)
             }
-        }.getOrDefault(false)
+        }.onFailure { if (it is CancellationException) throw it }.getOrElse { return@withContext false }
+        synchronized(lock) {
+            // Linux is looked up first everywhere, so its mark goes on before a Mac's endpoint goes off.
+            when (probed) {
+                is HostEndpoint -> { hostEndpoints[workspaceId] = probed; linuxWindowHosts.remove(workspaceId) }
+                true -> { linuxWindowHosts += workspaceId; hostEndpoints.remove(workspaceId) }
+                else -> { linuxWindowHosts.remove(workspaceId); hostEndpoints.remove(workspaceId) }
+            }
+        }
+        probed is HostEndpoint || probed == true
     }
 
     /**
