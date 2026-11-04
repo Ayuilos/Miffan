@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.repository.RemoteHostDesktop
 import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -141,12 +142,12 @@ internal fun RemoteWindowPicker(vm: RemoteScreenVM, onDismiss: () -> Unit) {
                 val backgroundBadge = stringResource(R.string.workspace_screen_window_background_badge)
                 LazyColumn(Modifier.heightIn(max = 520.dp)) {
                     // The desktop in front first, then the others as Mission Control orders them.
-                    val groups = buildList {
-                        list.desktops.forEach { desktop -> add(remoteHostDesktopLabel(resources, desktop) to list.choices.filter { it.desktop == desktop.id }) }
-                        add(other to list.choices.filter { choice -> list.desktops.none { it.id == choice.desktop } })
-                    }.filter { it.second.isNotEmpty() }
-                    groups.forEach { (label, members) ->
-                    item(key = "header-$label") {
+                    val groups = remoteWindowGroups(list).map { (desktop, members) ->
+                        Triple(remoteWindowHeaderKey(desktop), desktop?.let { remoteHostDesktopLabel(resources, it) } ?: other, members)
+                    }
+                    groups.forEach { (key, label, members) ->
+                    // Keyed by desktop, not by name: two full-screen windows of one app share a name.
+                    item(key = key) {
                         Text(label, Modifier.padding(start = 8.dp, top = 12.dp, bottom = 4.dp), style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -280,8 +281,23 @@ internal fun RemoteWindowIssueContent(vm: RemoteScreenVM, issue: RemoteWindowIss
     }
 }
 
+/**
+ * The picker's groups: each desktop holding windows (the one in front first, as listed), then the windows
+ * on none of them (null). A desktop listed twice counts once, so no window shows twice.
+ */
+internal fun remoteWindowGroups(list: RemoteWindowList): List<Pair<RemoteHostDesktop?, List<RemoteWindowChoice>>> {
+    val desktops = list.desktops.distinctBy { it.id }
+    return buildList {
+        desktops.forEach { desktop -> add(desktop to list.choices.filter { it.desktop == desktop.id }) }
+        add(null to list.choices.filter { choice -> desktops.none { it.id == choice.desktop } })
+    }.filter { it.second.isNotEmpty() }
+}
+
+/** A group header's key in the picker's list: the desktop's id, which unlike its name is unique. */
+internal fun remoteWindowHeaderKey(desktop: RemoteHostDesktop?): String = desktop?.let { "header-${it.id}" } ?: "header-other"
+
 /** A desktop's name in the picker: "Desktop 2", "Full screen · App", with the display when there are several. */
-internal fun remoteHostDesktopLabel(resources: android.content.res.Resources, desktop: me.ayuilos.miffan.data.repository.RemoteHostDesktop): String {
+internal fun remoteHostDesktopLabel(resources: android.content.res.Resources, desktop: RemoteHostDesktop): String {
     val name = when {
         desktop.fullscreen -> resources.getString(R.string.workspace_screen_desktop_fullscreen,
             desktop.app ?: resources.getString(R.string.workspace_screen_desktop_app))

@@ -241,6 +241,27 @@ class RemoteScreenConnection internal constructor(
     }
 }
 
+/** What names each desktop holding windows (see remoteHostDesktopLabel), current first then Mission Control order. */
+internal fun desktopLabels(order: List<List<HostSpace>>?, current: Long?, windows: List<RemoteHostWindow>): List<RemoteHostDesktop> {
+    val used = windows.mapNotNull { it.desktop }.toSet()
+    if (order == null) {
+        return used.sorted().mapIndexed { index, id -> RemoteHostDesktop(id, id == current, number = (index + 1).takeIf { id != current }) }
+            .sortedByDescending { it.current }
+    }
+    val labels = mutableListOf<RemoteHostDesktop>()
+    order.forEachIndexed { displayIndex, spaces ->
+        val display = (displayIndex + 1).takeIf { order.size > 1 }
+        var desktopNumber = 0
+        spaces.forEach { space ->
+            labels += if (space.fullscreen) {
+                val app = windows.firstOrNull { it.desktop == space.id && (space.pid == null || it.window.pid == space.pid) }?.window?.app
+                RemoteHostDesktop(space.id, space.id == current, fullscreen = true, app = app?.ifBlank { null }, display = display)
+            } else RemoteHostDesktop(space.id, space.id == current, number = ++desktopNumber, display = display)
+        }
+    }
+    return labels.filter { it.id in used }.sortedByDescending { it.current }
+}
+
 /** How long Sunshine may take to answer after a restart; Windows needs about 30 s. */
 private const val SUNSHINE_RESTART_MILLIS = 60_000L
 
@@ -918,27 +939,6 @@ class RemoteScreenRepository(
             )
         }
         RemoteHostWindows(hosted, desktopLabels(order, current, hosted))
-    }
-
-    /** What names each desktop holding windows (see remoteHostDesktopLabel), current first then Mission Control order. */
-    private fun desktopLabels(order: List<List<HostSpace>>?, current: Long?, windows: List<RemoteHostWindow>): List<RemoteHostDesktop> {
-        val used = windows.mapNotNull { it.desktop }.toSet()
-        if (order == null) {
-            return used.sorted().mapIndexed { index, id -> RemoteHostDesktop(id, id == current, number = (index + 1).takeIf { id != current }) }
-                .sortedByDescending { it.current }
-        }
-        val labels = mutableListOf<RemoteHostDesktop>()
-        order.forEachIndexed { displayIndex, spaces ->
-            val display = (displayIndex + 1).takeIf { order.size > 1 }
-            var desktopNumber = 0
-            spaces.forEach { space ->
-                labels += if (space.fullscreen) {
-                    val app = windows.firstOrNull { it.desktop == space.id && (space.pid == null || it.window.pid == space.pid) }?.window?.app
-                    RemoteHostDesktop(space.id, space.id == current, fullscreen = true, app = app?.ifBlank { null }, display = display)
-                } else RemoteHostDesktop(space.id, space.id == current, number = ++desktopNumber, display = display)
-            }
-        }
-        return labels.filter { it.id in used }.sortedByDescending { it.current }
     }
 
     /**
