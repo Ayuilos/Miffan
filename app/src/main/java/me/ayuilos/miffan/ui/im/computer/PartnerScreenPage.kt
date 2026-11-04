@@ -88,7 +88,10 @@ fun PartnerScreenPage(assistantId: Uuid) {
         // Pages that show this computer at rest (its detail, the chat) pick up where the user left it.
         val snapshots: ComputerSnapshots = koinInject()
         // A mini box streams video, which is read from its view rather than a bitmap.
-        DisposableEffect(vm) { onDispose { vm.currentFrame()?.let { snapshots.capture(current.workspaceId, it) } } }
+        DisposableEffect(vm) {
+            vm.keepPicture()
+            onDispose { vm.currentFrame()?.let { snapshots.capture(current.workspaceId, it) } }
+        }
         // A partner's own computer is named after the partner; the host's name would read as the host's screen.
         PartnerScreenContent(assistantId, if (current.space) stringResource(R.string.im_space_screen_title, threadAssistantName(partner)) else current.name, vm)
     }

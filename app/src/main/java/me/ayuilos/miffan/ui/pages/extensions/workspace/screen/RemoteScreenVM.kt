@@ -322,6 +322,14 @@ class RemoteScreenVM(
     internal val videoFrames = RemoteVideoFrames()
 
     /**
+     * Called by a page that keeps a picture of the screen after it goes (see [currentFrame]): only then is
+     * a playing video's picture read back now and then, which costs the GPU a copy.
+     */
+    fun keepPicture() {
+        videoFrames.keep = true
+    }
+
+    /**
      * What the screen shows now, for pages that keep a picture of it (a mini box's detail, the chat):
      * the video's when one plays, otherwise the bitmap. Null when nothing real has been drawn yet.
      */
@@ -1215,23 +1223,47 @@ private const val FRONT_CHECK_MILLIS = 1_000L
 
 /**
  * A video picture lives in its TextureView, out of the VM's reach: [reader] reads it while the view
- * is up, and [last] keeps what it showed as the view went away.
+ * is up, and [last] keeps what it showed as the view went away. Nothing is read unless a page [keep]s it.
  */
 internal class RemoteVideoFrames {
     @Volatile var reader: (() -> Bitmap?)? = null
     @Volatile var last: Bitmap? = null
+    /** A page keeps the picture after it goes (see RemoteScreenVM.keepPicture); otherwise nothing is read back. */
+    @Volatile var keep = false
+    /** The buffer the next [keepFrom] reads into, swapped with [last] when the read shows something. */
+    private var spare: Bitmap? = null
 
     /** The live picture when it can still be read, else the kept one; never a black one. */
     fun current(): Bitmap? = runCatching { reader?.invoke() }.getOrNull()?.takeUnless { it.isBlank() } ?: last
 
     /** [view]'s picture at most [THUMBNAIL_EDGE] on its long side; null when there is none yet. */
     fun read(view: android.view.TextureView, width: Int, height: Int): Bitmap? {
-        val scale = minOf(1f, THUMBNAIL_EDGE.toFloat() / maxOf(width, height, 1))
-        return runCatching { view.getBitmap((width * scale).toInt().coerceAtLeast(1), (height * scale).toInt().coerceAtLeast(1)) }
-            .getOrNull()?.takeUnless { it.isBlank() }
+        val (w, h) = thumbnailSize(width, height)
+        return runCatching { view.getBitmap(w, h) }.getOrNull()?.takeUnless { it.isBlank() }
     }
 
-    private companion object { const val THUMBNAIL_EDGE = 1280 }
+    /**
+     * Keeps [view]'s picture as [last] when a page wants it, reading into a reused buffer rather than a
+     * new one each time. Main thread, like the view.
+     */
+    @Synchronized fun keepFrom(view: android.view.TextureView, width: Int, height: Int) {
+        if (!keep) return
+        val (w, h) = thumbnailSize(width, height)
+        val buffer = spare?.takeIf { it.width == w && it.height == h && !it.isRecycled }
+            ?: runCatching { Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888) }.getOrNull() ?: return
+        val read = runCatching { view.getBitmap(buffer) }.getOrNull()
+        if (read == null || read.isBlank()) { spare = buffer; return }
+        spare = last?.takeIf { it !== read }
+        last = read
+    }
+
+    private fun thumbnailSize(width: Int, height: Int): Pair<Int, Int> {
+        val scale = minOf(1f, THUMBNAIL_EDGE.toFloat() / maxOf(width, height, 1))
+        return (width * scale).toInt().coerceAtLeast(1) to (height * scale).toInt().coerceAtLeast(1)
+    }
+
+    // A page keeps the picture as a small thumbnail of the computer.
+    private companion object { const val THUMBNAIL_EDGE = 640 }
 }
 
 /** True when a capture shows nothing: every sampled pixel black or transparent. */

@@ -232,6 +232,8 @@ private fun RemoteVideoSurface(target: RemoteSurfaceTarget, width: Int, height: 
                     }
                     override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, viewWidth: Int, viewHeight: Int) = Unit
                     override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
+                        // The last chance to read what it shows, for a page that keeps it.
+                        frames.keepFrom(this@apply, width, height)
                         // Detach the decoder before the buffer goes away; the stream itself keeps running.
                         frames.reader = null
                         target.setSurface(null)
@@ -241,12 +243,13 @@ private fun RemoteVideoSurface(target: RemoteSurfaceTarget, width: Int, height: 
                     }
                     private var keptAt = 0L
                     // Now and then keep a copy for pages that remember the screen: by the time the page
-                    // goes, this view's buffer may already be gone.
+                    // goes, this view's buffer may already be gone. Pages that do not, read nothing.
                     override fun onSurfaceTextureUpdated(texture: SurfaceTexture) {
+                        if (!frames.keep) return
                         val now = android.os.SystemClock.uptimeMillis()
                         if (now - keptAt < FRAME_KEEP_MILLIS) return
                         keptAt = now
-                        frames.read(this@apply, width, height)?.let { frames.last = it }
+                        frames.keepFrom(this@apply, width, height)
                     }
                 }
                 addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ -> placement.apply(view as TextureView) }
