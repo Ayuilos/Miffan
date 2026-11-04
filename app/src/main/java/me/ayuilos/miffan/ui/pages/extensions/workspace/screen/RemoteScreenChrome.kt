@@ -11,6 +11,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.material3.ripple
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -178,23 +186,39 @@ internal fun remoteScreenModeIcon(protocol: RemoteDesktopProtocol, window: Boole
 
 /**
  * The picture pill: the connection's symbol and, where a level can be chosen, the level now, opening
- * [RemoteQualitySheet]. [label] names the connection for screen readers.
+ * [RemoteQualitySheet]. [label] names the connection for screen readers, [clickLabel] what a tap does.
+ * It looks 22dp tall but takes taps over the 48dp a finger needs, without making the status line taller.
  */
 @Composable
-internal fun RemoteModeTag(icon: ImageVector, label: String, text: String?, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun RemoteModeTag(icon: ImageVector, label: String, text: String?, clickLabel: String, onClick: () -> Unit,
+    modifier: Modifier = Modifier) {
     val tint = MaterialTheme.colorScheme.onSurfaceVariant
-    Row(
-        modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest).clickable(onClick = onClick)
-            .padding(start = 7.dp, end = if (text != null) 5.dp else 7.dp).height(22.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier.layout { measurable, constraints ->
+            // Laid out at the pill's own height; the touch area around it reaches above and below.
+            val placeable = measurable.measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
+            val height = MODE_TAG_HEIGHT.roundToPx()
+            layout(placeable.width, height) { placeable.place(0, (height - placeable.height) / 2) }
+        }.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            .clickable(interactionSource = interaction, indication = null, onClickLabel = clickLabel, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, label, Modifier.size(13.dp), tint = tint)
-        if (text != null) {
-            Text(text, style = MaterialTheme.typography.labelSmall, color = tint, maxLines = 1)
-            Icon(HugeIcons.ArrowDown01, null, Modifier.size(12.dp).offset(x = (-2).dp), tint = tint)
+        Row(
+            Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest).indication(interaction, ripple())
+                .padding(start = 7.dp, end = if (text != null) 5.dp else 7.dp).height(MODE_TAG_HEIGHT),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(icon, label, Modifier.size(13.dp), tint = tint)
+            if (text != null) {
+                Text(text, style = MaterialTheme.typography.labelSmall, color = tint, maxLines = 1)
+                Icon(HugeIcons.ArrowDown01, null, Modifier.size(12.dp).offset(x = (-2).dp), tint = tint)
+            }
         }
     }
 }
+
+private val MODE_TAG_HEIGHT = 22.dp
 
 /** Picks the picture level: one card per level with what it means for this connection. */
 @OptIn(ExperimentalMaterial3Api::class)

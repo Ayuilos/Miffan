@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
@@ -106,6 +107,7 @@ import me.ayuilos.miffan.ui.pages.extensions.workspace.WorkspaceVM
 import me.ayuilos.miffan.utils.fileSizeToString
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.CloudServer
+import me.rerere.hugeicons.stroke.Alert02
 import me.rerere.hugeicons.stroke.Fullscreen
 import me.rerere.hugeicons.stroke.Keyboard
 import me.rerere.hugeicons.stroke.VolumeHigh
@@ -317,12 +319,16 @@ internal fun RemoteScreenScaffold(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     avatar?.invoke(Modifier.size(34.dp), partnerActive || awaitingApproval)
-                    // Tapping explains the connection; a long press is the hidden diagnostics switch.
+                    // Tapping explains the connection; a long press is the hidden diagnostics switch. Screen
+                    // readers get the tap as the title's action, so the details (and data used) stay reachable.
+                    val detailsLabel = stringResource(R.string.workspace_screen_details)
                     Column(Modifier.pointerInput(Unit) {
                         detectTapGestures(onTap = { if (vm.connectionInfo.value != null) details = true }, onLongPress = {
                             perfOverlay = !perfOverlay
                             hints.edit { putBoolean(PERF_OVERLAY, perfOverlay) }
                         })
+                    }.semantics(mergeDescendants = true) {
+                        if (info != null) onClick(label = detailsLabel) { details = true; true }
                     }) {
                         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         // Symbols, not words: the dot is the connection (and who drives, which the frame and
@@ -343,6 +349,12 @@ internal fun RemoteScreenScaffold(
                         Row(Modifier.height(22.dp), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             RemoteScreenStatusDot(
+                                // Not by colour alone: a failure is a warning sign, no connection a hollow ring.
+                                mark = when {
+                                    state is RemoteScreenUiState.Failed -> StatusMark.FAILED
+                                    state is RemoteScreenUiState.Closed -> StatusMark.OFF
+                                    else -> StatusMark.DOT
+                                },
                                 dot = when {
                                     state is RemoteScreenUiState.Failed -> MaterialTheme.colorScheme.error
                                     !connected -> MaterialTheme.colorScheme.outline
@@ -359,6 +371,7 @@ internal fun RemoteScreenScaffold(
                                 val tag = remoteScreenQualityTag(resources, quality, it.protocol, custom, it.window)
                                 RemoteModeTag(remoteScreenModeIcon(it.protocol, it.window),
                                     remoteScreenModeLabel(resources, it.protocol, it.window), tag,
+                                    clickLabel = stringResource(if (tag != null) R.string.workspace_screen_quality_sheet_title else R.string.workspace_screen_details),
                                     onClick = { if (tag != null) qualitySheet = true else details = true })
                             }
                         }
@@ -614,19 +627,27 @@ private fun RemoteScreenStillBadge(onRefresh: () -> Unit) {
     }
 }
 
+/** The status dot's shape, so a state does not rest on its colour alone. */
+private enum class StatusMark { DOT, OFF, FAILED }
+
 /**
  * The connection at a glance: its colour says connected, failed or who drives, breathing while something
- * is under way. [description] says it in words for screen readers.
+ * is under way; [mark] says no connection (a ring) or a failure (a warning sign) by shape too.
+ * [description] says it in words for screen readers.
  */
 @Composable
-private fun RemoteScreenStatusDot(dot: Color, breathing: Boolean, description: String) {
+private fun RemoteScreenStatusDot(mark: StatusMark, dot: Color, breathing: Boolean, description: String) {
     val alpha = if (breathing) {
         val transition = rememberInfiniteTransition(label = "status")
         transition.animateFloat(1f, 0.3f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "dot").value
     } else 1f
     val color by animateColorAsState(dot, label = "dot color")
-    Box(Modifier.size(8.dp).graphicsLayer { this.alpha = alpha }.background(color, CircleShape)
-        .semantics { contentDescription = description })
+    val described = Modifier.graphicsLayer { this.alpha = alpha }.semantics { contentDescription = description }
+    when (mark) {
+        StatusMark.DOT -> Box(Modifier.size(8.dp).then(described).background(color, CircleShape))
+        StatusMark.OFF -> Box(Modifier.size(8.dp).then(described).border(1.5.dp, color, CircleShape))
+        StatusMark.FAILED -> Icon(HugeIcons.Alert02, null, Modifier.size(12.dp).then(described), tint = color)
+    }
 }
 
 @Composable
