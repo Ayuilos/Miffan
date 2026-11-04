@@ -25,6 +25,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -198,6 +199,8 @@ data class RemoteHostWindows(val windows: List<RemoteHostWindow>, val desktops: 
 
 /** cua's own windows: the agent pointer overlay and the capture service. */
 private const val THUMBNAIL_PARALLEL = 3
+/** A Linux window's picture in the picker; one takes about a third of a second there. */
+private const val LINUX_THUMBNAIL_EDGE = 640
 // A window's picture takes 2–4 seconds on a Mac (more for another desktop); an app showing no window never gives one.
 private const val THUMBNAIL_TIMEOUT_MILLIS = 10_000L
 private val HIDDEN_WINDOW_APPS = setOf("Cua Driver", "CuaDriver", "cua-spacesd", "Cua Spaces", "loginwindow")
@@ -256,6 +259,8 @@ class RemoteScreenRepository(
     private val lock = Any()
     /** Each computer's own cua-spacesd port and token, read over SSH; memory only. */
     private val hostEndpoints = java.util.concurrent.ConcurrentHashMap<String, HostEndpoint>()
+    /** Linux computers whose helper shows single windows (see [LinuxHostWindows]), by workspace. */
+    private val linuxWindowHosts: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
     /** The long-lived clipboard writer of each open Windows screen, by workspace. */
     private val windowsClipboards = java.util.concurrent.ConcurrentHashMap<String, WindowsClipboardChannel>()
     private val open = mutableMapOf<String, MutableSet<RemoteScreenConnection>>()
@@ -800,6 +805,7 @@ class RemoteScreenRepository(
      * other windows cover it) over the host's SSH session. See [HostDesktopSpace].
      */
     private suspend fun openHostWindow(workspaceId: String, hostId: String, window: SpaceWindow, stream: RemoteStreamRequest): RemoteScreenConnection {
+        if (workspaceId in linuxWindowHosts) return openLinuxWindow(workspaceId, hostId, window, stream)
         val (dimension, fps) = when (stream.quality) {
             RemoteScreenQuality.SAVER -> 1280 to 20
             RemoteScreenQuality.BALANCED -> 1600 to 30
@@ -829,18 +835,59 @@ class RemoteScreenRepository(
         return connection
     }
 
-    /** Whether this computer shares its desktop through cua-spacesd, so single windows can be shown. */
+    /**
+     * One window of a Linux computer: the helper's `window serve` records and encodes it, and applies
+     * input (bringing it to the front itself), over an SSH channel. See [LinuxHostWindows].
+     */
+    private suspend fun openLinuxWindow(workspaceId: String, hostId: String, window: SpaceWindow, stream: RemoteStreamRequest): RemoteScreenConnection {
+        val (dimension, fps, kbps) = when (stream.quality) {
+            RemoteScreenQuality.SAVER -> Triple(1280, 20, 2_500)
+            RemoteScreenQuality.BALANCED -> Triple(1600, 30, 5_000)
+            else -> Triple(2400, 30, 9_000)
+        }
+        val handle = workspaces.openLeasedRemote<RemoteDesktopSession>(workspaceId) { ssh ->
+            val process = ssh.openProcess(LinuxHostWindows.command("serve", window.id, "$dimension", "$fps", "$kbps"))
+            val media = LinuxWindowMedia(process.input, process.output, onClose = process::close)
+            CuaSpaceDesktopSession(null, media, window.app.ifBlank { window.title },
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default))
+        }
+        val connection = RemoteScreenConnection(hostId, RemoteScreenPlatform.LINUX, workspaceId, handle) { closed ->
+            synchronized(lock) {
+                open[hostId]?.remove(closed)
+                if (open[hostId].isNullOrEmpty()) open.remove(hostId)
+            }
+        }
+        synchronized(lock) { open.getOrPut(hostId, ::mutableSetOf) += connection }
+        return connection
+    }
+
+    /**
+     * Whether single windows can be shown: a Mac sharing its desktop through cua-spacesd, or a Linux
+     * desktop the helper supports.
+     */
     suspend fun hostWindowsAvailable(workspaceId: String): Boolean = withContext(Dispatchers.IO) {
         hostEndpoints.remove(workspaceId)
-        runCatching { withRemote(workspaceId) { ssh -> HostDesktopSpace.endpoint(ssh)?.also { hostEndpoints[workspaceId] = it } != null } }
-            .getOrDefault(false)
+        linuxWindowHosts.remove(workspaceId)
+        runCatching {
+            withRemote(workspaceId) { ssh ->
+                if (HostDesktopSpace.endpoint(ssh)?.also { hostEndpoints[workspaceId] = it } != null) return@withRemote true
+                if (ssh.platform != me.rerere.workspace.RemotePlatform.POSIX) return@withRemote false
+                ensureHelper(ssh)
+                LinuxHostWindows.available(ssh).also { if (it) linuxWindowHosts += workspaceId }
+            }
+        }.getOrDefault(false)
     }
 
     /**
      * The windows worth offering and the desktops (macOS Spaces) they are on, in Mission Control order
      * when the Mac tells it. Overlays (cua's own pointer and capture windows) are left out.
      */
-    suspend fun hostWindows(workspaceId: String): RemoteHostWindows = withHostDesktop(workspaceId) { client, ssh ->
+    suspend fun hostWindows(workspaceId: String): RemoteHostWindows {
+        if (workspaceId in linuxWindowHosts) return withContext(Dispatchers.IO) { withRemote(workspaceId, LinuxHostWindows::list) }
+        return macHostWindows(workspaceId)
+    }
+
+    private suspend fun macHostWindows(workspaceId: String): RemoteHostWindows = withHostDesktop(workspaceId) { client, ssh ->
         // The window list (about a second on the Mac) and where each window is are read side by side.
         val where = async(Dispatchers.IO) { runCatching { HostDesktopSpace.placement(ssh) }.getOrNull() }
         val windows = client.listWindows()
@@ -893,6 +940,8 @@ class RemoteScreenRepository(
      * window, or null when none came up.
      */
     suspend fun reopenHostApp(workspaceId: String, window: SpaceWindow): SpaceWindow? = withContext(Dispatchers.IO) {
+        // A Linux window is never listed as hidden: it shows when focused.
+        if (workspaceId in linuxWindowHosts) return@withContext window
         val placed = withRemote(workspaceId) { ssh -> HostDesktopSpace.reopenApp(ssh, window.pid) }
         val shown = placed?.windows?.filter { it.pid == window.pid && it.onScreen && it.height >= 120 }.orEmpty()
         if (shown.isEmpty()) return@withContext null
@@ -911,6 +960,17 @@ class RemoteScreenRepository(
      * collection stops.
      */
     fun hostWindowThumbnails(workspaceId: String, windows: List<SpaceWindow>): Flow<Pair<SpaceWindow, ByteArray?>> = channelFlow {
+        if (workspaceId in linuxWindowHosts) {
+            val job = currentCoroutineContext()[Job]
+            withContext(Dispatchers.IO) {
+                withRemote(workspaceId) { ssh ->
+                    LinuxHostWindows.thumbnails(ssh, windows, LINUX_THUMBNAIL_EDGE, active = { job?.isActive != false }) { window, bytes ->
+                        trySendBlocking(window to bytes)
+                    }
+                }
+            }
+            return@channelFlow
+        }
         withHostDesktop(workspaceId) { client, _ ->
             val gate = Semaphore(THUMBNAIL_PARALLEL)
             windows.map { window ->
@@ -923,12 +983,22 @@ class RemoteScreenRepository(
         }
     }
 
-    suspend fun restoreHostWindow(workspaceId: String, window: SpaceWindow) = withHostDesktop(workspaceId) { client, _ -> client.restoreWindow(window) }
+    suspend fun restoreHostWindow(workspaceId: String, window: SpaceWindow) {
+        if (workspaceId in linuxWindowHosts) return activateHostWindow(workspaceId, window)
+        withHostDesktop(workspaceId) { client, _ -> client.restoreWindow(window) }
+    }
 
-    suspend fun activateHostWindow(workspaceId: String, window: SpaceWindow) = withHostDesktop(workspaceId) { client, _ -> client.activateWindow(window) }
+    suspend fun activateHostWindow(workspaceId: String, window: SpaceWindow) {
+        if (workspaceId in linuxWindowHosts) return withContext(Dispatchers.IO) { withRemote(workspaceId) { LinuxHostWindows.focus(it, window) } }
+        withHostDesktop(workspaceId) { client, _ -> client.activateWindow(window) }
+    }
 
-    suspend fun resizeHostWindow(workspaceId: String, window: SpaceWindow, width: Double, height: Double): Pair<Double, Double>? =
-        withHostDesktop(workspaceId) { client, _ -> client.resizeWindow(window, width, height) }
+    suspend fun resizeHostWindow(workspaceId: String, window: SpaceWindow, width: Double, height: Double): Pair<Double, Double>? {
+        if (workspaceId in linuxWindowHosts) {
+            return withContext(Dispatchers.IO) { withRemote(workspaceId) { LinuxHostWindows.resize(it, window, width, height) } }
+        }
+        return withHostDesktop(workspaceId) { client, _ -> client.resizeWindow(window, width, height) }
+    }
 
     /**
      * Runs [block] with a client of the computer's own cua-spacesd. Its port and token are read once and
@@ -964,6 +1034,8 @@ class RemoteScreenRepository(
      * null when the computer cannot tell.
      */
     suspend fun hostWindowInFront(workspaceId: String, window: SpaceWindow): Boolean? = withContext(Dispatchers.IO) {
+        // A Linux computer's helper brings the window to the front itself before input.
+        if (workspaceId in linuxWindowHosts) return@withContext null
         val shown = runCatching { withRemote(workspaceId) { ssh -> HostDesktopSpace.onScreen(ssh) } }.getOrNull() ?: return@withContext null
         val front = shown.windows.filter { it.layer == 0 && it.height >= 120 && it.app !in HIDDEN_WINDOW_APPS }.maxByOrNull { it.z }
         front?.pid == window.pid

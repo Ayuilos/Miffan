@@ -2186,27 +2186,27 @@
   <string name="workspace_screen_mode_trackpad" tools:ignore="MissingTranslation">Touchpad mode; switch to direct touch</string>
   <string name="workspace_screen_mode_direct" tools:ignore="MissingTranslation">Direct touch mode; switch to touchpad</string>
   <string name="workspace_screen_keyboard" tools:ignore="MissingTranslation">Toggle keyboard</string>
-  <string name="workspace_screen_key_panel" tools:ignore="MissingTranslation">Shortcuts and more keys</string>
-  <string name="workspace_screen_key_back_to_ime" tools:ignore="MissingTranslation">Back to the keyboard</string>
-  <string name="workspace_screen_key_waiting" tools:ignore="MissingTranslation">next key</string>
-  <string name="workspace_screen_key_cancel_modifiers" tools:ignore="MissingTranslation">Cancel the combination</string>
-  <string name="workspace_screen_key_section_common" tools:ignore="MissingTranslation">Common</string>
-  <string name="workspace_screen_key_section_modifiers" tools:ignore="MissingTranslation">Combine with the next key</string>
-  <string name="workspace_screen_key_section_more" tools:ignore="MissingTranslation">More keys</string>
-  <string name="workspace_screen_key_start_menu" tools:ignore="MissingTranslation">Start</string>
-  <string name="workspace_screen_key_overview" tools:ignore="MissingTranslation">Overview</string>
-  <string name="workspace_screen_key_left" tools:ignore="MissingTranslation">Left</string>
-  <string name="workspace_screen_key_up" tools:ignore="MissingTranslation">Up</string>
-  <string name="workspace_screen_key_down" tools:ignore="MissingTranslation">Down</string>
-  <string name="workspace_screen_key_right" tools:ignore="MissingTranslation">Right</string>
-  <string name="workspace_screen_shortcut_copy" tools:ignore="MissingTranslation">Copy</string>
-  <string name="workspace_screen_shortcut_paste" tools:ignore="MissingTranslation">Paste</string>
-  <string name="workspace_screen_shortcut_cut" tools:ignore="MissingTranslation">Cut</string>
-  <string name="workspace_screen_shortcut_undo" tools:ignore="MissingTranslation">Undo</string>
-  <string name="workspace_screen_shortcut_select_all" tools:ignore="MissingTranslation">Select all</string>
-  <string name="workspace_screen_shortcut_save" tools:ignore="MissingTranslation">Save</string>
-  <string name="workspace_screen_shortcut_find" tools:ignore="MissingTranslation">Find</string>
-  <string name="workspace_screen_shortcut_switch_window" tools:ignore="MissingTranslation">Switch app</string>
+  <string name="workspace_screen_key_panel">Shortcuts and more keys</string>
+  <string name="workspace_screen_key_back_to_ime">Back to the keyboard</string>
+  <string name="workspace_screen_key_waiting">next key</string>
+  <string name="workspace_screen_key_cancel_modifiers">Cancel the combination</string>
+  <string name="workspace_screen_key_section_common">Common</string>
+  <string name="workspace_screen_key_section_modifiers">Combine with the next key</string>
+  <string name="workspace_screen_key_section_more">More keys</string>
+  <string name="workspace_screen_key_start_menu">Start</string>
+  <string name="workspace_screen_key_overview">Overview</string>
+  <string name="workspace_screen_key_left">Left</string>
+  <string name="workspace_screen_key_up">Up</string>
+  <string name="workspace_screen_key_down">Down</string>
+  <string name="workspace_screen_key_right">Right</string>
+  <string name="workspace_screen_shortcut_copy">Copy</string>
+  <string name="workspace_screen_shortcut_paste">Paste</string>
+  <string name="workspace_screen_shortcut_cut">Cut</string>
+  <string name="workspace_screen_shortcut_undo">Undo</string>
+  <string name="workspace_screen_shortcut_select_all">Select all</string>
+  <string name="workspace_screen_shortcut_save">Save</string>
+  <string name="workspace_screen_shortcut_find">Find</string>
+  <string name="workspace_screen_shortcut_switch_window">Switch app</string>
   <string name="workspace_screen_actions" tools:ignore="MissingTranslation">Screen actions</string>
   <string name="workspace_screen_help" tools:ignore="MissingTranslation">How to use</string>
   <string name="workspace_screen_help_direct_tab" tools:ignore="MissingTranslation">Direct touch</string>
@@ -4273,6 +4273,10 @@
   <string name="workspace_screen_window_background_hint">Running in the background; picking it opens it on the Mac</string>
   <string name="workspace_screen_window_background_badge">Background</string>
   <string name="workspace_screen_window_footer">You can view it even when other windows cover it. When you use it, the Mac brings it to the front, switching desktops first if it is on another one.</string>
+  <string name="workspace_screen_window_footer_linux">Once you pick it, the computer brings this window onto its screen so the picture stays smooth, and to the front whenever you use it.</string>
+  <string name="workspace_screen_window_issue_locked">The computer is locked</string>
+  <string name="workspace_screen_window_issue_locked_detail">You can still watch this window, but it can\'t be used until the computer is unlocked. Unlock it on the whole screen, then come back.</string>
+  <string name="workspace_screen_window_unlock_action">Unlock on the whole screen</string>
   <string name="workspace_screen_window_this_window">This window</string>
   <string name="workspace_screen_window_issue_minimized">%1$s is minimized to the Dock</string>
   <string name="workspace_screen_window_issue_minimized_detail">A minimized window shows no picture</string>

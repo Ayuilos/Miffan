@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import me.ayuilos.miffan.R
+import me.ayuilos.miffan.data.repository.RemoteScreenPlatform
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -56,6 +57,7 @@ import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Computer
 import me.rerere.hugeicons.stroke.Layers01
+import me.rerere.hugeicons.stroke.LockComputer
 import me.rerere.hugeicons.stroke.Minimize01
 import me.rerere.hugeicons.stroke.SmartPhone01
 import me.rerere.hugeicons.stroke.Tick02
@@ -102,6 +104,7 @@ internal fun RemoteWindowBar(vm: RemoteScreenVM, onPick: () -> Unit, onFit: () -
 internal fun RemoteWindowPicker(vm: RemoteScreenVM, onDismiss: () -> Unit) {
     val target by vm.target.collectAsStateWithLifecycle()
     val windows by vm.windows.collectAsStateWithLifecycle()
+    val platform by vm.platform.collectAsStateWithLifecycle()
     // Live while open: windows opened or closed on the computer appear without reopening the sheet.
     DisposableEffect(Unit) {
         vm.watchWindows()
@@ -167,7 +170,9 @@ internal fun RemoteWindowPicker(vm: RemoteScreenVM, onDismiss: () -> Unit) {
                 }
                 }
             }
-            Text(stringResource(R.string.workspace_screen_window_footer),
+            // A Linux computer redraws only windows on its screen, so it brings the chosen one there.
+            Text(stringResource(if (platform == RemoteScreenPlatform.LINUX) R.string.workspace_screen_window_footer_linux
+                else R.string.workspace_screen_window_footer),
                 Modifier.padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 16.dp),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -223,6 +228,7 @@ internal fun RemoteWindowIssueContent(vm: RemoteScreenVM, issue: RemoteWindowIss
             RemoteWindowIssue.CLOSED -> Triple(HugeIcons.Cancel01, stringResource(R.string.workspace_screen_window_issue_closed), null)
             RemoteWindowIssue.PERMISSION -> Triple(HugeIcons.Alert02, stringResource(R.string.workspace_screen_window_issue_permission), stringResource(R.string.workspace_screen_window_issue_permission_detail))
             RemoteWindowIssue.OTHER_DESKTOP -> Triple(HugeIcons.Layers01, stringResource(R.string.workspace_screen_window_issue_other_desktop, app), stringResource(R.string.workspace_screen_window_issue_other_desktop_detail))
+            RemoteWindowIssue.LOCKED -> Triple(HugeIcons.LockComputer, stringResource(R.string.workspace_screen_window_issue_locked), stringResource(R.string.workspace_screen_window_issue_locked_detail))
         }
         Box(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
             contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(24.dp)) }
@@ -242,6 +248,7 @@ internal fun RemoteWindowIssueContent(vm: RemoteScreenVM, issue: RemoteWindowIss
                 }
                 RemoteWindowIssue.PERMISSION -> Button(onClick = { vm.showWindow(null) }) { Text(stringResource(R.string.workspace_screen_window_permission_action)) }
                 RemoteWindowIssue.OTHER_DESKTOP -> Button(onClick = vm::activateWindow) { Text(stringResource(R.string.workspace_screen_window_switch_desktop)) }
+                RemoteWindowIssue.LOCKED -> Button(onClick = { vm.showWindow(null) }) { Text(stringResource(R.string.workspace_screen_window_unlock_action)) }
             }
         }
     }

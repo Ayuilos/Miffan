@@ -4242,6 +4242,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_window_background_hint">在后台运行，选它会在 Mac 上打开</string>
   <string name="workspace_screen_window_background_badge">后台</string>
   <string name="workspace_screen_window_footer">被别的窗口挡住也能看。你一操作，Mac 会把这个窗口放到最前面，它在别的桌面时会先切过去。</string>
+  <string name="workspace_screen_window_footer_linux">选好后，电脑会把这个窗口切到屏幕上，画面才流畅；你一操作，它就会回到最前面。</string>
+  <string name="workspace_screen_window_issue_locked">电脑锁屏了</string>
+  <string name="workspace_screen_window_issue_locked_detail">这个窗口还能看，但要等电脑解锁才能操作。去整个屏幕解锁后再回来。</string>
+  <string name="workspace_screen_window_unlock_action">去整个屏幕解锁</string>
   <string name="workspace_screen_window_this_window">这个窗口</string>
   <string name="workspace_screen_window_issue_minimized">%1$s 缩到程序坞里了</string>
   <string name="workspace_screen_window_issue_minimized_detail">最小化的窗口看不到画面</string>

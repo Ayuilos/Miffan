@@ -81,6 +81,7 @@ jobs:
           python3 remote-helper/tests/test_task_helper.py
           python3 remote-helper/tests/test_relay_helper.py
           python3 remote-helper/tests/test_snapshot_helper.py
+          python3 remote-helper/tests/test_window_helper.py
 
       - name: Set up Go for the relay connector
         uses: actions/setup-go@v6

@@ -131,7 +131,7 @@ data class RemoteWindowChoice(val window: SpaceWindow, val thumbnail: ImageBitma
 data class RemoteWindowList(val choices: List<RemoteWindowChoice>, val desktops: List<RemoteHostDesktop>)
 
 /** Why the shown window has no picture. */
-enum class RemoteWindowIssue { MINIMIZED, CLOSED, PERMISSION, OTHER_DESKTOP }
+enum class RemoteWindowIssue { MINIMIZED, CLOSED, PERMISSION, OTHER_DESKTOP, LOCKED }
 
 /** What the page draws as the remote pointer. */
 sealed interface RemoteCursor {
@@ -996,6 +996,8 @@ class RemoteScreenVM(
                         session.suspended.collect { reason ->
                             _windowIssue.value = when {
                                 reason == null -> null
+                                // A Linux computer drops input while its screen is locked.
+                                reason == "locked" -> RemoteWindowIssue.LOCKED
                                 reason.contains("minimi", ignoreCase = true) -> RemoteWindowIssue.MINIMIZED
                                 reason.contains("hidden", ignoreCase = true) || reason.contains("space", ignoreCase = true) -> RemoteWindowIssue.OTHER_DESKTOP
                                 else -> RemoteWindowIssue.PERMISSION

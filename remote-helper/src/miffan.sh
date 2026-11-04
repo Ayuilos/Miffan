@@ -23,8 +23,10 @@
 #                           a partner's own cua Space on this computer (JSON on stdout)
 #   miffan relay status|install|upgrade|pair|unpair|uninstall
 #                           the relay connector that lets the phone reach this computer from outside
+#   miffan window probe|list|focus|resize|shots|serve|locate
+#                           one window of a Linux desktop on the phone (niri), video and input
 
-MIFFAN_HELPER_VERSION=38
+MIFFAN_HELPER_VERSION=39
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -217,6 +219,1022 @@ Image.open(sys.argv[1]).convert("RGB").save(sys.argv[2], "JPEG", quality=int(sys
     printf '%s %s %s\n' "$format" "$digest" "$size"
     cat "$file"
     rm -f "$jpg"
+}
+
+# One window of a Linux desktop on the screen page (see PROTOCOL.md 「单个窗口」): the compositor's
+# org.gnome.Mutter.ScreenCast records it (niri provides it; no picker, no prompt), GStreamer encodes
+# H.264, and input goes through uinput. Only niri lists and focuses windows so far. Elsewhere
+# `window probe` answers that single windows are not supported. Requests the program reads (shots,
+# serve) arrive on the helper's stdin, handed to Python as fd 3 since its own stdin is the program.
+window_command() {
+    if [ "$(os)" != linux ] || ! load_session_env || ! command -v python3 >/dev/null 2>&1; then
+        if [ "${1:-}" = probe ]; then echo '{"supported":false}'; return 0; fi
+        echo "single windows need a Linux desktop session and python3" >&2
+        return 1
+    fi
+    # How the program runs itself again (locating a window runs apart from the stream).
+    MIFFAN_WINDOW_FD3=1 MIFFAN_WINDOW_COMMAND=$(printf '%s\twindow' "$0") python3 - "$@" 3<&0 <<'WINDOW_PY'
+# miffan window: one window of a Linux desktop on the phone (see PROTOCOL.md, "单个窗口").
+#   probe                      one JSON line: whether this desktop can show single windows
+#   list                       one JSON line: windows and workspaces
+#   focus ID                   brings window ID to the front
+#   resize ID W H              sets its size in logical pixels; prints the size it got
+#   shots                      per stdin line "ID MAXDIM QUALITY": "jpeg LEN" + bytes, or "error CODE"
+#   serve ID MAXDIM FPS KBPS   H.264 of window ID on stdout, input lines on stdin
+# Capture goes through the compositor's org.gnome.Mutter.ScreenCast (niri, GNOME): no picker, no
+# prompt. Input goes through uinput (absolute pointer + keyboard), so the user needs /dev/uinput.
+import fcntl
+import glob
+import json
+import os
+import shutil
+import socket
+import struct
+import subprocess
+import sys
+import threading
+import time
+
+OUT = sys.stdout.buffer
+OUT_LOCK = threading.Lock()
+
+
+def emit(line, payload=None):
+    with OUT_LOCK:
+        OUT.write(line.encode() + b"\n")
+        if payload is not None:
+            OUT.write(payload)
+        OUT.flush()
+
+
+def session_env():
+    run = os.environ.get("XDG_RUNTIME_DIR") or "/run/user/%d" % os.getuid()
+    os.environ["XDG_RUNTIME_DIR"] = run
+    os.environ.setdefault("DBUS_SESSION_BUS_ADDRESS", "unix:path=%s/bus" % run)
+    if not os.environ.get("NIRI_SOCKET"):
+        socks = sorted(glob.glob(run + "/niri.*.sock"), key=os.path.getmtime)
+        if socks:
+            os.environ["NIRI_SOCKET"] = socks[-1]
+    if not os.environ.get("WAYLAND_DISPLAY"):
+        names = [p for p in glob.glob(run + "/wayland-*") if not p.endswith(".lock")]
+        names.sort(key=os.path.getmtime)
+        if names:
+            os.environ["WAYLAND_DISPLAY"] = os.path.basename(names[0])
+
+
+# ---------- apps ----------
+
+APP_NAMES = {}
+
+
+def locale_names():
+    lang = os.environ.get("LC_ALL") or os.environ.get("LC_MESSAGES") or os.environ.get("LANG") or ""
+    if not lang:
+        try:
+            env = subprocess.run(["systemctl", "--user", "show-environment"], capture_output=True, text=True, timeout=3).stdout
+            lang = next((l[5:] for l in env.splitlines() if l.startswith("LANG=")), "")
+        except (OSError, subprocess.TimeoutExpired):
+            lang = ""
+    lang = lang.split(".")[0].split("@")[0]
+    keys = ["Name[%s]" % lang] if lang else []
+    if "_" in lang:
+        keys.append("Name[%s]" % lang.split("_")[0])
+    return keys + ["Name"]
+
+
+def desktop_entry(path):
+    entry, inside = {}, False
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("["):
+                    inside = line == "[Desktop Entry]"
+                elif inside and "=" in line:
+                    k, v = line.split("=", 1)
+                    entry.setdefault(k.strip(), v.strip())
+    except OSError:
+        pass
+    return entry
+
+
+def app_name(app_id):
+    """The app's name from its desktop entry, as the launcher shows it; else the id made readable."""
+    if not app_id:
+        return ""
+    if app_id in APP_NAMES:
+        return APP_NAMES[app_id]
+    home = os.path.expanduser("~")
+    roots = [os.environ.get("XDG_DATA_HOME") or home + "/.local/share"]
+    roots += (os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":")
+    roots += [home + "/.local/share/flatpak/exports/share", "/var/lib/flatpak/exports/share"]
+    dirs = [r + "/applications" for r in roots if os.path.isdir(r + "/applications")]
+    found = None
+    for d in dirs:
+        path = os.path.join(d, app_id + ".desktop")
+        if os.path.isfile(path):
+            found = desktop_entry(path)
+            break
+    wanted = app_id.lower()
+    entries = [os.path.join(d, n) for d in dirs for n in sorted(os.listdir(d)) if n.endswith(".desktop")]
+    if found is None:
+        # Another case, or a reverse-DNS name ending in the id (org.gnome.Nautilus for "nautilus").
+        path = next((e for e in entries if os.path.basename(e)[:-8].lower() in (wanted,)
+                     or os.path.basename(e)[:-8].lower().endswith("." + wanted)), None)
+        found = desktop_entry(path) if path else None
+    if found is None:
+        found = next((entry for entry in map(desktop_entry, entries)
+                      if entry.get("StartupWMClass", "").lower() == wanted), None)
+    label = None
+    if found:
+        label = next((found[k] for k in locale_names() if found.get(k)), None)
+    if not label:
+        label = " ".join(w[:1].upper() + w[1:] for w in app_id.rsplit(".", 1)[-1].replace("-", " ").replace("_", " ").split())
+    APP_NAMES[app_id] = label
+    return label
+
+
+# ---------- niri ----------
+
+def niri(request):
+    path = os.environ.get("NIRI_SOCKET")
+    if not path:
+        return None
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(3)
+    try:
+        s.connect(path)
+        s.sendall(json.dumps(request).encode() + b"\n")
+        data = b""
+        while not data.endswith(b"\n"):
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+    except OSError:
+        return None
+    finally:
+        s.close()
+    try:
+        reply = json.loads(data)
+    except ValueError:
+        return None
+    return reply.get("Ok") if isinstance(reply, dict) else None
+
+
+def niri_list():
+    windows = (niri("Windows") or {}).get("Windows")
+    spaces = (niri("Workspaces") or {}).get("Workspaces")
+    if windows is None or spaces is None:
+        return None
+    focused_output = next((w.get("output") for w in spaces if w.get("is_focused")), None)
+    current = next((w["id"] for w in spaces if w.get("is_active") and w.get("output") == focused_output), None)
+    out = []
+    for w in windows:
+        layout = w.get("layout") or {}
+        size = layout.get("window_size") or [0, 0]
+        out.append({
+            "id": str(w["id"]), "pid": w.get("pid") or 0, "app": app_name(w.get("app_id") or ""), "app_id": w.get("app_id") or "",
+            "title": w.get("title") or "", "workspace": w.get("workspace_id"),
+            "focused": bool(w.get("is_focused")), "width": size[0], "height": size[1],
+        })
+    ws = [{"id": w["id"], "index": w.get("idx"), "output": w.get("output"), "name": w.get("name"),
+           "active": bool(w.get("is_active"))} for w in spaces]
+    outputs = sorted({w.get("output") for w in spaces if w.get("output")})
+    return {"desktop": "niri", "windows": out, "workspaces": ws, "current": current, "outputs": outputs}
+
+
+def niri_place(window_id):
+    """
+    Where the window is shown: its output (name, logical box), its frame when niri tells it (floating
+    windows), and a signature of the layout around it that changes when it may have moved. None when
+    its workspace is not shown.
+    """
+    windows = (niri("Windows") or {}).get("Windows") or []
+    w = next((w for w in windows if str(w["id"]) == str(window_id)), None)
+    if w is None:
+        return None
+    spaces = (niri("Workspaces") or {}).get("Workspaces") or []
+    space = next((s for s in spaces if s["id"] == w.get("workspace_id")), None)
+    if space is None or not space.get("is_active"):
+        return None
+    outputs = (niri("Outputs") or {}).get("Outputs") or {}
+    output = outputs.get(space.get("output")) or {}
+    logical = output.get("logical") or {}
+    if not logical:
+        return None
+    box = (logical["x"], logical["y"], logical["width"], logical["height"])
+    layout = w.get("layout") or {}
+    tile = layout.get("tile_pos_in_workspace_view")
+    rect = None
+    if tile is not None:
+        offset = layout.get("window_offset_in_tile") or [0, 0]
+        size = layout.get("window_size") or [0, 0]
+        rect = (box[0] + tile[0] + offset[0], box[1] + tile[1] + offset[1], size[0], size[1])
+    signature = (space["id"], tuple(sorted(
+        (x["id"], bool(x.get("is_floating")), tuple((x.get("layout") or {}).get("pos_in_scrolling_layout") or ()),
+         tuple((x.get("layout") or {}).get("tile_size") or ()))
+        for x in windows if x.get("workspace_id") == space["id"])))
+    return {"output": space.get("output"), "box": box, "rect": rect, "signature": signature}
+
+
+def niri_bounds():
+    outputs = (niri("Outputs") or {}).get("Outputs") or {}
+    boxes = [o["logical"] for o in outputs.values() if o.get("logical")]
+    if not boxes:
+        return None
+    x0 = min(b["x"] for b in boxes)
+    y0 = min(b["y"] for b in boxes)
+    return (x0, y0, max(b["x"] + b["width"] for b in boxes) - x0, max(b["y"] + b["height"] for b in boxes) - y0)
+
+
+def niri_focused():
+    w = (niri("FocusedWindow") or {}).get("FocusedWindow")
+    return str(w["id"]) if w else None
+
+
+def niri_focus(window_id):
+    return niri({"Action": {"FocusWindow": {"id": int(window_id)}}}) is not None
+
+
+def niri_window(window_id):
+    windows = (niri("Windows") or {}).get("Windows") or []
+    return next((w for w in windows if str(w["id"]) == str(window_id)), None)
+
+
+def niri_resize(window_id, width, height):
+    """Sets the window's size in logical pixels (a tiled column takes the width), then prints what it got."""
+    for action in ("SetWindowWidth", "SetWindowHeight"):
+        niri({"Action": {action: {"id": int(window_id), "change": {"SetFixed": int(width if action == "SetWindowWidth" else height)}}}})
+    last = None
+    for _ in range(20):
+        time.sleep(0.05)
+        w = niri_window(window_id)
+        size = tuple((w or {}).get("layout", {}).get("window_size") or [])
+        if size and size == last:
+            break
+        last = size
+    if not last:
+        return False
+    print("%d %d" % last)
+    return True
+
+
+# ---------- capture ----------
+
+def gst():
+    import gi
+    gi.require_version("Gst", "1.0")
+    gi.require_version("GstVideo", "1.0")
+    from gi.repository import Gio, GLib, Gst, GstVideo
+    Gst.init(None)
+    return Gio, GLib, Gst, GstVideo
+
+
+ENCODERS = ["nvh264enc", "vah264lpenc", "vah264enc", "vaapih264enc", "x264enc", "openh264enc"]
+
+
+def pick_encoder(Gst):
+    for name in ENCODERS:
+        if Gst.ElementFactory.find(name):
+            return name
+    return None
+
+
+def encoder_props(name, kbps, fps):
+    gop = max(fps * 4, 30)
+    if name == "nvh264enc":
+        return "preset=low-latency-hq rc-mode=cbr bitrate=%d gop-size=%d zerolatency=true bframes=0" % (kbps, gop)
+    if name in ("vah264lpenc", "vah264enc"):
+        return "rate-control=cbr bitrate=%d key-int-max=%d b-frames=0" % (kbps, gop)
+    if name == "vaapih264enc":
+        return "rate-control=cbr bitrate=%d keyframe-period=%d max-bframes=0" % (kbps, gop)
+    if name == "x264enc":
+        return "tune=zerolatency speed-preset=ultrafast bitrate=%d key-int-max=%d bframes=0" % (kbps, gop)
+    return "bitrate=%d gop-size=%d" % (kbps * 1000, gop)
+
+
+class Cast:
+    """
+    One org.gnome.Mutter.ScreenCast recording of a window (or an output's monitor): its PipeWire node.
+    Waits for the node on a private main context, so any thread may make one.
+    """
+
+    def __init__(self, Gio, GLib, window_id=None, monitor=None, on_closed=None):
+        self.GLib = GLib
+        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+        self.session = self._call("/org/gnome/Mutter/ScreenCast", "org.gnome.Mutter.ScreenCast", "CreateSession",
+                                  GLib.Variant("(a{sv})", ({},)), "(o)")[0]
+        if monitor is not None:
+            self.stream = self._call(self.session, "org.gnome.Mutter.ScreenCast.Session", "RecordMonitor",
+                                     GLib.Variant("(sa{sv})", (monitor, {"cursor-mode": GLib.Variant("u", 0)})), "(o)")[0]
+        else:
+            self.stream = self._call(self.session, "org.gnome.Mutter.ScreenCast.Session", "RecordWindow",
+                                     GLib.Variant("(a{sv})", ({"window-id": GLib.Variant("t", int(window_id)),
+                                                               "cursor-mode": GLib.Variant("u", 1)},)), "(o)")[0]
+        self.node = None
+        self._subs = []
+        context = GLib.MainContext.new()
+        context.push_thread_default()
+        try:
+            def added(_c, _s, _p, _i, _n, params):
+                self.node = params[0]
+            sub = self.bus.signal_subscribe(None, "org.gnome.Mutter.ScreenCast.Stream", "PipeWireStreamAdded",
+                                            self.stream, None, 0, added)
+            self._call(self.session, "org.gnome.Mutter.ScreenCast.Session", "Start", None, None)
+            deadline = time.monotonic() + 5
+            while self.node is None and time.monotonic() < deadline:
+                if not context.iteration(False):
+                    time.sleep(0.005)
+            self.bus.signal_unsubscribe(sub)
+        finally:
+            context.pop_thread_default()
+        if self.node is None:
+            self.stop()
+            raise RuntimeError("no_stream")
+        if on_closed:
+            self._subs.append(self.bus.signal_subscribe(None, "org.gnome.Mutter.ScreenCast.Session", "Closed",
+                                                        self.session, None, 0, lambda *a: on_closed()))
+
+    def _call(self, path, iface, method, args, rtype):
+        return self.bus.call_sync("org.gnome.Mutter.ScreenCast", path, iface, method, args,
+                                  self.GLib.VariantType(rtype) if rtype else None, 0, 5000, None)
+
+    def stop(self):
+        for sub in self._subs:
+            self.bus.signal_unsubscribe(sub)
+        self._subs = []
+        try:
+            self._call(self.session, "org.gnome.Mutter.ScreenCast.Session", "Stop", None, None)
+        except Exception:
+            pass
+
+
+def scaled(width, height, limit):
+    scale = min(1.0, float(limit) / max(width, height, 1))
+    return max(2, int(width * scale) // 2 * 2), max(2, int(height * scale) // 2 * 2)
+
+
+def gl_env():
+    # GStreamer GL without a window: EGL surfaceless works on Mesa and NVIDIA alike.
+    os.environ.setdefault("GST_GL_PLATFORM", "egl")
+    os.environ.setdefault("GST_GL_WINDOW", "surfaceless")
+
+
+def shots():
+    gl_env()
+    Gio, GLib, Gst, _ = gst()
+    for line in REQUESTS:
+        parts = line.split()
+        if not parts:
+            continue
+        try:
+            window_id, limit, quality = parts[0], int(parts[1]), int(parts[2])
+        except (IndexError, ValueError):
+            emit("error usage")
+            continue
+        if niri_window(window_id) is None:
+            emit("error no_window")
+            continue
+        try:
+            picture = shot(Gio, GLib, Gst, window_id, limit, quality)
+        except Exception:
+            picture = None
+        if picture:
+            emit("jpeg %d" % len(picture), picture)
+        else:
+            emit("error no_picture")
+
+
+def follow_size(Gst, pipeline, limit, changed=None, fit=None):
+    """
+    Scales to fit [limit] (or to what [fit] says for the frame size) from the stream's own caps; the
+    cast reports its size only once frames flow.
+    """
+    sizer = pipeline.get_by_name("size")
+    current = {"size": None}
+
+    def on_caps(_pad, info):
+        event = info.get_event()
+        if event.type == Gst.EventType.CAPS:
+            s = event.parse_caps().get_structure(0)
+            ok_w, cw = s.get_int("width")
+            ok_h, ch = s.get_int("height")
+            if ok_w and ok_h and cw > 2 and ch > 2:
+                size = fit(cw, ch) if fit else scaled(cw, ch, limit)
+                if size != current["size"]:
+                    first = current["size"] is None
+                    current["size"] = size
+                    sizer.set_property("caps", Gst.Caps.from_string(
+                        "video/x-raw(memory:GLMemory),format=RGBA,width=%d,height=%d" % size))
+                    if changed:
+                        changed(size, first)
+        return Gst.PadProbeReturn.OK
+    pipeline.get_by_name("src").get_static_pad("src").add_probe(Gst.PadProbeType.EVENT_DOWNSTREAM, on_caps)
+
+
+def shot(Gio, GLib, Gst, window_id, limit, quality):
+    cast = Cast(Gio, GLib, window_id)
+    try:
+        pipeline = Gst.parse_launch(
+            "pipewiresrc name=src path=%d ! glupload ! glcolorconvert ! glcolorscale ! "
+            "capsfilter name=size caps=video/x-raw(memory:GLMemory),format=RGBA ! gldownload ! videoconvert ! "
+            "jpegenc quality=%d ! appsink name=sink sync=false max-buffers=1" % (cast.node, quality))
+        follow_size(Gst, pipeline, limit)
+        sink = pipeline.get_by_name("sink")
+        pipeline.set_state(Gst.State.PLAYING)
+        sample = sink.emit("try-pull-sample", Gst.SECOND * 5 // 2)
+        data = None
+        if sample:
+            buf = sample.get_buffer()
+            data = buf.extract_dup(0, buf.get_size())
+        pipeline.set_state(Gst.State.NULL)
+        return data
+    finally:
+        cast.stop()
+
+
+# ---------- locating a tiled window ----------
+
+LOCATE_WIDTH = 960
+
+
+def gray_frame(Gst, GstVideo, cast, fit):
+    """One small GRAY8 frame of [cast], scaled by [fit]: (bytes, width, height, stride) or None."""
+    pipeline = Gst.parse_launch(
+        "pipewiresrc name=src path=%d ! glupload ! glcolorconvert ! glcolorscale ! "
+        "capsfilter name=size caps=video/x-raw(memory:GLMemory),format=RGBA ! gldownload ! videoconvert ! "
+        "video/x-raw,format=GRAY8 ! appsink name=sink sync=false max-buffers=1" % cast.node)
+    follow_size(Gst, pipeline, 0, fit=fit)
+    pipeline.set_state(Gst.State.PLAYING)
+    try:
+        sample = pipeline.get_by_name("sink").emit("try-pull-sample", 3 * Gst.SECOND)
+        if not sample:
+            return None
+        info = GstVideo.VideoInfo.new_from_caps(sample.get_caps())
+        buf = sample.get_buffer()
+        return buf.extract_dup(0, buf.get_size()), info.width, info.height, info.stride[0]
+    finally:
+        pipeline.set_state(Gst.State.NULL)
+
+
+def rows_of(data, w, h, stride):
+    return [list(data[y * stride:y * stride + w]) for y in range(h)]
+
+def shrink_rows(rows, f):
+    h, w = len(rows) // f, len(rows[0]) // f
+    out = []
+    for y in range(h):
+        acc = [0] * w
+        for dy in range(f):
+            line = rows[y * f + dy]
+            for x in range(w):
+                acc[x] += sum(line[x * f:(x + 1) * f])
+        out.append([v // (f * f) for v in acc])
+    return out
+
+def features(rows, cells, extra):
+    """Sample points: the strongest edge in each cell of a grid (weight 4), plus a sparse even grid (weight 1)."""
+    h, w = len(rows), len(rows[0])
+    cw, ch = max(2, w // cells), max(2, h // cells)
+    points = []
+    for cy in range(0, h - 1, ch):
+        for cx in range(0, w - 1, cw):
+            best, at = 0, None
+            for y in range(cy, min(cy + ch, h - 1)):
+                row, below = rows[y], rows[y + 1]
+                for x in range(cx, min(cx + cw, w - 1)):
+                    g = abs(row[x + 1] - row[x]) + abs(below[x] - row[x])
+                    if g > best:
+                        best, at = g, (x, y)
+            if at is not None and best >= 12:
+                points.append((at[0], at[1], 4))
+    sx, sy = max(1, w // extra), max(1, h // extra)
+    points += [(x, y, 1) for y in range(sy // 2, h, sy) for x in range(sx // 2, w, sx)]
+    # Edges first, so a wrong offset is given up early.
+    points.sort(key=lambda p: -p[2])
+    return points
+
+
+def score(screen, window, ox, oy, samples, limit):
+    total = 0
+    for x, y, weight in samples:
+        # Truncated, so a part covered by another window costs no more than any mismatch.
+        total += min(abs(screen[oy + y][ox + x] - window[y][x]), 80) * weight
+        if total >= limit:
+            return limit
+    return total
+
+
+def best_of(screen, window, candidates, samples, keep):
+    found = []
+    bound = float("inf")
+    for ox, oy in candidates:
+        t = score(screen, window, ox, oy, samples, bound)
+        if t < bound:
+            found.append((t, (ox, oy)))
+            found.sort()
+            del found[keep:]
+            if len(found) == keep:
+                bound = found[-1][0]
+    return found
+
+
+def match(screen, sw, sh, window, ww, wh):
+    """Where [window] sits in [screen] (top-left, in their pixels), and how many sample points agree there."""
+    coarse_s, coarse_w = shrink_rows(screen, 4), shrink_rows(window, 4)
+    cw, ch = len(coarse_w[0]), len(coarse_w)
+    if cw < 2 or ch < 2 or len(coarse_s) < ch or len(coarse_s[0]) < cw:
+        return None, 0.0
+    cands = [(x, y) for y in range(len(coarse_s) - ch + 1) for x in range(len(coarse_s[0]) - cw + 1)]
+    top = best_of(coarse_s, coarse_w, cands, features(coarse_w, 12, 6), 5)
+    fine = features(window, 24, 10)
+    near = set()
+    for _, (x0, y0) in top:
+        for y in range(y0 * 4 - 6, y0 * 4 + 7):
+            for x in range(x0 * 4 - 6, x0 * 4 + 7):
+                if 0 <= x <= sw - ww and 0 <= y <= sh - wh:
+                    near.add((x, y))
+    found = best_of(screen, window, sorted(near), fine, 1)
+    if not found:
+        return None, 0.0
+    at = found[0][1]
+    edges = [p for p in fine if p[2] > 1] if sum(1 for p in fine if p[2] > 1) >= 8 else fine
+    agree = sum(1 for x, y, _ in edges if abs(screen[at[1] + y][at[0] + x] - window[y][x]) <= 24)
+    return at, agree / float(len(edges))
+
+
+def locate(Gio, GLib, Gst, GstVideo, window_id, place):
+    """
+    Finds a tiled window on its output, which niri does not report: one small grey frame of each, then
+    a coarse search refined around the best match. Returns its frame in global logical pixels, or None.
+    """
+    box = place["box"]
+    scale = {}
+
+    def fit_screen(w, h):
+        scale["k"] = float(LOCATE_WIDTH) / w
+        return LOCATE_WIDTH, max(2, int(h * scale["k"]))
+
+    screen_cast = Cast(Gio, GLib, monitor=place["output"])
+    try:
+        screen = gray_frame(Gst, GstVideo, screen_cast, fit_screen)
+    finally:
+        screen_cast.stop()
+    if not screen:
+        return None
+    k = scale["k"]
+    window_cast = Cast(Gio, GLib, window_id)
+    try:
+        window = gray_frame(Gst, GstVideo, window_cast, lambda w, h: (max(2, int(w * k)), max(2, int(h * k))))
+    finally:
+        window_cast.stop()
+    if not window:
+        return None
+    sw, sh, ww, wh = screen[1], screen[2], window[1], window[2]
+    if ww > sw or wh > sh:
+        return None
+    at, agree = match(rows_of(*screen), sw, sh, rows_of(*window), ww, wh)
+    # Below this, too little of the window shows where it was found (covered, or not found at all).
+    if at is None or agree < 0.3:
+        return None
+    unit = box[2] / float(sw)
+    return (box[0] + at[0] * unit, box[1] + at[1] * unit, ww * unit, wh * unit)
+
+
+def locate_apart(window_id):
+    """
+    [locate] in a process of its own: GL pipelines in one process share the EGL display, and one torn
+    down beside the running stream breaks the stream's.
+    """
+    self_command = os.environ.get("MIFFAN_WINDOW_COMMAND")
+    command = self_command.split("\t") if self_command else [sys.executable, os.path.abspath(__file__)]
+    try:
+        out = subprocess.run(command + ["locate", str(window_id)], capture_output=True, text=True, timeout=10,
+                             stdin=subprocess.DEVNULL).stdout.split()
+        return tuple(float(v) for v in out) if len(out) == 4 else None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+
+
+# ---------- input ----------
+
+LOGIN_SESSION = []
+
+
+def screen_locked():
+    """Whether the graphical session is locked (logind's LockedHint, which screen lockers set)."""
+    def ask(*args):
+        try:
+            return subprocess.run(["loginctl"] + list(args), capture_output=True, text=True, timeout=3,
+                                  stdin=subprocess.DEVNULL).stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+    if not LOGIN_SESSION:
+        LOGIN_SESSION.append(ask("show-user", str(os.getuid()), "-p", "Display", "--value"))
+    return bool(LOGIN_SESSION[0]) and ask("show-session", LOGIN_SESSION[0], "-p", "LockedHint", "--value") == "yes"
+
+
+EV_SYN, EV_KEY, EV_REL, EV_ABS = 0, 1, 2, 3
+BTN = {"left": 0x110, "right": 0x111, "middle": 0x112}
+REL_HWHEEL, REL_WHEEL, REL_WHEEL_HI_RES, REL_HWHEEL_HI_RES = 0x06, 0x08, 0x0B, 0x0C
+ABS_MAX = 65535
+KEYS = {
+    "escape": 1, "1": 2, "2": 3, "3": 4, "4": 5, "5": 6, "6": 7, "7": 8, "8": 9, "9": 10, "0": 11, "-": 12, "=": 13,
+    "backspace": 14, "tab": 15, "q": 16, "w": 17, "e": 18, "r": 19, "t": 20, "y": 21, "u": 22, "i": 23, "o": 24,
+    "p": 25, "[": 26, "]": 27, "enter": 28, "control": 29, "a": 30, "s": 31, "d": 32, "f": 33, "g": 34, "h": 35,
+    "j": 36, "k": 37, "l": 38, ";": 39, "'": 40, "`": 41, "shift": 42, "\\": 43, "z": 44, "x": 45, "c": 46, "v": 47,
+    "b": 48, "n": 49, "m": 50, ",": 51, ".": 52, "/": 53, "alt": 56, "space": 57, "capslock": 58,
+    "f1": 59, "f2": 60, "f3": 61, "f4": 62, "f5": 63, "f6": 64, "f7": 65, "f8": 66, "f9": 67, "f10": 68,
+    "numlock": 69, "scrolllock": 70, "f11": 87, "f12": 88, "printscreen": 99, "home": 102, "arrowup": 103,
+    "pageup": 104, "arrowleft": 105, "arrowright": 106, "end": 107, "arrowdown": 108, "pagedown": 109,
+    "insert": 110, "delete": 111, "pause": 119, "meta": 125, "contextmenu": 127,
+}
+# Characters typed with Shift on a US layout.
+SHIFTED = dict(zip('!@#$%^&*()_+{}|:"~<>?', "1234567890-=[]\\;'`,./"))
+
+
+class Uinput:
+    def __init__(self):
+        self.pointer = self._device("Miffan pointer", absolute=True)
+        self.keyboard = self._device("Miffan keyboard", absolute=False)
+
+    @staticmethod
+    def _device(name, absolute):
+        fd = os.open("/dev/uinput", os.O_WRONLY | os.O_NONBLOCK)
+        ioctl = fcntl.ioctl
+        ioctl(fd, 0x40045564, EV_KEY)  # UI_SET_EVBIT
+        if absolute:
+            for code in BTN.values():
+                ioctl(fd, 0x40045565, code)  # UI_SET_KEYBIT
+            ioctl(fd, 0x40045564, EV_ABS)
+            ioctl(fd, 0x40045564, EV_REL)
+            for code in (REL_WHEEL, REL_HWHEEL, REL_WHEEL_HI_RES, REL_HWHEEL_HI_RES):
+                ioctl(fd, 0x40045566, code)  # UI_SET_RELBIT
+            for code in (0, 1):  # ABS_X, ABS_Y
+                ioctl(fd, 0x40045567, code)  # UI_SET_ABSBIT
+                ioctl(fd, 0x401C5504, struct.pack("<H2xiiiiii", code, 0, 0, ABS_MAX, 0, 0, 0))  # UI_ABS_SETUP
+        else:
+            for code in range(1, 249):
+                ioctl(fd, 0x40045565, code)
+        ioctl(fd, 0x405C5503, struct.pack("<HHHH80sI", 0x06, 0x1209, 0x6d66 if absolute else 0x6d67, 1,
+                                          name.encode(), 0))  # UI_DEV_SETUP, BUS_VIRTUAL
+        ioctl(fd, 0x5501)  # UI_DEV_CREATE
+        return fd
+
+    @staticmethod
+    def _write(fd, events):
+        data = b"".join(struct.pack("<qqHHi", 0, 0, t, c, v) for t, c, v in events)
+        os.write(fd, data + struct.pack("<qqHHi", 0, 0, EV_SYN, 0, 0))
+
+    def move(self, ax, ay):
+        self._write(self.pointer, [(EV_ABS, 0, ax), (EV_ABS, 1, ay)])
+
+    def button(self, name, down):
+        code = BTN.get(name)
+        if code:
+            self._write(self.pointer, [(EV_KEY, code, 1 if down else 0)])
+
+    def scroll(self, dx, dy):
+        events = []
+        if dy:
+            events += [(EV_REL, REL_WHEEL_HI_RES, int(-dy * 1.2)), (EV_REL, REL_WHEEL, int(round(-dy / 100.0)))]
+        if dx:
+            events += [(EV_REL, REL_HWHEEL_HI_RES, int(dx * 1.2)), (EV_REL, REL_HWHEEL, int(round(dx / 100.0)))]
+        if events:
+            self._write(self.pointer, events)
+
+    def key(self, name, down):
+        code = KEYS.get(name)
+        shift = False
+        if code is None and name in SHIFTED:
+            code, shift = KEYS[SHIFTED[name]], True
+        if code is None:
+            return
+        events = [(EV_KEY, 42, 1)] if shift and down else []
+        events.append((EV_KEY, code, 1 if down else 0))
+        if shift and not down:
+            events.append((EV_KEY, 42, 0))
+        self._write(self.keyboard, events)
+
+    def close(self):
+        for fd in (self.pointer, self.keyboard):
+            try:
+                fcntl.ioctl(fd, 0x5502)
+                os.close(fd)
+            except OSError:
+                pass
+
+
+def type_text(text, keys):
+    if shutil.which("wtype") and os.environ.get("WAYLAND_DISPLAY"):
+        if subprocess.run(["wtype", "--", text], stdin=subprocess.DEVNULL, timeout=10).returncode == 0:
+            return
+    if shutil.which("wl-copy") and keys:
+        subprocess.run(["wl-copy", "--type", "text/plain;charset=utf-8"], input=text.encode(), timeout=5)
+        keys.key("control", True)
+        keys.key("v", True)
+        keys.key("v", False)
+        keys.key("control", False)
+
+
+class Input:
+    """
+    Applies input lines to the window. Input lands on what is under the pointer, so the window is brought
+    to the front first whenever something else is, and found on screen again when the layout changed.
+    """
+
+    def __init__(self, window_id):
+        self.window_id = window_id
+        # Input on a locked screen would land on the lock screen: it is dropped, and the phone told once.
+        self.locked = False
+        self.lock_checked = 0.0
+        self.device = None
+        self.rect = None
+        self.bounds = None
+        self.signature = None
+        self.checked = 0.0
+
+    def ensure_front(self):
+        now = time.monotonic()
+        if self.rect is not None and now - self.checked < 1.0:
+            return True
+        self.checked = now
+        if niri_focused() != self.window_id:
+            niri_focus(self.window_id)
+            self.rect = None
+            # niri scrolls the window into view with an animation.
+            time.sleep(0.45)
+        place = niri_place(self.window_id)
+        if place is None:
+            self.rect = None
+            return False
+        if place["rect"] is not None:
+            self.rect = place["rect"]
+        elif self.rect is None or place["signature"] != self.signature:
+            started = time.monotonic()
+            self.rect = locate_apart(self.window_id)
+            emit("info %s" % json.dumps({"located": self.rect is not None, "ms": int((time.monotonic() - started) * 1000)}))
+        self.signature = place["signature"]
+        self.bounds = niri_bounds()
+        self.checked = time.monotonic()
+        return self.rect is not None and self.bounds is not None
+
+    def point(self, nx, ny):
+        x, y, w, h = self.rect
+        bx, by, bw, bh = self.bounds
+        gx = x + max(0.0, min(1.0, nx)) * w
+        gy = y + max(0.0, min(1.0, ny)) * h
+        return (int((gx - bx) / bw * ABS_MAX), int((gy - by) / bh * ABS_MAX))
+
+    def watch_lock(self):
+        """Says when the lock that held input back is gone; called now and then from the main loop."""
+        if self.locked and not screen_locked():
+            self.locked = False
+            emit("resumed")
+        return True
+
+    def apply(self, parts):
+        now = time.monotonic()
+        if now - self.lock_checked > 1.0:
+            self.lock_checked = now
+            if screen_locked():
+                if not self.locked:
+                    self.locked = True
+                    emit("suspended locked")
+            elif self.locked:
+                self.locked = False
+                emit("resumed")
+        if self.locked:
+            return
+        if self.device is None:
+            try:
+                self.device = Uinput()
+                # Compositors pick a new input device up asynchronously.
+                time.sleep(0.2)
+            except OSError:
+                emit("info {\"input\":\"unavailable\"}")
+                self.device = False
+        kind = parts[0]
+        if kind == "text":
+            import base64
+            self.ensure_front()
+            type_text(base64.b64decode(parts[1]).decode("utf-8", "replace"), self.device or None)
+            return
+        if not self.device:
+            return
+        if kind == "key":
+            self.ensure_front()
+            self.device.key(parts[1], parts[2] == "1")
+            return
+        if not self.ensure_front():
+            return
+        # move X Y | down BUTTON X Y | up BUTTON X Y | scroll X Y DX DY, X and Y 0..1 of the window.
+        at = 2 if kind in ("down", "up") else 1
+        self.device.move(*self.point(float(parts[at]), float(parts[at + 1])))
+        if kind in ("down", "up"):
+            self.device.button(parts[1], kind == "down")
+        elif kind == "scroll":
+            self.device.scroll(float(parts[3]), float(parts[4]))
+
+    def close(self):
+        if self.device:
+            self.device.close()
+
+
+# ---------- serve ----------
+
+def serve(window_id, limit, fps, kbps):
+    gl_env()
+    Gio, GLib, Gst, GstVideo = gst()
+    encoder = pick_encoder(Gst)
+    if not encoder:
+        emit("closed no_encoder")
+        return
+    loop = GLib.MainLoop()
+    state = {"seq": 0, "epoch": 0, "size": None, "got": False}
+
+    def closed(reason):
+        emit("closed " + reason)
+        GLib.idle_add(loop.quit)
+
+    # niri redraws a window that is not on screen about once a second: bring it into view first.
+    if niri_focused() != str(window_id):
+        niri_focus(window_id)
+    try:
+        cast = Cast(Gio, GLib, window_id, on_closed=lambda: closed("window_closed"))
+    except Exception:
+        emit("closed no_stream")
+        return
+    # A starting size for the pipeline; the first frame's caps set the real one.
+    size = ((niri_window(window_id) or {}).get("layout") or {}).get("window_size") or [0, 0]
+    width, height = (size[0], size[1]) if size[0] >= 64 and size[1] >= 64 else (1280, 720)
+    w, h = scaled(width, height, limit)
+    pipeline = Gst.parse_launch(
+        "pipewiresrc name=src path=%d do-timestamp=true keepalive-time=1000 ! "
+        "queue max-size-buffers=1 leaky=downstream ! glupload ! glcolorconvert ! glcolorscale ! "
+        "capsfilter name=size caps=video/x-raw(memory:GLMemory),format=RGBA,width=%d,height=%d ! glcolorconvert ! gldownload ! "
+        "video/x-raw,format=NV12 ! %s name=enc %s ! h264parse config-interval=-1 ! "
+        "video/x-h264,stream-format=byte-stream,alignment=au ! appsink name=sink emit-signals=true sync=false max-buffers=8"
+        % (cast.node, w, h, encoder, encoder_props(encoder, kbps, fps)))
+    enc = pipeline.get_by_name("enc")
+    sink = pipeline.get_by_name("sink")
+
+    def resized(size, first):
+        if not first or size != (w, h):
+            state["epoch"] += 1
+            emit("geometry %d %d" % size)
+    follow_size(Gst, pipeline, limit, resized)
+
+    # At most [fps]: the compositor sends a frame per redraw (variable rate, which videorate cannot pace).
+    interval = 1.0 / max(1, fps)
+    last = [0.0]
+
+    def pace(_pad, _info):
+        now = time.monotonic()
+        if now - last[0] < interval * 0.9:
+            return Gst.PadProbeReturn.DROP
+        last[0] = now
+        return Gst.PadProbeReturn.OK
+    pipeline.get_by_name("src").get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, pace)
+
+    def on_sample(appsink):
+        sample = appsink.emit("pull-sample")
+        if sample is None:
+            return Gst.FlowReturn.OK
+        buf = sample.get_buffer()
+        data = buf.extract_dup(0, buf.get_size())
+        key = 0 if buf.has_flags(Gst.BufferFlags.DELTA_UNIT) else 1
+        caps = sample.get_caps().get_structure(0)
+        fw = caps.get_int("width")[1]
+        fh = caps.get_int("height")[1]
+        state["seq"] += 1
+        if not state["got"]:
+            state["got"] = True
+            emit("resumed")
+        ts = buf.pts // 1000 if buf.pts != Gst.CLOCK_TIME_NONE else 0
+        emit("frame %d %d %d %d %d %d %d" % (state["seq"], state["epoch"], key, fw, fh, ts, len(data)), data)
+        return Gst.FlowReturn.OK
+    sink.connect("new-sample", on_sample)
+
+    def on_message(_bus, message):
+        if message.type == Gst.MessageType.ERROR:
+            err, _ = message.parse_error()
+            sys.stderr.write("gst error: %s\n" % err.message)
+            closed("capture_failed")
+        elif message.type == Gst.MessageType.EOS:
+            closed("ended")
+    gbus = pipeline.get_bus()
+    gbus.add_signal_watch()
+    gbus.connect("message", on_message)
+
+    def keyframe():
+        enc.get_static_pad("src").send_event(GstVideo.video_event_new_upstream_force_key_unit(Gst.CLOCK_TIME_NONE, True, 0))
+        return False
+
+    inputs = Input(window_id)
+    queue = []
+    queue_lock = threading.Lock()
+    wake = threading.Event()
+
+    def input_worker():
+        while True:
+            wake.wait()
+            with queue_lock:
+                lines = list(queue)
+                queue.clear()
+                wake.clear()
+            for parts in lines:
+                if parts is None:
+                    return
+                try:
+                    inputs.apply(parts)
+                except Exception as error:
+                    sys.stderr.write("input error: %s\n" % error)
+
+    def reader():
+        for raw in REQUESTS:
+            parts = raw.split()
+            if not parts:
+                continue
+            if parts[0] == "kf":
+                GLib.idle_add(keyframe)
+                continue
+            with queue_lock:
+                queue.append(parts)
+            wake.set()
+        with queue_lock:
+            queue.append(None)
+        wake.set()
+        GLib.idle_add(loop.quit)
+
+    emit("opened %d %d %s" % (w, h, encoder))
+    pipeline.set_state(Gst.State.PLAYING)
+    GLib.timeout_add(2000, inputs.watch_lock)
+    worker = threading.Thread(target=input_worker, daemon=True)
+    worker.start()
+    threading.Thread(target=reader, daemon=True).start()
+    try:
+        loop.run()
+    finally:
+        pipeline.set_state(Gst.State.NULL)
+        cast.stop()
+        inputs.close()
+
+
+def probe():
+    info = {"supported": False}
+    if niri("Version") is not None:
+        info["desktop"] = "niri"
+    else:
+        info["desktop"] = None
+    try:
+        _, _, Gst, _ = gst()
+        info["encoder"] = pick_encoder(Gst)
+        info["capture"] = bool(Gst.ElementFactory.find("pipewiresrc") and Gst.ElementFactory.find("glupload"))
+    except Exception:
+        info["encoder"] = None
+        info["capture"] = False
+    info["input"] = os.access("/dev/uinput", os.W_OK)
+    info["supported"] = bool(info["desktop"] and info["encoder"] and info["capture"])
+    print(json.dumps(info))
+
+
+# Requests come on stdin, or on fd 3 when the helper runs this program from a heredoc (and says so).
+REQUESTS = os.fdopen(3, "r", encoding="utf-8", errors="replace") if os.environ.get("MIFFAN_WINDOW_FD3") else sys.stdin
+
+
+def main(argv):
+    session_env()
+    command = argv[0] if argv else ""
+    if command == "probe":
+        probe()
+    elif command == "list":
+        listed = niri_list()
+        print(json.dumps(listed if listed is not None else {"error": "unsupported"}, ensure_ascii=False))
+    elif command == "focus" and len(argv) == 2:
+        sys.exit(0 if niri_focus(argv[1]) else 1)
+    elif command == "resize" and len(argv) == 4:
+        sys.exit(0 if niri_resize(argv[1], float(argv[2]), float(argv[3])) else 1)
+    elif command == "locate" and len(argv) == 2:
+        gl_env()
+        place = niri_place(argv[1])
+        rect = locate(*gst(), argv[1], place) if place else None
+        if rect is None:
+            sys.exit(1)
+        print("%.1f %.1f %.1f %.1f" % rect)
+    elif command == "shots":
+        shots()
+    elif command == "serve" and len(argv) == 5:
+        serve(argv[1], int(argv[2]), int(argv[3]), int(argv[4]))
+    else:
+        sys.stderr.write("usage: miffan window probe|list|focus ID|resize ID W H|shots|serve ID MAXDIM FPS KBPS\n")
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
+WINDOW_PY
 }
 
 cua_version() {
@@ -3248,5 +4266,6 @@ case "${1:-}" in
     task) shift; task "$@" ;;
     space) shift; space "$@" ;;
     relay) shift; relay "$@" ;;
-    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip|mac-shortcut|snapshot|task|space|relay" >&2; exit 2 ;;
+    window) shift; window_command "$@" ;;
+    *) echo "usage: miffan version|probe|env|cua|vnc|rdp|sunshine|clip|mac-shortcut|snapshot|task|space|relay|window" >&2; exit 2 ;;
 esac

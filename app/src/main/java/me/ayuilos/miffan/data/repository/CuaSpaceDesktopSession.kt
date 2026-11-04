@@ -20,7 +20,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import me.rerere.cuaspace.activateWindow
 import me.rerere.cuaspace.SpaceClient
 import me.rerere.cuaspace.SpaceInput
-import me.rerere.cuaspace.SpaceMedia
+import me.rerere.cuaspace.SpaceVideoChannel
 import me.rerere.cuaspace.SpaceMediaEvent
 import me.rerere.workspace.screen.RemoteScreenState
 import me.rerere.workspace.screen.RemoteScreenStats
@@ -31,8 +31,9 @@ import me.rerere.workspace.screen.RemoteScreenStats
  * so any language types as-is; the clipboard goes through the Space's clipboard API.
  */
 class CuaSpaceDesktopSession internal constructor(
-    private val client: SpaceClient,
-    private val media: SpaceMedia,
+    /** The Space's API for the clipboard and raising [window]; null for a source without one. */
+    private val client: SpaceClient?,
+    private val media: SpaceVideoChannel,
     private val name: String,
     private val lifetime: CoroutineScope,
     /** Runs after the media session ended, e.g. to close a client this session owns. */
@@ -88,7 +89,7 @@ class CuaSpaceDesktopSession internal constructor(
             try { awaitCancellation() } finally { close() }
         }
         lifetime.launch { media.events.collect(::handle) }
-        lifetime.launch(Dispatchers.IO) {
+        if (client != null) lifetime.launch(Dispatchers.IO) {
             // The Space has no clipboard push; what is copied there reaches the phone within a moment.
             var generation = runCatching { client.clipboard().first }.getOrNull()
             while (isActive) {
@@ -211,7 +212,7 @@ class CuaSpaceDesktopSession internal constructor(
         heldInput += events
         lifetime.launch(Dispatchers.IO) {
             // macOS may report the raise unverified although it happened; the input goes either way.
-            withTimeoutOrNull(RAISE_TIMEOUT_MILLIS) { runCatching { client.activateWindow(shown) } }
+            withTimeoutOrNull(RAISE_TIMEOUT_MILLIS) { runCatching { client?.activateWindow(shown) } }
             synchronized(this@CuaSpaceDesktopSession) {
                 raising = false
                 raisedAt = android.os.SystemClock.elapsedRealtime()
@@ -225,7 +226,8 @@ class CuaSpaceDesktopSession internal constructor(
     override fun sendClipboard(text: String) {
         if (closed.get()) return
         sentClipboard = text
-        lifetime.launch(Dispatchers.IO) { runCatching { client.setClipboardText(text) } }
+        val space = client ?: return
+        lifetime.launch(Dispatchers.IO) { runCatching { space.setClipboardText(text) } }
     }
 
     override fun close() {

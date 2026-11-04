@@ -74,6 +74,26 @@ sealed interface SpaceInput {
 }
 
 /**
+ * Video of a desktop or one window plus its input: a Space's media socket ([SpaceMedia]), or another
+ * source that speaks the same events (a Linux computer's own window helper).
+ */
+interface SpaceVideoChannel {
+    val events: SharedFlow<SpaceMediaEvent>
+
+    /** Queues [events] as one batch; false once the channel is gone. */
+    fun send(events: List<SpaceInput>): Boolean
+
+    /** Asks for a keyframe, e.g. after the decoder lost state or got a new surface. */
+    fun requestKeyframe()
+
+    /** Reports frame [sequence] decoded, for sources with flow control. */
+    fun ack(sequence: Long)
+
+    /** Ends the session, so the source stops encoding. */
+    suspend fun closeSession()
+}
+
+/**
  * A Space's desktop as video: `StreamService.OpenMedia` over gRPC, then the rcdp v2 `/media` WebSocket on
  * the same port (see proto/MEDIA.md). The token never goes on the socket, only the one-session ticket.
  * Events arrive on [events]; [send] queues input, which the server applies in order.
@@ -81,10 +101,10 @@ sealed interface SpaceInput {
 class SpaceMedia internal constructor(
     private val client: SpaceClient,
     private val opened: OpenMediaResponse,
-) : Closeable {
+) : Closeable, SpaceVideoChannel {
     private val closed = AtomicBoolean()
     private val _events = MutableSharedFlow<SpaceMediaEvent>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-    val events: SharedFlow<SpaceMediaEvent> = _events
+    override val events: SharedFlow<SpaceMediaEvent> = _events
     val sessionId: String get() = opened.media_session_id
 
     /** Next input sequence; the server adopts the first one it sees and corrects us on a gap. */
@@ -105,7 +125,7 @@ class SpaceMedia internal constructor(
     }
 
     /** Queues [events] as one batch; false once the socket is gone. */
-    @Synchronized fun send(events: List<SpaceInput>): Boolean {
+    @Synchronized override fun send(events: List<SpaceInput>): Boolean {
         if (events.isEmpty()) return true
         val ws = socket ?: return false
         var sent = true
@@ -125,7 +145,7 @@ class SpaceMedia internal constructor(
     }
 
     /** Asks for a keyframe, e.g. after the decoder lost state or got a new surface. At most once a second. */
-    fun requestKeyframe() {
+    override fun requestKeyframe() {
         val now = System.nanoTime()
         if (now - lastKeyframeRequest < 1_000_000_000L) return
         lastKeyframeRequest = now
@@ -137,7 +157,7 @@ class SpaceMedia internal constructor(
      * Reports frame [sequence] decoded. Optional flow control (`frame_ack.v1`): with acks the server keeps
      * only about two seconds of frames unacknowledged, so a slow link drops frames instead of falling behind.
      */
-    fun ack(sequence: Long) {
+    override fun ack(sequence: Long) {
         control("frame_ack", buildJsonObject {
             put("session_id", opened.media_session_id)
             put("sequence", sequence)
@@ -156,7 +176,7 @@ class SpaceMedia internal constructor(
         if (closed.compareAndSet(false, true)) socket?.close(1000, null)
     }
 
-    suspend fun closeSession() {
+    override suspend fun closeSession() {
         close()
         runCatching {
             client.grpc.unary("cua.env.v1.StreamService/CloseMedia",

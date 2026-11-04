@@ -375,9 +375,47 @@ stderr 追加到 `connector.log`。`relay run` 只供计划任务使用，不输
 摘要：macOS/Linux 为 `cksum` 的 `<crc>-<大小>`，Windows 为 MD5 十六进制；App 只接受 `[0-9a-f-]{1,80}`。
 stdin EOF 结束进程并退出 0。编码器的 stdin 接 `/dev/null`，不会读走后续请求。
 
+## 单个窗口（POSIX `window`，helper 39 起）
+
+在手机上只看、只操作 Linux 电脑的一个窗口。画面来自合成器的 `org.gnome.Mutter.ScreenCast`
+（`RecordWindow`，不弹选择框，也无需授权），经 PipeWire 由 GStreamer 缩放并编码为 H.264
+（依次选用 `nvh264enc`、`vah264lpenc`、`vah264enc`、`vaapih264enc`、`x264enc`、`openh264enc`）。
+输入走 `/dev/uinput`：一个绝对坐标指针，加一个键盘。文本优先用 `wtype` 输入，没有时用 `wl-copy`
+加 Ctrl+V 粘贴。窗口的列出、聚焦、改尺寸目前只支持 niri（IPC 套接字 `NIRI_SOCKET`）。程序是
+内嵌在 helper 里的 Python，需要 `python3` 和 PyGObject（Gst、GstVideo）。macOS 上、没有图形会话、
+或者没有 python3 时，`probe` 输出 `{"supported":false}` 并退出 0，其他子命令退出 1。
+
+| 子命令 | 输出 |
+|---|---|
+| `probe` | 一行 JSON：`supported`、`desktop`（目前只有 `"niri"` 或 null）、`encoder`、`capture`、`input`（`/dev/uinput` 是否可写） |
+| `list` | 一行 JSON：`windows[]`（`id` 字符串、`pid`、`app` 为 desktop 文件里按 LANG 取的名称、`app_id`、`title`、`workspace`、`focused`、`width`、`height` 逻辑像素），`workspaces[]`（`id`、`index`、`output`、`name`、`active`），`current`（聚焦输出上的活动工作区），`outputs[]`；不支持时为 `{"error":"unsupported"}` |
+| `focus ID` | 聚焦窗口；退出码表示成败 |
+| `resize ID W H` | 设置窗口的逻辑尺寸（平铺时宽度作用于整列），输出实际得到的 `W H` |
+| `shots` | 每读到一行 `ID 最长边 JPEG质量`，就回一行 `jpeg 长度` 再跟字节，或者回 `error no_window`、`error no_picture`、`error usage`。等第一帧最多 2.5 秒：niri 只在重绘时出帧，完全静止的窗口可能拿不到 |
+| `locate ID` | 输出窗口在全局逻辑坐标中的 `X Y W H`，找不到时退出 1（见下文） |
+| `serve ID 最长边 FPS KBPS` | 推流，并接收输入（见下文） |
+
+`serve` 开始前会先聚焦窗口：niri 对不在屏幕上的窗口大约每秒只重绘一次。stdout 每行一个头：
+
+- `opened W H 编码器`：会话已建立（尺寸是起始值）
+- `geometry W H`：编码尺寸变了，`codec_epoch` 加一
+- `frame 序号 epoch 关键帧(0/1) W H 时间戳微秒 长度`，后面跟着 `长度` 字节的 H.264 Annex B 访问单元（关键帧带 SPS/PPS）
+- `resumed`、`suspended locked`：屏幕锁着的时候有人试图操作，输入被丢弃（logind 的 `LockedHint`）；解锁后会发 `resumed`
+- `info JSON`：诊断信息，例如 `{"located":true,"ms":420}`
+- `closed 原因`：`window_closed`、`capture_failed`、`no_stream`、`no_encoder`、`ended`；随后进程退出
+
+stdin 每行一条，坐标是窗口内 0–1 的比例：`move X Y`、`down 按键 X Y`、`up 按键 X Y`（按键为
+`left`、`middle`、`right`）、`scroll X Y DX DY`（像素，100 为一格，DY 小于 0 表示向上）、`key 名称 1|0`（DOM 键名小写，
+美式布局）、`text Base64(UTF-8)`、`kf`（请求关键帧）。stdin EOF 时结束并销毁 uinput 设备。输入落在
+指针下方的窗口上，所以每次输入前（至少间隔 1 秒）会确认目标窗口在前台，不在就先聚焦它。niri
+不提供平铺窗口的位置，helper 会另起一个进程运行 `locate`：各取一张缩小的灰度帧（窗口一张、所在输出
+一张），用边缘加权采样做由粗到细的匹配，至少 30% 的采样点吻合才接受。之所以另起进程，是因为同一个进程里
+用完即弃的 GL 管线会终止共享的 EGL display，把正在推流的管线也弄坏。浮动窗口直接用 niri 给的位置。
+窗口所在工作区的布局没变时，沿用上一次的位置。
+
 ## 版本与安装
 
-当前 POSIX helper 为 33，Windows 为 15。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
+当前 POSIX helper 为 39，Windows 为 20。POSIX 39 新增 `window` 命令。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
 
 `RemoteMiffanHelper.ensureInstalled` 每次读取打包脚本原始 bytes，用
 `MIFFAN_HELPER_VERSION=(\d+)` 或 `HelperVersion = (\d+)` 抽版本。远端 version 查询

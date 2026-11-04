@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+"""Checks for `miffan window` (one window of a Linux desktop) without a desktop: the shell entry on other
+systems, and the embedded program's niri listing, input lines and window locating against fakes."""
+import json
+import os
+from pathlib import Path
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+import types
+
+HELPER = Path(__file__).resolve().parents[1] / "src/miffan.sh"
+SH = os.environ.get("HELPER_SH", "/bin/sh")
+
+
+def program():
+    """The embedded Python program, loaded as a module (its main only runs as __main__)."""
+    text = HELPER.read_text()
+    start = text.index("<<'WINDOW_PY'\n") + len("<<'WINDOW_PY'\n")
+    source = text[start:text.index("WINDOW_PY\n}", start)]
+    module = types.ModuleType("window_program")
+    module.__file__ = "<window>"
+    exec(compile(source, "<window>", "exec"), module.__dict__)
+    return module
+
+
+def run_helper(os_name, *args):
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "bin").mkdir()
+        uname = root / "bin/uname"
+        uname.write_text(f"#!/bin/sh\necho {os_name}\n")
+        uname.chmod(0o755)
+        for tool in ["sh", "cat", "sed", "tr", "printf"]:
+            found = shutil.which(tool)
+            if found:
+                (root / "bin" / tool).symlink_to(found)
+        done = subprocess.run([SH, str(HELPER), "window", *args], capture_output=True, text=True, timeout=30,
+                              env={"HOME": str(root), "PATH": str(root / "bin")})
+        return done.returncode, done.stdout.strip(), done.stderr
+
+
+def test_other_systems_say_unsupported():
+    code, out, _ = run_helper("Darwin", "probe")
+    assert code == 0 and json.loads(out) == {"supported": False}
+    code, out, err = run_helper("Darwin", "list")
+    assert code == 1 and out == "" and "Linux" in err
+
+
+class FakeNiri:
+    """A niri IPC socket answering one JSON request per connection."""
+
+    def __init__(self, replies):
+        self.replies = replies
+        self.requests = []
+        self.dir = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.dir.name, "niri.sock")
+        self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.server.bind(self.path)
+        self.server.listen(8)
+        threading.Thread(target=self.serve, daemon=True).start()
+
+    def serve(self):
+        while True:
+            try:
+                conn, _ = self.server.accept()
+            except OSError:
+                return
+            with conn:
+                data = b""
+                while not data.endswith(b"\n"):
+                    data += conn.recv(4096)
+                request = json.loads(data)
+                self.requests.append(request)
+                key = request if isinstance(request, str) else next(iter(request))
+                conn.sendall(json.dumps({"Ok": self.replies.get(key, {"Handled": None})}).encode() + b"\n")
+
+    def close(self):
+        self.server.close()
+        self.dir.cleanup()
+
+
+WINDOWS = [
+    {"id": 7, "title": "Notes", "app_id": "org.example.Notes", "pid": 42, "workspace_id": 2, "is_focused": False,
+     "is_floating": False, "layout": {"pos_in_scrolling_layout": [1, 1], "tile_size": [800.0, 600.0],
+                                      "window_size": [800, 600], "tile_pos_in_workspace_view": None,
+                                      "window_offset_in_tile": [0.0, 0.0]}},
+    {"id": 9, "title": "Float", "app_id": "kitty", "pid": 43, "workspace_id": 1, "is_focused": True,
+     "is_floating": True, "layout": {"pos_in_scrolling_layout": None, "tile_size": [400.0, 300.0],
+                                     "window_size": [396, 296], "tile_pos_in_workspace_view": [100.0, 50.0],
+                                     "window_offset_in_tile": [2.0, 2.0]}},
+]
+WORKSPACES = [
+    {"id": 1, "idx": 1, "name": None, "output": "HDMI-A-1", "is_active": True, "is_focused": True},
+    {"id": 2, "idx": 2, "name": None, "output": "HDMI-A-1", "is_active": False, "is_focused": False},
+]
+OUTPUTS = {"HDMI-A-1": {"logical": {"x": 0, "y": 0, "width": 2560, "height": 1440, "scale": 1.0}}}
+
+
+def with_niri(fn):
+    w = program()
+    fake = FakeNiri({"Windows": {"Windows": WINDOWS}, "Workspaces": {"Workspaces": WORKSPACES},
+                     "Outputs": {"Outputs": OUTPUTS}, "FocusedWindow": {"FocusedWindow": WINDOWS[1]}})
+    os.environ["NIRI_SOCKET"] = fake.path
+    try:
+        fn(w, fake)
+    finally:
+        fake.close()
+
+
+def test_list_names_apps_and_workspaces():
+    def check(w, _):
+        w.APP_NAMES["org.example.Notes"] = "Notes"  # no desktop entries on the test machine
+        listed = w.niri_list()
+        assert listed["current"] == 1 and listed["outputs"] == ["HDMI-A-1"]
+        notes = next(x for x in listed["windows"] if x["id"] == "7")
+        assert notes == {"id": "7", "pid": 42, "app": "Notes", "app_id": "org.example.Notes", "title": "Notes",
+                         "workspace": 2, "focused": False, "width": 800, "height": 600}
+        assert [s["id"] for s in listed["workspaces"] if s["active"]] == [1]
+    with_niri(check)
+
+
+def test_app_name_without_desktop_entry():
+    w = program()
+    os.environ["XDG_DATA_HOME"] = tempfile.mkdtemp()
+    os.environ["XDG_DATA_DIRS"] = tempfile.mkdtemp()
+    assert w.app_name("org.gnome.text-editor") == "Text Editor"
+    assert w.app_name("") == ""
+
+
+def test_floating_window_place_and_pointer():
+    def check(w, _):
+        place = w.niri_place("9")
+        assert place["rect"] == (102.0, 52.0, 396, 296) and place["box"] == (0, 0, 2560, 1440)
+        # A window on a workspace that is not shown has no place.
+        assert w.niri_place("7") is None
+        inputs = w.Input("9")
+        inputs.rect, inputs.bounds = place["rect"], w.niri_bounds()
+        assert inputs.point(0.0, 0.0) == (int(102 / 2560 * 65535), int(52 / 1440 * 65535))
+        assert inputs.point(2.0, -1.0) == (int(498 / 2560 * 65535), int(52 / 1440 * 65535))
+    with_niri(check)
+
+
+def test_focus_and_resize_requests():
+    def check(w, fake):
+        assert w.niri_focus("7")
+        assert {"Action": {"FocusWindow": {"id": 7}}} in fake.requests
+        w.niri_resize("7", 640, 480)
+        assert {"Action": {"SetWindowWidth": {"id": 7, "change": {"SetFixed": 640}}}} in fake.requests
+        assert {"Action": {"SetWindowHeight": {"id": 7, "change": {"SetFixed": 480}}}} in fake.requests
+    with_niri(check)
+
+
+def test_match_finds_a_window_with_little_texture():
+    w = program()
+    sw, sh = 240, 140
+    # A dark screen, and a dark window with one line of "text" and a lighter frame around it.
+    screen = [[30 for _ in range(sw)] for _ in range(sh)]
+    window = [[34 for _ in range(90)] for _ in range(70)]
+    for x in range(6, 40):
+        window[6][x] = window[7][x] = 220 if x % 3 else 34
+    for y in range(70):
+        window[y][0] = window[y][89] = 60
+    ox, oy = 131, 47
+    for y in range(70):
+        screen[oy + y][ox:ox + 90] = window[y]
+    at, agree = w.match(screen, sw, sh, window, 90, 70)
+    assert at == (ox, oy) and agree > 0.9, (at, agree)
+
+
+def test_match_rejects_a_window_that_is_not_there():
+    w = program()
+    screen = [[(x * 7 + y * 13) % 256 for x in range(200)] for y in range(120)]
+    window = [[(x * 31 + y * 5) % 256 for x in range(60)] for y in range(40)]
+    _, agree = w.match(screen, 200, 120, window, 60, 40)
+    assert agree < 0.3
+
+
+def test_keys():
+    w = program()
+    written = []
+
+    class Device(w.Uinput):
+        def __init__(self):
+            self.pointer, self.keyboard = "pointer", "keyboard"
+
+        @staticmethod
+        def _write(fd, events):
+            written.append((fd, events))
+    keys = Device()
+    keys.key("a", True)
+    keys.key("!", True)
+    keys.key("!", False)
+    keys.key("unknown-key", True)
+    assert written == [("keyboard", [(1, 30, 1)]), ("keyboard", [(1, 42, 1), (1, 2, 1)]),
+                       ("keyboard", [(1, 2, 0), (1, 42, 0)])]
+    written.clear()
+    keys.scroll(0, -100)
+    assert written == [("pointer", [(2, 0x0B, 120), (2, 0x08, 1)])]
+
+
+def main():
+    tests = [(name, fn) for name, fn in sorted(globals().items()) if name.startswith("test_") and callable(fn)]
+    for name, fn in tests:
+        fn()
+        print("PASS:", name)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
