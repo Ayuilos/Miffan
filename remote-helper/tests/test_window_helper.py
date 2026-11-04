@@ -1049,6 +1049,7 @@ class FakePipeline:
         self.description, self.elements, self.states = description, {}, []
         self.bus = FakeElement("bus")
         self.bus.add_signal_watch = lambda: None
+        self.bus.remove_signal_watch = lambda: None
 
     def get_by_name(self, name):
         return self.elements.setdefault(name, FakeElement(name))
@@ -1182,6 +1183,61 @@ def test_run_stream_protocol_and_input_isolation():
     closed_by[0]("window_closed")
     closed_by[0]("capture_failed")
     assert w.OUT.getvalue() == b"closed window_closed\n"
+
+
+
+def test_run_stream_starts_over_when_the_source_changes_size():
+    import io
+    w = program()
+    w.OUT = io.BytesIO()
+    w.sys = types.SimpleNamespace(stderr=io.StringIO(), executable=sys.executable)
+    Gst, GLib, GstVideo, made, sample, loop = fake_gst()
+    lines = Lines()
+    w.REQUESTS = lines
+    setups, restarts = [], []
+
+    class Inputs:
+        def watch_lock(self):
+            return True
+
+        def apply(self, parts):
+            pass
+
+        def close(self):
+            pass
+
+    def restart():
+        restarts.append(True)
+        return "pipewiresrc name=src path=%d ! capsfilter name=size" % (40 + len(restarts))
+
+    def error(text):
+        return types.SimpleNamespace(type="error", parse_error=lambda: (types.SimpleNamespace(message=text), None))
+    stream = threading.Thread(target=w.run_stream, args=(None, GLib, Gst, GstVideo, "pipewiresrc name=src path=40 ! capsfilter name=size",
+                                                           "x264enc", 30, 4000, Inputs(), lambda p, c: setups.append(p),
+                                                           (640, 360), lambda: None), kwargs={"restart": restart})
+    stream.start()
+    deadline = time.monotonic() + 5
+    while not made and time.monotonic() < deadline:
+        time.sleep(0.01)
+    first = made[0]
+    while "message" not in first.bus.handlers and time.monotonic() < deadline:
+        time.sleep(0.01)
+    # KWin's window stream grew with a popup: pipewiresrc gives up on the size it agreed.
+    first.bus.handlers["message"](first.bus, error("stream error: no more input formats"))
+    # ... and the dying pipeline says more; none of it ends the stream.
+    first.bus.handlers["message"](first.bus, error("Internal data stream error."))
+    assert len(made) == 2 and restarts == [True] and setups == [first, made[1]]
+    assert "path=41" in made[1].description and first.states[-1] == "NULL" and made[1].states[-1] == "PLAYING"
+    sink = made[1].get_by_name("sink")
+    sink.sample = sample(b"KEY", True, 800, 450)
+    sink.handlers["new-sample"](sink)
+    while b"KEY" not in w.OUT.getvalue() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert b"closed" not in w.OUT.getvalue() and b"geometry 800 450\nresumed\nframe 1 1 1 800 450" in w.OUT.getvalue()
+    # Any other error, or a source failing over and over, ends it.
+    made[1].bus.handlers["message"](made[1].bus, error("device lost"))
+    stream.join(5)
+    assert not stream.is_alive() and w.OUT.getvalue().endswith(b"closed capture_failed\n")
 
 
 # ---------- pictures ----------

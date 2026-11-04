@@ -45,7 +45,7 @@ class RemoteHelperContractTest {
                     assertEquals(12, it.host?.cpus)
                 }
                 name.startsWith("probe") -> parseHelperProbe(output).let {
-                    assertEquals(file.path, if (windows) 20 else 45, it.helper)
+                    assertEquals(file.path, if (windows) 20 else 46, it.helper)
                     assertEquals(if (windows) "windows" else if (name == "probe-macos") "macos" else "linux", it.os)
                     assertEquals("Fixture Desktop", it.hostname)
                     assertTrue(it.session.present)

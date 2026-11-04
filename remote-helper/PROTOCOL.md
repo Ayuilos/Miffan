@@ -414,7 +414,10 @@ KDE Plasma（`XDG_CURRENT_DESKTOP` 含 KDE，且没有 niri）各版本的情况
 下拉框，以及它们的子菜单：`popupWindow` 且 transient 链一路是弹出窗口直到这个窗口）一起录进来，画面范围是这些窗口
 `frameGeometry` 的并集，原点是并集的左上角；菜单伸出窗口时画面会变大，向左或向上伸出时原点也会动。所以 helper 45
 起输入按同一个并集换算：KWin 脚本返回并集（`x`、`y`、`width`、`height`）和主窗口框（`frame`），流的尺寸一变就立刻
-重读一次。输入用 `org_kde_kwin_fake_input` 6（`pointer_motion_absolute` 按全局逻辑坐标，`button`、`axis` 每格 15，
+重读一次。流的尺寸变了（菜单弹出或关掉、窗口改大小）时 pipewiresrc 跟不上：它守着最初协商的尺寸，报
+`no more input formats` 后流就停了（helper 44 因此在一弹菜单时就断开）。helper 46 起遇到这个错误不结束推流，而是关掉
+旧流、按新尺寸重新 `stream_window` 一次并换上新管线（约 0.2 秒），手机只看到一个新的关键帧和 `geometry`；10 秒内超过
+8 次才当作采集失败。输入用 `org_kde_kwin_fake_input` 6（`pointer_motion_absolute` 按全局逻辑坐标，`button`、`axis` 每格 15，
 修饰键等用 `keyboard_key`，字符键和文字用 `keyboard_keysym`），不需要任何授权；`shots` 用
 `org.kde.KWin.ScreenShot2.CaptureWindow`（含标题栏，不含阴影），任何没有最小化的窗口都有图（HDR 下的 64 位 RGBA
 也认；其他格式退回裁剪路线）。KWin 没有提供这两个全局对象或建流失败时，退回下面的 portal 路线。
@@ -537,7 +540,7 @@ stdin 每行一条，坐标是窗口内 0–1 的比例：`move X Y`、`down 按
 
 ## 版本与安装
 
-当前 POSIX helper 为 45，Windows 为 20。POSIX 39 新增 `window` 命令，40 让它支持 KDE Plasma，41 支持 GNOME 和 X11，42 在 KDE 下重启为别的桌面启动的 portal，43 找会话环境时只认已登录（active/online）会话里的进程，44 在 KDE 下优先用 KWin 自己的单窗口录制和输入，45 修正 KDE 弹出菜单伸出窗口时的点击位置并改用常驻 KWin 脚本跟随窗口、字符键按 keysym 发送以跟随用户的键盘布局、按版本区分 Plasma 5 和 6.0–6.2、不再打开 GNOME 的用户扩展总开关、新增 `uninstall-extension` 和 `revoke`、只在有用时重启 portal 服务，并且 systemd 用户管理器的环境只在用户有已登录会话时才用（不认 systemd 256 起的 class=manager 会话）、Wayland 套接字取最新的。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
+当前 POSIX helper 为 46，Windows 为 20。POSIX 39 新增 `window` 命令，40 让它支持 KDE Plasma，41 支持 GNOME 和 X11，42 在 KDE 下重启为别的桌面启动的 portal，43 找会话环境时只认已登录（active/online）会话里的进程，44 在 KDE 下优先用 KWin 自己的单窗口录制和输入，45 修正 KDE 弹出菜单伸出窗口时的点击位置并改用常驻 KWin 脚本跟随窗口、字符键按 keysym 发送以跟随用户的键盘布局、按版本区分 Plasma 5 和 6.0–6.2、不再打开 GNOME 的用户扩展总开关、新增 `uninstall-extension` 和 `revoke`、只在有用时重启 portal 服务，并且 systemd 用户管理器的环境只在用户在这台电脑上登录着（有座席或图形会话，手机的 SSH 登录不算）时才用（不认 systemd 256 起的 class=manager 会话）、Wayland 套接字取最新的，46 在 KDE 窗口流因弹出菜单等改变尺寸时重建流而不是断开。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
 
 `RemoteMiffanHelper.ensureInstalled` 每次读取打包脚本原始 bytes，用
 `MIFFAN_HELPER_VERSION=(\d+)` 或 `HelperVersion = (\d+)` 抽版本。远端 version 查询

@@ -26,7 +26,7 @@
 #   miffan window probe|list|focus|resize|shots|serve|locate|authorize|install-extension|uninstall-extension|revoke
 #                           one window of a Linux desktop on the phone (niri, KDE, GNOME, X11), video and input
 
-MIFFAN_HELPER_VERSION=45
+MIFFAN_HELPER_VERSION=46
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -3488,11 +3488,14 @@ class FrameWriter:
         emit("frame %d %d %d %d %d %d %d" % (self.seq, self.epoch, key, width, height, ts, len(data)), data)
 
 
-def run_stream(Gio, GLib, Gst, GstVideo, description, encoder, fps, kbps, inputs, setup, size, cleanup):
+def run_stream(Gio, GLib, Gst, GstVideo, description, encoder, fps, kbps, inputs, setup, size, cleanup, restart=None):
     """
     Encodes what [description] produces (ending in a NV12 capsfilter named "size", after a pipewiresrc named
     "src") and writes it to stdout, while stdin lines feed [inputs]. [setup] gets the pipeline and a
-    function that ends the stream with a reason.
+    function that ends the stream with a reason (again for each pipeline [restart] leads to).
+    [restart], when given, is asked for a new description when the source changed its frame size in a
+    way pipewiresrc cannot follow ("no more input formats": it holds on to the size it first agreed);
+    the stream then goes on from a new pipeline, the phone seeing only a new keyframe.
     """
     loop = GLib.MainLoop()
     state = {"closed": False}
@@ -3505,12 +3508,6 @@ def run_stream(Gio, GLib, Gst, GstVideo, description, encoder, fps, kbps, inputs
 
     # h264parse (gst-plugins-bad) may be missing on a plain desktop; x264enc then repeats SPS/PPS itself.
     parse = "h264parse config-interval=-1 ! " if Gst.ElementFactory.find("h264parse") else ""
-    pipeline = Gst.parse_launch(
-        "%s ! %s name=enc %s ! %svideo/x-h264,stream-format=byte-stream,alignment=au ! "
-        "appsink name=sink emit-signals=true sync=false max-buffers=2 drop=true" % (description, encoder, encoder_props(encoder, kbps, fps), parse))
-    enc = pipeline.get_by_name("enc")
-    setup(pipeline, closed)
-
     # At most [fps]: the compositor sends a frame per redraw (variable rate, which videorate cannot pace).
     interval = 1.0 / max(1, fps)
     last = [0.0]
@@ -3521,10 +3518,14 @@ def run_stream(Gio, GLib, Gst, GstVideo, description, encoder, fps, kbps, inputs
             return Gst.PadProbeReturn.DROP
         last[0] = now
         return Gst.PadProbeReturn.OK
-    pipeline.get_by_name("src").get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, pace)
+
+    current = {"pipeline": None, "enc": None}
+    restarts = []
 
     def keyframe():
-        enc.get_static_pad("src").send_event(GstVideo.video_event_new_upstream_force_key_unit(Gst.CLOCK_TIME_NONE, True, 0))
+        enc = current["enc"]
+        if enc is not None:
+            enc.get_static_pad("src").send_event(GstVideo.video_event_new_upstream_force_key_unit(Gst.CLOCK_TIME_NONE, True, 0))
         return False
 
     # About half a second of frames may wait for the SSH channel; more, and it starts over at a keyframe.
@@ -3544,7 +3545,6 @@ def run_stream(Gio, GLib, Gst, GstVideo, description, encoder, fps, kbps, inputs
         ts = buf.pts // 1000 if buf.pts != Gst.CLOCK_TIME_NONE else 0
         frames.put((data, key, fw, fh, ts), key)
         return Gst.FlowReturn.OK
-    pipeline.get_by_name("sink").connect("new-sample", on_sample)
 
     def write_frames():
         try:
@@ -3558,16 +3558,60 @@ def run_stream(Gio, GLib, Gst, GstVideo, description, encoder, fps, kbps, inputs
             sys.stderr.write("write: %s\n" % error)
             GLib.idle_add(loop.quit)
 
-    def on_message(_bus, message):
+    def build(desc):
+        pipeline = Gst.parse_launch(
+            "%s ! %s name=enc %s ! %svideo/x-h264,stream-format=byte-stream,alignment=au ! "
+            "appsink name=sink emit-signals=true sync=false max-buffers=2 drop=true" % (desc, encoder, encoder_props(encoder, kbps, fps), parse))
+        setup(pipeline, closed)
+        pipeline.get_by_name("src").get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, pace)
+        pipeline.get_by_name("sink").connect("new-sample", on_sample)
+        gbus = pipeline.get_bus()
+        gbus.add_signal_watch()
+        gbus.connect("message", lambda bus, message: on_message(bus, message, pipeline))
+        current["pipeline"], current["enc"] = pipeline, pipeline.get_by_name("enc")
+        return pipeline
+
+    def start_over():
+        """A new pipeline from [restart] in place of the one whose source changed size; False (one-shot)."""
+        old = current["pipeline"]
+        current["pipeline"] = current["enc"] = None
+        current["restarting"] = False
+        if old is not None:
+            old.get_bus().remove_signal_watch()
+            old.set_state(Gst.State.NULL)
+        if state["closed"]:
+            return False
+        try:
+            desc = restart()
+            if desc is None:
+                closed("capture_failed")
+                return False
+            build(desc).set_state(Gst.State.PLAYING)
+        except Exception as error:
+            sys.stderr.write("restart: %s\n" % error)
+            closed("capture_failed")
+        return False
+
+    def on_message(_bus, message, pipeline):
+        # The pipeline being replaced reports more errors as it fails; only the live one counts.
+        if pipeline is not current["pipeline"] or current.get("restarting"):
+            return
         if message.type == Gst.MessageType.ERROR:
             err, _ = message.parse_error()
             sys.stderr.write("gst error: %s\n" % err.message)
+            now = time.monotonic()
+            restarts[:] = [t for t in restarts if now - t < 10] + [now]
+            # A window whose popups come and go changes size each time; a source failing over and over is broken.
+            if restart and "input formats" in (err.message or "") and len(restarts) <= 8:
+                if not current.get("restarting"):
+                    current["restarting"] = True
+                    GLib.idle_add(start_over)
+                return
             closed("capture_failed")
         elif message.type == Gst.MessageType.EOS:
             closed("ended")
-    gbus = pipeline.get_bus()
-    gbus.add_signal_watch()
-    gbus.connect("message", on_message)
+
+    build(description)
 
     queue = []
     queue_lock = threading.Lock()
@@ -3606,14 +3650,15 @@ def run_stream(Gio, GLib, Gst, GstVideo, description, encoder, fps, kbps, inputs
 
     emit("opened %d %d %s" % (size[0], size[1], encoder))
     threading.Thread(target=write_frames, daemon=True).start()
-    pipeline.set_state(Gst.State.PLAYING)
+    current["pipeline"].set_state(Gst.State.PLAYING)
     GLib.timeout_add(2000, inputs.watch_lock)
     threading.Thread(target=input_worker, daemon=True).start()
     threading.Thread(target=reader, daemon=True).start()
     try:
         loop.run()
     finally:
-        pipeline.set_state(Gst.State.NULL)
+        if current["pipeline"] is not None:
+            current["pipeline"].set_state(Gst.State.NULL)
         frames.end()
         cleanup()
         inputs.close()
@@ -3774,20 +3819,33 @@ def serve_kde_window(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, k
     # A starting size; the stream's caps (device pixels, title bar included) set the real one.
     w, h = scaled(g["width"], g["height"], limit)
     follower = []
+    casts = [cast]
 
     def setup(pipeline, closed):
-        ending.append(closed)
-        wl.on_lost = lambda: closed("capture_failed")
-        follower.append(KdeFollow(GLib, kwin, window_id, view, closed))
+        if not follower:
+            ending.append(closed)
+            wl.on_lost = lambda: closed("capture_failed")
+            follower.append(KdeFollow(GLib, kwin, window_id, view, closed))
         follow_size(Gst, pipeline, limit, lambda _size, _first: follower[0].refresh_soon())
+
+    def restart():
+        # A popup opened or closed, or the window resized: KWin's stream took the new size, which
+        # pipewiresrc will not follow. A new stream of the window starts at it.
+        casts[-1].stop()
+        new = KwinCast(wl, window_id, on_closed=lambda: ending and ending[0]("window_closed"))
+        casts.append(new)
+        view["node"] = new.node
+        follower[0].refresh_soon()
+        r = view["rect"]
+        return window_pipeline(new.node, *scaled(r[2], r[3], limit))
 
     def cleanup():
         for f in follower:
             f.stop()
-        cast.stop()
+        casts[-1].stop()
         wl.close()
     run_stream(Gio, GLib, Gst, GstVideo, window_pipeline(cast.node, w, h),
-               encoder, fps, kbps, KdeInput(window_id, kwin, fake, view), setup, (w, h), cleanup)
+               encoder, fps, kbps, KdeInput(window_id, kwin, fake, view), setup, (w, h), cleanup, restart=restart)
 
 
 # ---------- commands ----------
