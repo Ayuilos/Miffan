@@ -264,6 +264,7 @@ internal fun RemoteWindowIssueContent(vm: RemoteScreenVM, issue: RemoteWindowIss
             RemoteWindowIssue.OTHER_DESKTOP -> Triple(HugeIcons.Layers01, stringResource(R.string.workspace_screen_window_issue_other_desktop, app), stringResource(R.string.workspace_screen_window_issue_other_desktop_detail))
             RemoteWindowIssue.LOCKED -> Triple(HugeIcons.LockComputer, stringResource(R.string.workspace_screen_window_issue_locked), stringResource(R.string.workspace_screen_window_issue_locked_detail))
             RemoteWindowIssue.NOT_AUTHORIZED -> Triple(HugeIcons.LockKeyhole, stringResource(R.string.workspace_screen_window_issue_authorize), stringResource(R.string.workspace_screen_window_issue_authorize_detail))
+            RemoteWindowIssue.PAUSED -> Triple(HugeIcons.Alert02, stringResource(R.string.workspace_screen_window_issue_paused), stringResource(R.string.workspace_screen_window_issue_paused_detail))
         }
         Box(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
             contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(24.dp)) }
@@ -286,6 +287,10 @@ internal fun RemoteWindowIssueContent(vm: RemoteScreenVM, issue: RemoteWindowIss
                 RemoteWindowIssue.LOCKED -> Button(onClick = { vm.showWindow(null) }) { Text(stringResource(R.string.workspace_screen_window_unlock_action)) }
                 RemoteWindowIssue.NOT_AUTHORIZED -> {
                     Button(onClick = vm::authorizeWindows) { Text(stringResource(R.string.workspace_screen_window_authorize_action)) }
+                    FilledTonalButton(onClick = { vm.showWindow(null) }) { Text(stringResource(R.string.workspace_screen_window_view_whole)) }
+                }
+                RemoteWindowIssue.PAUSED -> {
+                    Button(onClick = onPick) { Text(stringResource(R.string.workspace_screen_window_pick_another)) }
                     FilledTonalButton(onClick = { vm.showWindow(null) }) { Text(stringResource(R.string.workspace_screen_window_view_whole)) }
                 }
             }

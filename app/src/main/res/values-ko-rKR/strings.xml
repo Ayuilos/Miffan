@@ -4276,6 +4276,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_shortcut_undo">실행 취소</string>
   <string name="workspace_screen_window_issue_authorize">휴대폰에서 이 컴퓨터의 창을 보시겠어요?</string>
   <string name="workspace_screen_window_issue_authorize_detail">KDE에서는 한 번만 허용하면 됩니다. 허용하면 Miffan에 KDE 원격 데스크톱 권한이 주어져, 컴퓨터에서 확인하지 않아도 창을 보고 조작할 수 있습니다.</string>
+  <string name="workspace_screen_window_issue_paused">이 창의 화면이 일시 정지되었습니다</string>
+  <string name="workspace_screen_window_issue_paused_detail">컴퓨터가 이 창의 화면 전송을 잠시 멈췄습니다. 창을 다시 표시할 수 있게 되면 자동으로 돌아옵니다.</string>
   <string name="workspace_screen_window_authorize_action">허용</string>
   <string name="workspace_screen_window_gnome_install">이 GNOME 컴퓨터에 작은 확장 기능을 먼저 설치해야 합니다</string>
   <string name="workspace_screen_window_gnome_install_detail">GNOME은 다른 앱이 창 목록을 보지 못하게 합니다. Miffan이 창 목록과 전환만 하는 확장 기능을 설치하며, 컴퓨터에 다시 로그인하면 적용됩니다.</string>

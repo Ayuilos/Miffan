@@ -201,8 +201,12 @@ data class RemoteHostDesktop(val id: Long, val current: Boolean, val number: Int
  */
 enum class RemoteWindowSetup { INSTALL_EXTENSION, RELOGIN }
 
+/**
+ * [appsInBackground]: an app here can run showing no window (a Mac), so a window that gives no picture
+ * may be one of those, opened again as a Dock click would; elsewhere it is only a window without a picture.
+ */
 data class RemoteHostWindows(val windows: List<RemoteHostWindow>, val desktops: List<RemoteHostDesktop>,
-    val setup: RemoteWindowSetup? = null)
+    val setup: RemoteWindowSetup? = null, val appsInBackground: Boolean = true)
 
 /** cua's own windows: the agent pointer overlay and the capture service. */
 private const val THUMBNAIL_PARALLEL = 3

@@ -49,7 +49,8 @@ internal object LinuxHostWindows {
         // GNOME without the window-list extension: nothing to list until it is installed and loaded.
         if (listed.error == "needs_extension") {
             return RemoteHostWindows(emptyList(), emptyList(),
-                if (listed.extension == "installed") RemoteWindowSetup.RELOGIN else RemoteWindowSetup.INSTALL_EXTENSION)
+                if (listed.extension == "installed") RemoteWindowSetup.RELOGIN else RemoteWindowSetup.INSTALL_EXTENSION,
+                appsInBackground = false)
         }
         val spaces = listed.workspaces.associateBy { it.id }
         val windows = listed.windows
@@ -76,7 +77,7 @@ internal object LinuxHostWindows {
                 RemoteHostDesktop(space.id, current = space.id == listed.current, number = space.index,
                     display = (outputs.indexOf(space.output) + 1).takeIf { outputs.size > 1 && it > 0 })
             }
-        return RemoteHostWindows(windows, desktops)
+        return RemoteHostWindows(windows, desktops, appsInBackground = false)
     }
 
     /** GNOME: installs the window-list extension; GNOME loads it at the next login. Whether it was written. */

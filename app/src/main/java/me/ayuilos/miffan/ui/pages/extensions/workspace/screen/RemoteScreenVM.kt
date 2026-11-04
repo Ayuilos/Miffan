@@ -135,8 +135,51 @@ data class RemoteWindowChoice(val window: SpaceWindow, val thumbnail: ImageBitma
 data class RemoteWindowList(val choices: List<RemoteWindowChoice>, val desktops: List<RemoteHostDesktop>,
     val setup: me.ayuilos.miffan.data.repository.RemoteWindowSetup? = null)
 
-/** Why the shown window has no picture. */
-enum class RemoteWindowIssue { MINIMIZED, CLOSED, PERMISSION, OTHER_DESKTOP, LOCKED, NOT_AUTHORIZED }
+/** Why the shown window has no picture. [PAUSED]: the computer paused it for a reason this app does not know. */
+enum class RemoteWindowIssue { MINIMIZED, CLOSED, PERMISSION, OTHER_DESKTOP, LOCKED, NOT_AUTHORIZED, PAUSED }
+
+/**
+ * Whether [hosted]'s app runs without showing it, so picking it opens the app first: only where apps do
+ * that ([appsInBackground], a Mac). On the desktop in front the computer says so; elsewhere what it said
+ * last time ([shown]) holds, and a window it never saw is in the background when it gives no picture.
+ */
+internal fun windowInBackground(hosted: me.ayuilos.miffan.data.repository.RemoteHostWindow, appsInBackground: Boolean,
+    shown: Boolean?, thumb: WindowThumbnail?): Boolean = when {
+    !appsInBackground -> false
+    hosted.current -> hosted.hidden
+    else -> when (shown) {
+        true -> false
+        false -> true
+        null -> thumb != null && thumb.image == null && thumb.failed
+    }
+}
+
+/**
+ * What the computer's [reason] for pausing the shown window means. A reason this app does not know is
+ * only a pause, not a Mac's permission prompt, which [mac] alone can have.
+ */
+internal fun suspendedIssue(reason: String?, mac: Boolean): RemoteWindowIssue? = when {
+    reason == null -> null
+    // A Linux computer drops input while its screen is locked.
+    reason == "locked" -> RemoteWindowIssue.LOCKED
+    reason.contains("minimi", ignoreCase = true) -> RemoteWindowIssue.MINIMIZED
+    reason.contains("hidden", ignoreCase = true) || reason.contains("space", ignoreCase = true) -> RemoteWindowIssue.OTHER_DESKTOP
+    mac && (reason.contains("permission", ignoreCase = true) || reason.contains("TCC")) -> RemoteWindowIssue.PERMISSION
+    else -> RemoteWindowIssue.PAUSED
+}
+
+/** Why the shown window's stream failed, when it is one the page explains; null for any other failure. */
+internal fun windowIssueOf(error: Throwable, mac: Boolean): RemoteWindowIssue? {
+    val text = generateSequence(error) { it.cause }.joinToString(" ") { it.message.orEmpty() }
+    return when {
+        (error as? SpaceMediaClosedException)?.code == 4410 -> RemoteWindowIssue.CLOSED
+        // A KDE computer whose user has not yet let the helper use Plasma's remote desktop portal.
+        text.contains("not_authorized") -> RemoteWindowIssue.NOT_AUTHORIZED
+        mac && (text.contains("TCC") || text.contains("permission denied", ignoreCase = true)) -> RemoteWindowIssue.PERMISSION
+        text.contains("not found", ignoreCase = true) || text.contains("NOT_FOUND") -> RemoteWindowIssue.CLOSED
+        else -> null
+    }
+}
 
 /** What the page draws as the remote pointer. */
 sealed interface RemoteCursor {
@@ -529,15 +572,8 @@ class RemoteScreenVM(
         val listed = listedWindows.value ?: return
         _windows.value = RemoteWindowList(listed.windows.map { hosted ->
             val thumb = thumbnails[hosted.window.id]
-            val background = when {
-                hosted.current -> hosted.hidden
-                else -> when (shownWindows[hosted.window.id]) {
-                    true -> false
-                    false -> true
-                    null -> thumb != null && thumb.image == null && thumb.failed
-                }
-            }
-            RemoteWindowChoice(hosted.window, thumb?.image, hosted.desktop, hosted.current, background)
+            RemoteWindowChoice(hosted.window, thumb?.image, hosted.desktop, hosted.current,
+                windowInBackground(hosted, listed.appsInBackground, shownWindows[hosted.window.id], thumb))
         }, listed.desktops, listed.setup)
     }
 
@@ -1041,18 +1077,8 @@ class RemoteScreenVM(
                             delay(FRONT_CHECK_MILLIS)
                         }
                     }
-                    launch {
-                        session.suspended.collect { reason ->
-                            _windowIssue.value = when {
-                                reason == null -> null
-                                // A Linux computer drops input while its screen is locked.
-                                reason == "locked" -> RemoteWindowIssue.LOCKED
-                                reason.contains("minimi", ignoreCase = true) -> RemoteWindowIssue.MINIMIZED
-                                reason.contains("hidden", ignoreCase = true) || reason.contains("space", ignoreCase = true) -> RemoteWindowIssue.OTHER_DESKTOP
-                                else -> RemoteWindowIssue.PERMISSION
-                            }
-                        }
-                    }
+                    val mac = opened.platform == RemoteScreenPlatform.MACOS
+                    launch { session.suspended.collect { reason -> _windowIssue.value = suspendedIssue(reason, mac) } }
                 }
                 opened.session.setPaused(!visible)
                 opened.session.statsLogger = { Log.d(PERF_TAG, it.toString()) }
@@ -1082,7 +1108,8 @@ class RemoteScreenVM(
                             )
                         }
                         is RemoteScreenState.Closed -> {
-                            if (_target.value != null) state.error?.let(::windowIssueOf)?.let { _windowIssue.value = it }
+                            if (_target.value != null) state.error?.let { windowIssueOf(it, opened.platform == RemoteScreenPlatform.MACOS) }
+                                ?.let { _windowIssue.value = it }
                             _state.value = state.error?.let(RemoteScreenUiState::Failed) ?: RemoteScreenUiState.Closed
                             state.error?.let(::checkAutomaticFix)
                             opened.close()
@@ -1093,22 +1120,10 @@ class RemoteScreenVM(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
-                if (_target.value != null) windowIssueOf(error)?.let { _windowIssue.value = it }
+                if (_target.value != null) windowIssueOf(error, _platform.value == RemoteScreenPlatform.MACOS)?.let { _windowIssue.value = it }
                 _state.value = RemoteScreenUiState.Failed(error)
                 checkAutomaticFix(error)
             }
-        }
-    }
-
-    private fun windowIssueOf(error: Throwable): RemoteWindowIssue? {
-        val text = generateSequence(error) { it.cause }.joinToString(" ") { it.message.orEmpty() }
-        return when {
-            (error as? SpaceMediaClosedException)?.code == 4410 -> RemoteWindowIssue.CLOSED
-            // A KDE computer whose user has not yet let the helper use Plasma's remote desktop portal.
-            text.contains("not_authorized") -> RemoteWindowIssue.NOT_AUTHORIZED
-            text.contains("TCC") || text.contains("permission denied", ignoreCase = true) -> RemoteWindowIssue.PERMISSION
-            text.contains("not found", ignoreCase = true) || text.contains("NOT_FOUND") -> RemoteWindowIssue.CLOSED
-            else -> null
         }
     }
 

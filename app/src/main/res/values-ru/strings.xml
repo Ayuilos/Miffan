@@ -4345,6 +4345,8 @@
   <string name="workspace_screen_shortcut_undo">Отменить</string>
   <string name="workspace_screen_window_issue_authorize">Показывать окна этого компьютера на телефоне?</string>
   <string name="workspace_screen_window_issue_authorize_detail">KDE запрашивает это один раз. Miffan получит разрешение KDE на удалённый рабочий стол и сможет показывать окна и управлять ими без подтверждения на компьютере.</string>
+  <string name="workspace_screen_window_issue_paused">Изображение этого окна приостановлено</string>
+  <string name="workspace_screen_window_issue_paused_detail">Компьютер временно перестал передавать это окно. Изображение вернётся само, когда окно снова можно будет показать.</string>
   <string name="workspace_screen_window_authorize_action">Разрешить</string>
   <string name="workspace_screen_window_gnome_install">Сначала на этот компьютер с GNOME нужно установить небольшое расширение</string>
   <string name="workspace_screen_window_gnome_install_detail">GNOME не даёт другим приложениям видеть список окон. Miffan установит расширение, которое только показывает и переключает окна; оно заработает после повторного входа в систему.</string>
