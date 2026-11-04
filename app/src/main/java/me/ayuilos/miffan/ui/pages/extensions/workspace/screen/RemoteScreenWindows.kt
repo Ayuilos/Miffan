@@ -58,6 +58,7 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Computer
 import me.rerere.hugeicons.stroke.Layers01
 import me.rerere.hugeicons.stroke.LockComputer
+import me.rerere.hugeicons.stroke.LockKeyhole
 import me.rerere.hugeicons.stroke.Minimize01
 import me.rerere.hugeicons.stroke.SmartPhone01
 import me.rerere.hugeicons.stroke.Tick02
@@ -229,6 +230,7 @@ internal fun RemoteWindowIssueContent(vm: RemoteScreenVM, issue: RemoteWindowIss
             RemoteWindowIssue.PERMISSION -> Triple(HugeIcons.Alert02, stringResource(R.string.workspace_screen_window_issue_permission), stringResource(R.string.workspace_screen_window_issue_permission_detail))
             RemoteWindowIssue.OTHER_DESKTOP -> Triple(HugeIcons.Layers01, stringResource(R.string.workspace_screen_window_issue_other_desktop, app), stringResource(R.string.workspace_screen_window_issue_other_desktop_detail))
             RemoteWindowIssue.LOCKED -> Triple(HugeIcons.LockComputer, stringResource(R.string.workspace_screen_window_issue_locked), stringResource(R.string.workspace_screen_window_issue_locked_detail))
+            RemoteWindowIssue.NOT_AUTHORIZED -> Triple(HugeIcons.LockKeyhole, stringResource(R.string.workspace_screen_window_issue_authorize), stringResource(R.string.workspace_screen_window_issue_authorize_detail))
         }
         Box(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
             contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(24.dp)) }
@@ -249,6 +251,10 @@ internal fun RemoteWindowIssueContent(vm: RemoteScreenVM, issue: RemoteWindowIss
                 RemoteWindowIssue.PERMISSION -> Button(onClick = { vm.showWindow(null) }) { Text(stringResource(R.string.workspace_screen_window_permission_action)) }
                 RemoteWindowIssue.OTHER_DESKTOP -> Button(onClick = vm::activateWindow) { Text(stringResource(R.string.workspace_screen_window_switch_desktop)) }
                 RemoteWindowIssue.LOCKED -> Button(onClick = { vm.showWindow(null) }) { Text(stringResource(R.string.workspace_screen_window_unlock_action)) }
+                RemoteWindowIssue.NOT_AUTHORIZED -> {
+                    Button(onClick = vm::authorizeWindows) { Text(stringResource(R.string.workspace_screen_window_authorize_action)) }
+                    FilledTonalButton(onClick = { vm.showWindow(null) }) { Text(stringResource(R.string.workspace_screen_window_view_whole)) }
+                }
             }
         }
     }

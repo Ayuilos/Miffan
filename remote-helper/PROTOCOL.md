@@ -375,23 +375,39 @@ stderr 追加到 `connector.log`。`relay run` 只供计划任务使用，不输
 摘要：macOS/Linux 为 `cksum` 的 `<crc>-<大小>`，Windows 为 MD5 十六进制；App 只接受 `[0-9a-f-]{1,80}`。
 stdin EOF 结束进程并退出 0。编码器的 stdin 接 `/dev/null`，不会读走后续请求。
 
-## 单个窗口（POSIX `window`，helper 39 起）
+## 单个窗口（POSIX `window`，helper 39 起支持 niri，40 起支持 KDE Plasma）
 
 在手机上只看、只操作 Linux 电脑的一个窗口。画面来自合成器的 `org.gnome.Mutter.ScreenCast`
 （`RecordWindow`，不弹选择框，也无需授权），经 PipeWire 由 GStreamer 缩放并编码为 H.264
 （依次选用 `nvh264enc`、`vah264lpenc`、`vah264enc`、`vaapih264enc`、`x264enc`、`openh264enc`）。
 输入走 `/dev/uinput`：一个绝对坐标指针，加一个键盘。文本优先用 `wtype` 输入，没有时用 `wl-copy`
-加 Ctrl+V 粘贴。窗口的列出、聚焦、改尺寸目前只支持 niri（IPC 套接字 `NIRI_SOCKET`）。程序是
+加 Ctrl+V 粘贴。niri 下的窗口列出、聚焦、改尺寸走它的 IPC 套接字 `NIRI_SOCKET`。
+
+KDE Plasma（`XDG_CURRENT_DESKTOP` 含 KDE，且没有 niri）上，KWin 只把窗口录制开放给它信任的程序，所以这条路不同：
+helper 通过 RemoteDesktop portal 录窗口所在的输出（按 `mapping_id` 选流），再用 `videocrop` 按 KWin 给出的
+窗口框（含标题栏）裁出窗口。打开时先把窗口提到最前；之后每 0.5 秒读一次位置，窗口移动、改尺寸时裁剪跟着变，
+最小化时发 `suspended minimized`。输入也走同一个 portal 会话：`NotifyPointerMotionAbsolute`、按键码、
+文本用 keysym（非 Latin-1 字符用 `0x1000000+码点`），滚轮用一次带 `finish` 的 `NotifyPointerAxis`，每格 15，
+y 取反（Plasma 会再反一次）；离散滚动在 Plasma 里会被当成像素，所以不用。窗口的列出、聚焦、改尺寸由临时加载的
+KWin 脚本完成，脚本通过 `callDBus` 把 JSON 结果发回 helper 自己持有的 D-Bus 名字。窗口 id 是 KWin 的
+`internalId`（UUID，不带花括号）。要做到不弹框，Plasma 6.3 起需要一次预授权：`authorize` 会写入隐藏的
+`~/.local/share/applications/me.ayuilos.miffan.desktop`（portal 的 Registry 注册 app_id 时需要它），
+并在权限库 `kde-authorized` 表中写入 `remote-desktop` → `me.ayuilos.miffan` = `yes`。App 只会在用户在手机上
+点了「允许」之后才调用它。没有授权时 Plasma 会在电脑上弹确认框，Start 8 秒内得不到答复，`serve` 就以
+`closed not_authorized` 结束，`shots` 回 `error not_authorized`。
+
+程序是
 内嵌在 helper 里的 Python，需要 `python3` 和 PyGObject（Gst、GstVideo）。macOS 上、没有图形会话、
 或者没有 python3 时，`probe` 输出 `{"supported":false}` 并退出 0，其他子命令退出 1。
 
 | 子命令 | 输出 |
 |---|---|
-| `probe` | 一行 JSON：`supported`、`desktop`（目前只有 `"niri"` 或 null）、`encoder`、`capture`、`input`（`/dev/uinput` 是否可写） |
-| `list` | 一行 JSON：`windows[]`（`id` 字符串、`pid`、`app` 为 desktop 文件里按 LANG 取的名称、`app_id`、`title`、`workspace`、`focused`、`width`、`height` 逻辑像素），`workspaces[]`（`id`、`index`、`output`、`name`、`active`），`current`（聚焦输出上的活动工作区），`outputs[]`；不支持时为 `{"error":"unsupported"}` |
-| `focus ID` | 聚焦窗口；退出码表示成败 |
+| `probe` | 一行 JSON：`supported`、`desktop`（`"niri"`、`"kde"` 或 null）、`encoder`、`capture`、`input`（niri 时是 `/dev/uinput` 是否可写，KDE 总为 true）；KDE 另有 `authorized` |
+| `list` | 一行 JSON：`windows[]`（`id` 字符串、`pid`、`app` 为 desktop 文件里按 LANG 取的名称、`app_id`、`title`、`workspace`、`focused`、`width`、`height` 逻辑像素；KDE 另有 `minimized` 和 `visible`，后者表示窗口在当前桌面上没有被别的窗口挡住），`workspaces[]`（`id`、`index`、`output`、`name`、`active`），`current`（聚焦输出上的活动工作区），`outputs[]`；不支持时为 `{"error":"unsupported"}` |
+| `focus ID` | 聚焦窗口（KDE 会先还原最小化的窗口，并切到它所在的桌面）；退出码表示成败 |
+| `authorize` | 仅 KDE：写入上述预授权，输出 `{"authorized":bool}` |
 | `resize ID W H` | 设置窗口的逻辑尺寸（平铺时宽度作用于整列），输出实际得到的 `W H` |
-| `shots` | 每读到一行 `ID 最长边 JPEG质量`，就回一行 `jpeg 长度` 再跟字节，或者回 `error no_window`、`error no_picture`、`error usage`。等第一帧最多 2.5 秒：niri 只在重绘时出帧，完全静止的窗口可能拿不到 |
+| `shots` | 每读到一行 `ID 最长边 JPEG质量`，就回一行 `jpeg 长度` 再跟字节，或者回 `error no_window`、`error no_picture`、`error usage`。等第一帧最多 2.5 秒：niri 只在重绘时出帧，完全静止的窗口可能拿不到；KDE 只给 `visible` 的窗口截图，其余回 `error no_picture` |
 | `locate ID` | 输出窗口在全局逻辑坐标中的 `X Y W H`，找不到时退出 1（见下文） |
 | `serve ID 最长边 FPS KBPS` | 推流，并接收输入（见下文） |
 
@@ -415,7 +431,7 @@ stdin 每行一条，坐标是窗口内 0–1 的比例：`move X Y`、`down 按
 
 ## 版本与安装
 
-当前 POSIX helper 为 39，Windows 为 20。POSIX 39 新增 `window` 命令。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
+当前 POSIX helper 为 40，Windows 为 20。POSIX 39 新增 `window` 命令，40 让它支持 KDE Plasma。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
 
 `RemoteMiffanHelper.ensureInstalled` 每次读取打包脚本原始 bytes，用
 `MIFFAN_HELPER_VERSION=(\d+)` 或 `HelperVersion = (\d+)` 抽版本。远端 version 查询

@@ -4274,4 +4274,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_shortcut_select_all">すべて選択</string>
   <string name="workspace_screen_shortcut_switch_window">アプリの切り替え</string>
   <string name="workspace_screen_shortcut_undo">元に戻す</string>
+  <string name="workspace_screen_window_issue_authorize">スマホでこのパソコンのウィンドウを表示しますか？</string>
+  <string name="workspace_screen_window_issue_authorize_detail">KDE では一度だけ許可が必要です。許可すると Miffan に KDE のリモートデスクトップ権限が付与され、パソコン側で確認しなくてもウィンドウを表示・操作できます。</string>
+  <string name="workspace_screen_window_authorize_action">許可</string>
 </resources>

@@ -14,16 +14,18 @@ import me.rerere.workspace.RemoteWorkspaceSession
 
 /**
  * Single windows of a Linux computer through the helper's `window` command (remote-helper/PROTOCOL.md
- * 「单个窗口」): the compositor records one window (niri for now), the helper encodes it and applies input.
+ * 「单个窗口」): niri records one window, KDE Plasma's is cropped from its output; the helper encodes it
+ * and applies input.
  */
 internal object LinuxHostWindows {
     private val json = Json { ignoreUnknownKeys = true }
-    private val NUMBER = Regex("[0-9]{1,12}")
+    /** Window ids (niri numbers, KDE UUIDs) and sizes: nothing a shell would read specially. */
+    private val ARGUMENT = Regex("[0-9a-f-]{1,64}")
 
     /** The helper's `window` command with [args]: a fixed operation, then window ids and numbers only. */
     fun command(operation: String, vararg args: String): String {
-        require(operation in setOf("probe", "list", "focus", "resize", "shots", "serve"))
-        require(args.all { it.matches(NUMBER) })
+        require(operation in setOf("probe", "list", "focus", "resize", "shots", "serve", "authorize"))
+        require(args.all { it.matches(ARGUMENT) })
         return (listOf("\"\$HOME/.miffan/bin/miffan\" window", operation) + args).joinToString(" ")
     }
 
@@ -52,7 +54,8 @@ internal object LinuxHostWindows {
                     window = SpaceWindow(
                         id = window.id, epoch = 0, app = window.app.ifBlank { window.appId }, appId = window.appId,
                         pid = window.pid, title = window.title, x = 0.0, y = 0.0, width = window.width, height = window.height,
-                        state = SpaceWindow.State.NORMAL, available = true, limitation = null, focused = window.focused, zOrder = 0,
+                        state = if (window.minimized) SpaceWindow.State.MINIMIZED else SpaceWindow.State.NORMAL,
+                        available = true, limitation = null, focused = window.focused, zOrder = 0,
                     ),
                     desktop = window.workspace,
                     // Every output shows its active workspace.
@@ -69,6 +72,15 @@ internal object LinuxHostWindows {
                     display = (outputs.indexOf(space.output) + 1).takeIf { outputs.size > 1 && it > 0 })
             }
         return RemoteHostWindows(windows, desktops)
+    }
+
+    /**
+     * KDE: lets the helper use Plasma's RemoteDesktop portal without a dialog (a hidden desktop entry and
+     * a kde-authorized grant), which the user agreed to on the phone. Whether it took.
+     */
+    fun authorize(ssh: RemoteWorkspaceSession): Boolean {
+        val result = ssh.execute(command("authorize"), timeoutMillis = 20_000)
+        return result.exitCode == 0 && !result.timedOut
     }
 
     fun focus(ssh: RemoteWorkspaceSession, window: SpaceWindow) {
@@ -95,7 +107,7 @@ internal object LinuxHostWindows {
             val reader = Replies(process.input)
             for (window in windows) {
                 if (!active()) break
-                require(window.id.matches(NUMBER))
+                require(window.id.matches(ARGUMENT))
                 process.output.write("${window.id} $maxDimension 70\n".toByteArray(Charsets.US_ASCII))
                 process.output.flush()
                 onPicture(window, reader.picture())
@@ -160,6 +172,7 @@ internal object LinuxHostWindows {
         val focused: Boolean = false,
         val width: Double = 0.0,
         val height: Double = 0.0,
+        val minimized: Boolean = false,
     )
 
     @Serializable

@@ -41,6 +41,20 @@ class LinuxHostWindowsTest {
             RemoteHostDesktop(3, current = false, number = 2, display = 2)), listed.desktops)
     }
 
+    @Test fun `KDE windows keep their uuid and show minimized`() {
+        val listed = LinuxHostWindows.parse("""
+            {"desktop":"kde","current":1,"outputs":[],
+             "windows":[{"id":"708d5d37-b7d0-4508-a139-8c42f605b068","pid":9,"app":"Konsole","app_id":"org.kde.konsole",
+               "title":"zsh","workspace":1,"focused":false,"width":1022,"height":632,"minimized":true,"visible":false}],
+             "workspaces":[{"id":1,"index":1,"output":null,"name":"Desktop 1","active":true}]}
+        """.trimIndent())
+        val window = listed.windows.single().window
+        assertEquals("708d5d37-b7d0-4508-a139-8c42f605b068", window.id)
+        assertEquals(me.rerere.cuaspace.SpaceWindow.State.MINIMIZED, window.state)
+        assertEquals("\"\$HOME/.miffan/bin/miffan\" window serve 708d5d37-b7d0-4508-a139-8c42f605b068 1600 30 5000",
+            LinuxHostWindows.command("serve", window.id, "1600", "30", "5000"))
+    }
+
     @Test fun `commands take fixed operations and numbers only`() {
         assertEquals("\"\$HOME/.miffan/bin/miffan\" window serve 7 1600 30 5000",
             LinuxHostWindows.command("serve", "7", "1600", "30", "5000"))

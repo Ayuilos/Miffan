@@ -4272,4 +4272,7 @@
   <string name="workspace_screen_shortcut_select_all">全選</string>
   <string name="workspace_screen_shortcut_switch_window">切換應用程式</string>
   <string name="workspace_screen_shortcut_undo">復原</string>
+  <string name="workspace_screen_window_issue_authorize">讓手機直接查看這台電腦的視窗？</string>
+  <string name="workspace_screen_window_issue_authorize_detail">KDE 需要授權一次。之後 Miffan 會取得 KDE 的遠端桌面權限，顯示和操作視窗時不必再在電腦上確認。</string>
+  <string name="workspace_screen_window_authorize_action">允許</string>
 </resources>

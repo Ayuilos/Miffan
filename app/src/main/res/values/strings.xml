@@ -4310,4 +4310,7 @@
   <string name="workspace_screen_quality_sheet_space">Sharper uses more data</string>
   <string name="workspace_screen_quality_sheet_fps">More frames feel more responsive and use more data</string>
   <string name="workspace_screen_quality_gb_per_hour">≤%1$s GB/h</string>
+  <string name="workspace_screen_window_issue_authorize">Let your phone show this computer\'s windows?</string>
+  <string name="workspace_screen_window_issue_authorize_detail">KDE asks for this once. Miffan then gets KDE\'s remote desktop permission, so it can show and use windows without anyone confirming on the computer.</string>
+  <string name="workspace_screen_window_authorize_action">Allow</string>
 </resources>

@@ -4343,4 +4343,7 @@
   <string name="workspace_screen_shortcut_select_all">Выделить всё</string>
   <string name="workspace_screen_shortcut_switch_window">Переключить приложение</string>
   <string name="workspace_screen_shortcut_undo">Отменить</string>
+  <string name="workspace_screen_window_issue_authorize">Показывать окна этого компьютера на телефоне?</string>
+  <string name="workspace_screen_window_issue_authorize_detail">KDE запрашивает это один раз. Miffan получит разрешение KDE на удалённый рабочий стол и сможет показывать окна и управлять ими без подтверждения на компьютере.</string>
+  <string name="workspace_screen_window_authorize_action">Разрешить</string>
 </resources>

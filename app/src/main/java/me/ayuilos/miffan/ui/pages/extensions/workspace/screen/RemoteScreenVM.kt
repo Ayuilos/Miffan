@@ -131,7 +131,7 @@ data class RemoteWindowChoice(val window: SpaceWindow, val thumbnail: ImageBitma
 data class RemoteWindowList(val choices: List<RemoteWindowChoice>, val desktops: List<RemoteHostDesktop>)
 
 /** Why the shown window has no picture. */
-enum class RemoteWindowIssue { MINIMIZED, CLOSED, PERMISSION, OTHER_DESKTOP, LOCKED }
+enum class RemoteWindowIssue { MINIMIZED, CLOSED, PERMISSION, OTHER_DESKTOP, LOCKED, NOT_AUTHORIZED }
 
 /** What the page draws as the remote pointer. */
 sealed interface RemoteCursor {
@@ -571,6 +571,18 @@ class RemoteScreenVM(
         val window = _target.value ?: return
         viewModelScope.launch {
             runCatching { repository.restoreHostWindow(args.workspaceId, window) }
+            _windowIssue.value = null
+            reconnect()
+        }
+    }
+
+    /** KDE: grants the helper Plasma's remote desktop permission (the user just agreed), then shows the window. */
+    fun authorizeWindows() {
+        viewModelScope.launch {
+            val granted = runCatching { repository.authorizeHostWindows(args.workspaceId) }
+                .onFailure { if (it is CancellationException) throw it; Log.w(TAG, "Authorizing windows failed", it) }
+                .getOrDefault(false)
+            if (!granted) return@launch
             _windowIssue.value = null
             reconnect()
         }
@@ -1055,6 +1067,8 @@ class RemoteScreenVM(
         val text = generateSequence(error) { it.cause }.joinToString(" ") { it.message.orEmpty() }
         return when {
             (error as? SpaceMediaClosedException)?.code == 4410 -> RemoteWindowIssue.CLOSED
+            // A KDE computer whose user has not yet let the helper use Plasma's remote desktop portal.
+            text.contains("not_authorized") -> RemoteWindowIssue.NOT_AUTHORIZED
             text.contains("TCC") || text.contains("permission denied", ignoreCase = true) -> RemoteWindowIssue.PERMISSION
             text.contains("not found", ignoreCase = true) || text.contains("NOT_FOUND") -> RemoteWindowIssue.CLOSED
             else -> null

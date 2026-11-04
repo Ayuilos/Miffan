@@ -983,6 +983,11 @@ class RemoteScreenRepository(
         }
     }
 
+    /** KDE: grants the helper Plasma's remote desktop permission, after the user agreed on the phone. */
+    suspend fun authorizeHostWindows(workspaceId: String): Boolean = withContext(Dispatchers.IO) {
+        workspaceId in linuxWindowHosts && withRemote(workspaceId, LinuxHostWindows::authorize)
+    }
+
     suspend fun restoreHostWindow(workspaceId: String, window: SpaceWindow) {
         if (workspaceId in linuxWindowHosts) return activateHostWindow(workspaceId, window)
         withHostDesktop(workspaceId) { client, _ -> client.restoreWindow(window) }

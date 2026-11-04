@@ -4279,4 +4279,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_quality_sheet_space">越清晰用的流量越多</string>
   <string name="workspace_screen_quality_sheet_fps">帧数越高越跟手，用的流量越多</string>
   <string name="workspace_screen_quality_gb_per_hour">≤%1$s GB/时</string>
+  <string name="workspace_screen_window_issue_authorize">让手机直接查看这台电脑的窗口？</string>
+  <string name="workspace_screen_window_issue_authorize_detail">KDE 需要授权一次。之后 Miffan 会获得 KDE 的远程桌面权限，显示和操作窗口时不用再在电脑上点确认。</string>
+  <string name="workspace_screen_window_authorize_action">允许</string>
 </resources>

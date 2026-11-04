@@ -202,6 +202,50 @@ def test_keys():
     assert written == [("pointer", [(2, 0x0B, 120), (2, 0x08, 1)])]
 
 
+def test_kde_crop_follows_the_window_and_stays_inside_the_frame():
+    w = program()
+    # A 1920x1080 logical output streamed at 2x: the window's frame doubles.
+    assert w.crop_box((100, 50, 800, 600), (0, 0), (1920, 1080), 3840, 2160) == (200, 100, 2040, 860)
+    # An output to the right of another: the stream starts at its own origin.
+    assert w.crop_box((2020, 0, 400, 300), (1920, 0), (1920, 1080), 1920, 1080) == (100, 0, 1420, 780)
+    # A window partly off the output is cut at the edge, never past it.
+    left, top, right, bottom = w.crop_box((1800, 1000, 400, 300), (0, 0), (1920, 1080), 1920, 1080)
+    assert (left, top) == (1800, 1000) and right == 0 and bottom == 0
+
+
+def test_kde_text_goes_as_keysyms():
+    w = program()
+    assert [w.keysym_of(c) for c in "a\n\té你"] == [0x61, 0xff0d, 0xff09, 0xe9, 0x1000000 + ord("你")]
+
+
+def test_kde_list_from_a_kwin_snapshot():
+    w = program()
+    w.APP_NAMES["org.kde.konsole"] = "Konsole"
+
+    class FakeKWin:
+        def snapshot(self):
+            return {"current": 2, "outputs": ["DP-1"], "desktops": [{"id": 1, "name": "Mail"}, {"id": 2, "name": "Code"}],
+                    "windows": [{"id": "0f9c", "pid": 7, "app": "org.kde.konsole", "cls": "konsole", "title": "zsh",
+                                 "x": 0, "y": 0, "width": 900, "height": 600, "minimized": True, "focused": False,
+                                 "output": "DP-1", "desktops": [1], "visible": False},
+                                {"id": "77aa", "pid": 8, "app": "", "cls": "firefox", "title": "News",
+                                 "x": 10, "y": 10, "width": 1200, "height": 800, "minimized": False, "focused": True,
+                                 "output": "DP-1", "desktops": [], "visible": True}]}
+    listed = w.kde_list(FakeKWin())
+    assert listed["current"] == 2 and listed["desktop"] == "kde"
+    konsole, firefox = listed["windows"]
+    assert konsole["app"] == "Konsole" and konsole["workspace"] == 1 and konsole["minimized"] and not konsole["visible"]
+    # A window on every desktop counts as on the current one; with no desktop entry its class names it.
+    assert firefox["workspace"] == 2 and firefox["app"] == "" and firefox["app_id"] == "firefox"
+    assert [d["active"] for d in listed["workspaces"]] == [False, True]
+
+
+def test_kde_window_ids_must_be_uuids():
+    w = program()
+    assert w.UUID.match("708d5d37-b7d0-4508-a139-8c42f605b068")
+    assert not w.UUID.match('708d5d37"); workspace.activeWindow = null; ("')
+
+
 def main():
     tests = [(name, fn) for name, fn in sorted(globals().items()) if name.startswith("test_") and callable(fn)]
     for name, fn in tests:
