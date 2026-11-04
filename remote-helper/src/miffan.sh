@@ -26,7 +26,7 @@
 #   miffan window probe|list|focus|resize|shots|serve|locate|authorize|install-extension|uninstall-extension|revoke
 #                           one window of a Linux desktop on the phone (niri, KDE, GNOME, X11), video and input
 
-MIFFAN_HELPER_VERSION=48
+MIFFAN_HELPER_VERSION=49
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -4456,8 +4456,16 @@ rdp_gnome() {
     fi
     # Refuse both running and configured services unless this helper created this mode.
     if [ ! -f "$rdp_owner" ]; then
-        if pgrep -u "$(id -u)" -f '(^|/)gnome-remote-desktop-daemon([[:space:]]|$)' >/dev/null 2>&1 || \
-            grd status 2>/dev/null | grep -Eq 'Status:[[:space:]]+enabled|TLS (certificate|key):[[:space:]]+[^[:space:]]|Username:[[:space:]]+\(hidden\)'; then
+        current_status=$(grd status 2>/dev/null)
+        # One exception: everything this helper kept is gone (owner record, certificate and key, as when
+        # ~/.miffan/rdp was emptied) while GNOME still points at that certificate and key. That setup was
+        # this helper's and cannot work any more, so setting it up again breaks nothing anyone uses.
+        if [ ! -e "$rdp_dir/cert.pem" ] && [ ! -e "$rdp_dir/key.pem" ] && \
+            printf '%s\n' "$current_status" | grep -Fx "	TLS certificate: $rdp_dir/cert.pem" >/dev/null && \
+            printf '%s\n' "$current_status" | grep -Fx "	TLS key: $rdp_dir/key.pem" >/dev/null; then
+            :
+        elif pgrep -u "$(id -u)" -f '(^|/)gnome-remote-desktop-daemon([[:space:]]|$)' >/dev/null 2>&1 || \
+            printf '%s\n' "$current_status" | grep -Eq 'Status:[[:space:]]+enabled|TLS (certificate|key):[[:space:]]+[^[:space:]]|Username:[[:space:]]+\(hidden\)'; then
             rdp_json rdp_already_configured 'Existing GNOME RDP configuration is not owned by Miffan'; return 1
         fi
     else
