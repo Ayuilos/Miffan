@@ -95,7 +95,7 @@ internal object HostDesktopSpace {
         return parseDesktops(result.stdout)
     }
 
-    private fun parseDesktops(text: String): HostDesktops? {
+    internal fun parseDesktops(text: String): HostDesktops? {
         val root = runCatching { Json.parseToJsonElement(text.trim()).jsonObject }.getOrNull() ?: return null
         val windows = (root["windows"] as? JsonArray)?.mapNotNull { element ->
             val window = element as? JsonObject ?: return@mapNotNull null
@@ -116,7 +116,7 @@ internal object HostDesktopSpace {
     }
 
     /** SkyLight's CGSCopyManagedDisplaySpaces, read by [SPACE_ORDER_SCRIPT]; type 4 is an app's full-screen space. */
-    private fun parseSpaceOrder(text: String): List<List<HostSpace>>? {
+    internal fun parseSpaceOrder(text: String): List<List<HostSpace>>? {
         val displays = runCatching { Json.parseToJsonElement(text.trim()) as? JsonArray }.getOrNull() ?: return null
         return displays.mapNotNull { display ->
             (display as? JsonArray)?.mapNotNull { space ->
@@ -170,7 +170,10 @@ data class HostDesktops(val current: Long?, val windows: List<Placed>) {
 }
 
 /** A computer's own cua-spacesd: its port and token, and whether the Mac scrolls naturally. */
-data class HostEndpoint(val port: Int, val token: String, val naturalScroll: Boolean)
+data class HostEndpoint(val port: Int, val token: String, val naturalScroll: Boolean) {
+    /** Without the token, which would otherwise end up in any log line that prints this. */
+    override fun toString() = "HostEndpoint(port=$port, naturalScroll=$naturalScroll)"
+}
 
 /** One desktop (macOS Space): a plain desktop, or one app's full-screen space ([pid]). */
 data class HostSpace(val id: Long, val fullscreen: Boolean, val pid: Int?)
