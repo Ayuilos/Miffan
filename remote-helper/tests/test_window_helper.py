@@ -851,6 +851,21 @@ def test_gnome_input_mapping():
     inputs.apply(["text", base64.b64encode("你好".encode()).decode()])
     assert sessions == [("offer", "你好"), ("NotifyKeyboardKeycode", "(ub)", 29, True), ("NotifyKeyboardKeysym", "(ub)", 0x76, True),
                         ("NotifyKeyboardKeysym", "(ub)", 0x76, False), ("NotifyKeyboardKeycode", "(ub)", 29, False)]
+    # In a terminal Ctrl+V is a control character: Ctrl+Shift+V there.
+    sessions.clear()
+    inputs.terminal = True
+    inputs.apply(["text", base64.b64encode("中".encode()).decode()])
+    assert sessions == [("offer", "中"), ("NotifyKeyboardKeycode", "(ub)", 29, True), ("NotifyKeyboardKeycode", "(ub)", 42, True),
+                        ("NotifyKeyboardKeysym", "(ub)", 0x76, True), ("NotifyKeyboardKeysym", "(ub)", 0x76, False),
+                        ("NotifyKeyboardKeycode", "(ub)", 42, False), ("NotifyKeyboardKeycode", "(ub)", 29, False)]
+
+def test_terminal_apps_are_recognized():
+    w = program()
+    for app in ["org.kde.konsole", "org.gnome.Console", "org.gnome.Ptyxis", "gnome-terminal-server", "kitty", "Alacritty",
+                "foot", "org.wezfurlong.wezterm", "com.mitchellh.ghostty", "xfce4-terminal", "XTerm"]:
+        assert w.is_terminal(app), app
+    for app in ["org.gnome.Nautilus", "google-chrome", "org.kde.dolphin", "firefox", "", None, "footballmanager"]:
+        assert not w.is_terminal(app), app
 
 
 def test_x11_input_mapping():

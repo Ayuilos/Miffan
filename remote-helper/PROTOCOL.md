@@ -472,7 +472,7 @@ GNOME（Wayland）上，Mutter 自己的 `org.gnome.Mutter.ScreenCast` 和 `org.
 因为 Mutter 可能在流中途更换 DMA-BUF 修饰符，GL 导入会拒绝；也不在探针里固定尺寸（会让 pipewiresrc 在停止时死锁）。
 输入用同一个会话：`NotifyPointerMotionAbsolute` 用窗口自己的逻辑像素（扩展报告的缓冲区大小），修饰键等按键码、
 字符键用 keysym，离散滚轮；ASCII 文本用 keysym，其他文本经会话的剪贴板（`EnableClipboard`、`SetSelection`、响应
-`SelectionTransfer`）后按 Ctrl+V。Mutter 的虚拟键盘和指针在第一次使用时才创建，并吞掉那次事件，所以第一次之前先轻点一下
+`SelectionTransfer`）后按 Ctrl+V；helper 50 起终端窗口（扩展给的 app id 或窗口类名里有 konsole、terminal、console、kitty 等）按 Ctrl+Shift+V，因为终端里 Ctrl+V 是控制字符。Mutter 的虚拟键盘和指针在第一次使用时才创建，并吞掉那次事件，所以第一次之前先轻点一下
 Shift，或先移动一次指针。helper 45 起管线先 `videocrop` 再 `videoconvert`：Mutter 的缓冲区和整个显示器一样大，只转换
 窗口那一块能省下大部分开销。扩展没有及时答复（shell 忙、正在重载）时不再当成窗口关闭，只发一次
 `info {"extension":"no_answer",...}`。已知限制（需真机确认后再定）：非 ASCII 文本靠 Ctrl+V 粘贴，在终端里不生效
@@ -545,7 +545,7 @@ stdin 每行一条，坐标是窗口内 0–1 的比例：`move X Y`、`down 按
 
 ## 版本与安装
 
-当前 POSIX helper 为 49，Windows 为 20。POSIX 39 新增 `window` 命令，40 让它支持 KDE Plasma，41 支持 GNOME 和 X11，42 在 KDE 下重启为别的桌面启动的 portal，43 找会话环境时只认已登录（active/online）会话里的进程，44 在 KDE 下优先用 KWin 自己的单窗口录制和输入，45 修正 KDE 弹出菜单伸出窗口时的点击位置并改用常驻 KWin 脚本跟随窗口、字符键按 keysym 发送以跟随用户的键盘布局、按版本区分 Plasma 5 和 6.0–6.2、不再打开 GNOME 的用户扩展总开关、新增 `uninstall-extension` 和 `revoke`、只在有用时重启 portal 服务，并且 systemd 用户管理器的环境只在用户在这台电脑上登录着（有座席或图形会话，手机的 SSH 登录不算）时才用（不认 systemd 256 起的 class=manager 会话）、Wayland 套接字取最新的，46 在 KDE 窗口流因弹出菜单等改变尺寸时重建流而不是断开，47 在尺寸一变时就主动重建（二级菜单下 KWin 会卡住而不报错），48 在 `opened`、`geometry` 行末附上画面在屏幕上的位置、输入改按手机正在看的那一版画面换算，49 在 GNOME 远程桌面仍指向 `~/.miffan/rdp` 里已经不存在的证书和密钥（目录被清空）时重新配置它，而不是当作别人的配置拒绝。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
+当前 POSIX helper 为 50，Windows 为 20。POSIX 39 新增 `window` 命令，40 让它支持 KDE Plasma，41 支持 GNOME 和 X11，42 在 KDE 下重启为别的桌面启动的 portal，43 找会话环境时只认已登录（active/online）会话里的进程，44 在 KDE 下优先用 KWin 自己的单窗口录制和输入，45 修正 KDE 弹出菜单伸出窗口时的点击位置并改用常驻 KWin 脚本跟随窗口、字符键按 keysym 发送以跟随用户的键盘布局、按版本区分 Plasma 5 和 6.0–6.2、不再打开 GNOME 的用户扩展总开关、新增 `uninstall-extension` 和 `revoke`、只在有用时重启 portal 服务，并且 systemd 用户管理器的环境只在用户在这台电脑上登录着（有座席或图形会话，手机的 SSH 登录不算）时才用（不认 systemd 256 起的 class=manager 会话）、Wayland 套接字取最新的，46 在 KDE 窗口流因弹出菜单等改变尺寸时重建流而不是断开，47 在尺寸一变时就主动重建（二级菜单下 KWin 会卡住而不报错），48 在 `opened`、`geometry` 行末附上画面在屏幕上的位置、输入改按手机正在看的那一版画面换算，49 在 GNOME 远程桌面仍指向 `~/.miffan/rdp` 里已经不存在的证书和密钥（目录被清空）时重新配置它，而不是当作别人的配置拒绝，50 在终端窗口里用 Ctrl+Shift+V 粘贴文本（GNOME 下中文靠粘贴输入，终端里 Ctrl+V 是控制字符）。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
 
 `RemoteMiffanHelper.ensureInstalled` 每次读取打包脚本原始 bytes，用
 `MIFFAN_HELPER_VERSION=(\d+)` 或 `HelperVersion = (\d+)` 抽版本。远端 version 查询

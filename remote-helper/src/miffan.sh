@@ -26,7 +26,7 @@
 #   miffan window probe|list|focus|resize|shots|serve|locate|authorize|install-extension|uninstall-extension|revoke
 #                           one window of a Linux desktop on the phone (niri, KDE, GNOME, X11), video and input
 
-MIFFAN_HELPER_VERSION=49
+MIFFAN_HELPER_VERSION=50
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -1071,6 +1071,18 @@ class LockGuard:
 # keys (modifiers, Enter, arrows, F1...) go as key codes, which are the same key on every layout.
 
 
+# Words in a terminal app's id (split at ".", "-", "_"): org.kde.konsole, org.gnome.Console, kitty...
+TERMINAL_WORDS = {"konsole", "terminal", "ptyxis", "kgx", "console", "kitty", "alacritty", "foot", "footclient",
+                  "wezterm", "xterm", "uxterm", "tilix", "terminator", "urxvt", "rxvt", "ghostty", "blackbox",
+                  "terminology", "qterminal", "lxterminal", "cool-retro-term"}
+
+
+def is_terminal(app_id):
+    """Whether [app_id] (a Wayland app id or X11 class) names a terminal emulator."""
+    words = set(__import__("re").split(r"[.\-_ ]+", (app_id or "").lower()))
+    return bool(words & TERMINAL_WORDS) or (app_id or "").lower() in TERMINAL_WORDS
+
+
 def key_action(name):
     """("sym", keysym) for a character key, ("named", name) for a named one in KEYS, else None."""
     if len(name) == 1:
@@ -1144,11 +1156,21 @@ class WindowInput(LockGuard):
             self.press_sym(sym, True)
             self.press_sym(sym, False)
 
+    # Set when the window is a terminal (see is_terminal): those paste with Ctrl+Shift+V.
+    terminal = False
+
     def paste(self):
-        """Ctrl+V: Control by its key code, V by keysym, so it is the paste shortcut on any layout."""
+        """
+        Ctrl+V, or Ctrl+Shift+V in a terminal (where Ctrl+V is a control character): modifiers by key
+        code, V by keysym, so it is the paste shortcut on any layout.
+        """
         self.press_named("control", True)
+        if self.terminal:
+            self.press_named("shift", True)
         self.press_sym(0x76, True)
         self.press_sym(0x76, False)
+        if self.terminal:
+            self.press_named("shift", False)
         self.press_named("control", False)
 
     def close(self):
@@ -1176,6 +1198,10 @@ class Input(WindowInput):
         self.signature = None
         self.checked = 0.0
         self.held = []  # modifiers the phone holds, by wtype's names
+        try:
+            self.terminal = is_terminal((niri_window(window_id) or {}).get("app_id"))
+        except Exception:
+            pass
 
     def ensure_front(self):
         now = time.monotonic()
@@ -3414,10 +3440,13 @@ def serve_gnome(Gio, GLib, Gst, GstVideo, encoder, window_id, limit, fps, kbps):
             return True
         GLib.timeout_add(1000, follow)
 
+    gnome_input = GnomeInput(window_id, mutter, Gio, GLib, view)
+    # The extension's raw entry: "app" is the Wayland app id (empty for some), "cls" the window class.
+    gnome_input.terminal = is_terminal(w.get("app") or w.get("cls"))
     run_stream(Gio, GLib, Gst, GstVideo,
                "%s ! capsfilter name=size caps=video/x-raw,format=NV12,width=%d,height=%d" % (
                    gnome_crop_pipeline("pipewiresrc name=src path=%d do-timestamp=true keepalive-time=1000" % mutter.node), size[0], size[1]),
-               encoder, fps, kbps, GnomeInput(window_id, mutter, Gio, GLib, view), setup, size, mutter.close)
+               encoder, fps, kbps, gnome_input, setup, size, mutter.close)
 
 
 # ---------- serve ----------
