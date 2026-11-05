@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.im
 
+import me.ayuilos.miffan.ui.components.ui.permission.LocalNetworkPermissionCard
+import me.ayuilos.miffan.ui.components.ui.permission.rememberLocalNetworkPermissionState
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings as AndroidSettings
@@ -103,6 +105,8 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues) {
     val memoryRepository = koinInject<MemoryRepository>()
     val memories by remember(memoryOwner) { memoryRepository.getMemoryRecordsFlow(memoryOwner) }
         .collectAsStateWithLifecycle(initialValue = null)
+    // Android 17 keeps apps off the local network until allowed; computers at home then only time out.
+    val localNetworkPermission = rememberLocalNetworkPermissionState()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -131,6 +135,11 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues) {
                     }
                     Icon(HugeIcons.ArrowRight01, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            }
+        }
+        if (localNetworkPermission?.allRequiredPermissionsGranted == false) {
+            item("localNetworkPermission") {
+                LocalNetworkPermissionCard(localNetworkPermission, Modifier.padding(horizontal = 16.dp))
             }
         }
         if (update.showCard) {
