@@ -15,6 +15,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.ayuilos.miffan.R
+import androidx.compose.foundation.shape.CircleShape
+import me.ayuilos.miffan.ui.components.ui.AutoAIIcon
+import me.ayuilos.miffan.ui.components.ui.Tooltip
+import me.rerere.ai.provider.Model
+import me.rerere.hugeicons.stroke.ArrowDown01
+import me.rerere.hugeicons.stroke.Cpu
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowLeft01
@@ -158,4 +164,28 @@ internal fun ImSwitchRow(
 ) {
     ImListRow(icon, title, { onChange(!checked) }, supporting, tone, enabled,
         trailing = { Switch(checked, onChange, enabled = enabled) })
+}
+
+/** The model a page works with, always visible in its top bar and one tap from switching. */
+@Composable
+internal fun ImModelPill(model: Model?, onClick: () -> Unit) {
+    Surface(onClick = onClick, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.padding(end = 8.dp)) {
+        Row(Modifier.heightIn(min = 36.dp).padding(start = if (model != null) 6.dp else 12.dp, end = 10.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (model != null) AutoAIIcon(model.modelId, Modifier.size(24.dp), color = Color.Transparent)
+            else Icon(HugeIcons.Cpu, null, Modifier.size(18.dp))
+            Text(model?.let { it.displayName.ifBlank { it.modelId } } ?: stringResource(R.string.model_list_select_model), Modifier.widthIn(max = 140.dp),
+                style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Icon(HugeIcons.ArrowDown01, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** An icon-only action; its name is read by screen readers and shown on long press. */
+@Composable
+internal fun ImIconAction(icon: ImageVector, label: String, tonal: Boolean = false, onClick: () -> Unit) {
+    Tooltip(tooltip = { Text(label) }) {
+        if (tonal) FilledTonalIconButton(onClick = onClick) { Icon(icon, label, Modifier.size(20.dp)) }
+        else IconButton(onClick = onClick) { Icon(icon, label, Modifier.size(20.dp)) }
+    }
 }

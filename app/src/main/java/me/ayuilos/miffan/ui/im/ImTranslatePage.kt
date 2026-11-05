@@ -17,13 +17,7 @@ import me.rerere.hugeicons.stroke.Cpu
 import me.rerere.hugeicons.stroke.Stop
 import me.rerere.hugeicons.stroke.Translate
 import me.rerere.hugeicons.stroke.VolumeHigh
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.style.TextOverflow
-import me.ayuilos.miffan.ui.components.ui.AutoAIIcon
 import me.ayuilos.miffan.ui.components.ui.Tooltip
-import me.rerere.ai.provider.Model
 import java.util.Locale
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -76,7 +70,7 @@ fun ImTranslatePage(vm: TranslatorVM = koinViewModel()) {
     var choosing by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(topBar = {
-        ImPageBar(stringResource(R.string.im_discover_translate)) { TranslateModelPill(model, models::open) }
+        ImPageBar(stringResource(R.string.im_discover_translate)) { ImModelPill(model, models::open) }
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -99,14 +93,14 @@ fun ImTranslatePage(vm: TranslatorVM = koinViewModel()) {
                             focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                             unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent))
                     Row(Modifier.fillMaxWidth().padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        TipIconButton(HugeIcons.ClipboardPaste, stringResource(R.string.im_translate_paste), tonal = true) {
+                        ImIconAction(HugeIcons.ClipboardPaste, stringResource(R.string.im_translate_paste), tonal = true) {
                             scope.launch {
                                 clipboard.getClipEntry()?.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
                                     ?.let(vm::updateInputText)
                             }
                         }
                         Spacer(Modifier.weight(1f))
-                        if (input.isNotEmpty()) TipIconButton(HugeIcons.Cancel01, stringResource(R.string.im_translate_clear)) { vm.updateInputText("") }
+                        if (input.isNotEmpty()) ImIconAction(HugeIcons.Cancel01, stringResource(R.string.im_translate_clear)) { vm.updateInputText("") }
                     }
                 }
             }
@@ -131,13 +125,13 @@ fun ImTranslatePage(vm: TranslatorVM = koinViewModel()) {
                     Row(Modifier.heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(getLanguageDisplayName(target), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
                         if (!translating && result.isNotBlank()) {
-                            TipIconButton(HugeIcons.Copy01, stringResource(R.string.im_thread_copy)) {
+                            ImIconAction(HugeIcons.Copy01, stringResource(R.string.im_thread_copy)) {
                                 scope.launch {
                                     clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("", result)))
                                     toaster.show(copied, type = ToastType.Success)
                                 }
                             }
-                            if (canSpeak) TipIconButton(if (speaking) HugeIcons.Stop else HugeIcons.VolumeHigh,
+                            if (canSpeak) ImIconAction(if (speaking) HugeIcons.Stop else HugeIcons.VolumeHigh,
                                 stringResource(if (speaking) R.string.im_thread_stop_reading else R.string.im_thread_read_aloud)) {
                                 if (speaking) tts.stop() else tts.speak(result)
                             }
@@ -156,21 +150,6 @@ fun ImTranslatePage(vm: TranslatorVM = koinViewModel()) {
     if (choosing) ImLanguageSheet(target, onPick = { vm.updateTargetLanguage(it); choosing = false }, onDismiss = { choosing = false })
 }
 
-/** The model doing the translating, always visible in the top bar and one tap from switching. */
-@Composable
-private fun TranslateModelPill(model: Model?, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.padding(end = 8.dp)) {
-        Row(Modifier.heightIn(min = 36.dp).padding(start = if (model != null) 6.dp else 12.dp, end = 10.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (model != null) AutoAIIcon(model.modelId, Modifier.size(24.dp), color = Color.Transparent)
-            else Icon(HugeIcons.Cpu, null, Modifier.size(18.dp))
-            Text(model?.displayName ?: stringResource(R.string.model_list_select_model), Modifier.widthIn(max = 140.dp),
-                style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Icon(HugeIcons.ArrowDown01, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
 /** Starts the translation; while it runs, a ring circles it and a tap stops it. */
 @Composable
 private fun TranslateButton(translating: Boolean, enabled: Boolean, onClick: () -> Unit) {
@@ -182,15 +161,6 @@ private fun TranslateButton(translating: Boolean, enabled: Boolean, onClick: () 
             }
             if (translating) CircularProgressIndicator(Modifier.size(52.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         }
-    }
-}
-
-/** An icon-only action; its name is read by screen readers and shown on long press. */
-@Composable
-private fun TipIconButton(icon: ImageVector, label: String, tonal: Boolean = false, onClick: () -> Unit) {
-    Tooltip(tooltip = { Text(label) }) {
-        if (tonal) FilledTonalIconButton(onClick = onClick) { Icon(icon, label, Modifier.size(20.dp)) }
-        else IconButton(onClick = onClick) { Icon(icon, label, Modifier.size(20.dp)) }
     }
 }
 
