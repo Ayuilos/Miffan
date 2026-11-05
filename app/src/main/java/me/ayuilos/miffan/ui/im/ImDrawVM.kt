@@ -93,6 +93,8 @@ class ImDrawVM(
     fun addReferences(paths: List<String>) { _references.value = (_references.value + paths).distinct().take(MAX_REFERENCES) }
     fun removeReference(path: String) { _references.value -= path }
     fun clearError() { _error.value = null }
+    /** Saves a new drawing model; it is the same one partners draw with. */
+    fun updateSettings(updated: Settings) { viewModelScope.launch { settingsStore.update(updated) } }
 
     fun cancel() {
         job?.cancel()

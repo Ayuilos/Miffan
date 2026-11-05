@@ -1,5 +1,7 @@
 package me.ayuilos.miffan.ui.pages.setting
 
+import me.ayuilos.miffan.ui.components.ui.permission.LocalNetworkPermissionCard
+import me.ayuilos.miffan.ui.components.ui.permission.rememberLocalNetworkPermissionState
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.widget.Toast
@@ -101,6 +103,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
     val filesManager: FilesManager = koinInject()
     val settingsStore: SettingsStore = koinInject()
     val scope = rememberCoroutineScope()
+    val localNetworkPermission = rememberLocalNetworkPermissionState()
 
     Scaffold(
         topBar = {
@@ -132,6 +135,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
             if (settings.isNotConfigured()) {
                 item {
                     ProviderConfigWarningCard(navController)
+                }
+            }
+
+            if (localNetworkPermission?.allRequiredPermissionsGranted == false) {
+                item("localNetworkPermission") {
+                    LocalNetworkPermissionCard(localNetworkPermission, Modifier.padding(horizontal = 8.dp))
                 }
             }
 

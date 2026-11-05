@@ -241,7 +241,11 @@ jobs:
       - name: Build production release from verified commit
         # Non-owner dispatches require PR CI; the owner chooses their own verification.
         # This optional hosted build performs optimization, packaging, and signing.
-        run: ./gradlew assembleRelease --stacktrace
+        # The same heap as CI: the hosted runner has 16 GB, and 4 GB stalled builds there.
+        run: >-
+          ./gradlew assembleRelease --stacktrace
+          "-Dorg.gradle.jvmargs=-Xmx7g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
+          "-Pkotlin.daemon.jvmargs=-Xmx3g"
 
       - name: Verify package, version, ABI, and production signature
         id: stage

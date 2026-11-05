@@ -34,12 +34,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.ayuilos.miffan.R
-import me.ayuilos.miffan.Screen
 import me.ayuilos.miffan.data.ai.tools.imageToolModelOrNull
 import me.ayuilos.miffan.data.files.FileUtils
 import me.ayuilos.miffan.data.files.FilesManager
 import me.ayuilos.miffan.ui.components.ui.ImagePreviewDialog
-import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalToaster
 import me.ayuilos.miffan.ui.pages.imggen.GeneratedImage
 import me.rerere.ai.provider.ModelType
@@ -47,10 +45,25 @@ import me.ayuilos.miffan.utils.ImageUtils
 import me.rerere.ai.ui.ImageGenSize
 import me.rerere.common.android.appTempFolder
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Album02
+import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.ArrowUp02
+import me.rerere.hugeicons.stroke.AspectRatio
+import me.rerere.hugeicons.stroke.Cpu
+import me.rerere.hugeicons.stroke.Download04
+import me.rerere.hugeicons.stroke.Image01
+import me.rerere.hugeicons.stroke.ImageAdd01
+import me.rerere.hugeicons.stroke.Images
+import me.rerere.hugeicons.stroke.RectangleHorizontal
+import me.rerere.hugeicons.stroke.RectangleVertical
+import me.rerere.hugeicons.stroke.Square
+import me.rerere.hugeicons.stroke.Stop
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import me.ayuilos.miffan.ui.components.ui.Tooltip
+import me.ayuilos.miffan.ui.pages.setting.ImageToolModelSheet
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Delete01
-import me.rerere.hugeicons.stroke.FloppyDisk
 import me.rerere.hugeicons.stroke.PencilEdit01
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
@@ -58,11 +71,12 @@ import java.io.File
 import kotlin.uuid.Uuid
 
 private val DRAW_COUNTS = listOf(1, 2, 4)
+private class DrawShape(val size: ImageGenSize, val label: Int, val icon: ImageVector)
 private val DRAW_SHAPES = listOf(
-    ImageGenSize.AUTO to R.string.im_draw_shape_auto,
-    ImageGenSize.SQUARE_1024 to R.string.im_draw_shape_square,
-    ImageGenSize.PORTRAIT_1536 to R.string.im_draw_shape_portrait,
-    ImageGenSize.LANDSCAPE_1536 to R.string.im_draw_shape_landscape,
+    DrawShape(ImageGenSize.AUTO, R.string.im_draw_shape_auto, HugeIcons.AspectRatio),
+    DrawShape(ImageGenSize.SQUARE_1024, R.string.im_draw_shape_square, HugeIcons.Square),
+    DrawShape(ImageGenSize.PORTRAIT_1536, R.string.im_draw_shape_portrait, HugeIcons.RectangleVertical),
+    DrawShape(ImageGenSize.LANDSCAPE_1536, R.string.im_draw_shape_landscape, HugeIcons.RectangleHorizontal),
 )
 private val DRAW_EXAMPLES = listOf(R.string.im_draw_example_1, R.string.im_draw_example_2, R.string.im_draw_example_3, R.string.im_draw_example_4)
 
@@ -72,30 +86,34 @@ private val DRAW_EXAMPLES = listOf(R.string.im_draw_example_1, R.string.im_draw_
  */
 @Composable
 fun ImDrawPage(gallery: Boolean, vm: ImDrawVM = koinViewModel()) {
-    val nav = LocalNavController.current
     val toaster = LocalToaster.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     var album by rememberSaveable { mutableStateOf(gallery) }
+    var choosing by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(error) {
         error?.let { toaster.show(message = it, type = ToastType.Error); vm.clearError() }
     }
-    // The model chosen under Me → service → drawing, the one partners draw with.
+    // The same model as Me → service → drawing, the one partners draw with; switching it here switches both.
     val model = settings.imageToolModelOrNull()
     val ready = model != null
     Scaffold(topBar = {
         ImPageBar(stringResource(if (album) R.string.im_discover_drawings else R.string.im_discover_image_gen)) {
-            FilledTonalButton(onClick = { album = !album }, Modifier.padding(end = 8.dp)) {
-                Text(stringResource(if (album) R.string.im_draw_go_draw else R.string.im_discover_album))
-            }
+            if (!album) ImModelPill(model) { choosing = true }
+            ImIconAction(if (album) HugeIcons.PencilEdit01 else HugeIcons.Album02,
+                stringResource(if (album) R.string.im_draw_go_draw else R.string.im_discover_album)) { album = !album }
+            Spacer(Modifier.width(4.dp))
         }
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
-            if (!ready && !album) Surface(color = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                Row(Modifier.padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (!ready && !album) Surface(onClick = { choosing = true }, color = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer, shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(HugeIcons.Cpu, null, Modifier.size(20.dp))
                     Text(stringResource(R.string.im_draw_no_model), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { nav.navigate(Screen.ImAiService) }) { Text(stringResource(R.string.im_draw_pick_model)) }
+                    Icon(HugeIcons.ArrowRight01, null, Modifier.size(18.dp))
                 }
             }
             if (album) ImDrawAlbum(vm, Modifier.weight(1f)) else {
@@ -104,6 +122,7 @@ fun ImDrawPage(gallery: Boolean, vm: ImDrawVM = koinViewModel()) {
             }
         }
     }
+    if (choosing) ImageToolModelSheet(settings, onUpdate = vm::updateSettings, onDismiss = { choosing = false }, easy = true)
 }
 
 /** This visit's request and its pictures, or ideas to start from. */
@@ -154,7 +173,7 @@ private fun ImDrawSession(vm: ImDrawVM, modifier: Modifier) {
     preview?.let { ImagePreviewDialog(images = listOf(it), onDismissRequest = { preview = null }) }
 }
 
-/** One picture with a way to keep it in the phone's gallery. */
+/** One picture, with a corner button that keeps it in the phone's gallery. */
 @Composable
 private fun ImDrawing(image: GeneratedImage, onOpen: () -> Unit) {
     val context = LocalContext.current
@@ -162,21 +181,27 @@ private fun ImDrawing(image: GeneratedImage, onOpen: () -> Unit) {
     val toaster = LocalToaster.current
     val filesManager: FilesManager = koinInject()
     val scope = rememberCoroutineScope()
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    val save = stringResource(R.string.imggen_page_save)
+    fun keep() = scope.launch {
+        try {
+            filesManager.saveMessageImage(context, "file://${image.filePath}")
+            toaster.show(resources.getString(R.string.imggen_page_image_saved_success), type = ToastType.Success)
+        } catch (e: Exception) {
+            toaster.show(resources.getString(R.string.imggen_page_save_failed, e.message), type = ToastType.Error)
+        }
+    }
+    Box {
         AsyncImage(File(image.filePath), image.prompt, contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(16.dp)).clickable(onClick = onOpen))
-        FilledTonalButton(modifier = Modifier.fillMaxWidth(), onClick = {
-            scope.launch {
-                try {
-                    filesManager.saveMessageImage(context, "file://${image.filePath}")
-                    toaster.show(resources.getString(R.string.imggen_page_image_saved_success), type = ToastType.Success)
-                } catch (e: Exception) {
-                    toaster.show(resources.getString(R.string.imggen_page_save_failed, e.message), type = ToastType.Error)
+        // TooltipBox does not pass alignment on to its anchor, so a box over the picture places it.
+        Box(Modifier.matchParentSize().padding(8.dp), contentAlignment = Alignment.BottomEnd) {
+            Tooltip(tooltip = { Text(save) }) {
+                // A scrim-backed icon stays readable on any picture, light or dark.
+                FilledIconButton(onClick = { keep() }, Modifier.size(36.dp), colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = Color.Black.copy(alpha = 0.45f), contentColor = Color.White)) {
+                    Icon(HugeIcons.Download04, save, Modifier.size(18.dp))
                 }
             }
-        }) {
-            Icon(HugeIcons.FloppyDisk, null, Modifier.size(16.dp))
-            Text(stringResource(R.string.imggen_page_save), Modifier.padding(start = 6.dp))
         }
     }
 }
@@ -221,19 +246,23 @@ private fun ImDrawComposer(vm: ImDrawVM, ready: Boolean, sized: Boolean) {
                 }
             }
         }
+        // Each choice shows what it is set to; a tap moves to the next value.
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AssistChip(onClick = { vm.updateCount(DRAW_COUNTS[(DRAW_COUNTS.indexOf(count) + 1) % DRAW_COUNTS.size]) },
-                label = { Text(pluralStringResource(R.plurals.im_draw_count, count, count)) })
+                label = { Text(pluralStringResource(R.plurals.im_draw_count, count, count)) },
+                leadingIcon = { Icon(if (count > 1) HugeIcons.Images else HugeIcons.Image01, null, Modifier.size(AssistChipDefaults.IconSize)) })
             // Only models behind the Images API take a size.
             if (sized) {
-                val shape = DRAW_SHAPES.indexOfFirst { it.first == size }.coerceAtLeast(0)
-                AssistChip(onClick = { vm.updateSize(DRAW_SHAPES[(shape + 1) % DRAW_SHAPES.size].first) },
-                    label = { Text(stringResource(DRAW_SHAPES[shape].second)) })
+                val shape = DRAW_SHAPES.indexOfFirst { it.size == size }.coerceAtLeast(0)
+                AssistChip(onClick = { vm.updateSize(DRAW_SHAPES[(shape + 1) % DRAW_SHAPES.size].size) },
+                    label = { Text(stringResource(DRAW_SHAPES[shape].label)) },
+                    leadingIcon = { Icon(DRAW_SHAPES[shape].icon, null, Modifier.size(AssistChipDefaults.IconSize)) })
             }
-            AssistChip(onClick = { picker.launch("image/*") }, label = { Text(stringResource(R.string.im_draw_reference)) })
         }
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(prompt, vm::updatePrompt, Modifier.weight(1f), maxLines = 4, shape = RoundedCornerShape(24.dp),
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            // Pictures to start from attach the way photos do in a chat: a button beside the input.
+            ImIconAction(HugeIcons.ImageAdd01, stringResource(R.string.im_draw_reference)) { picker.launch("image/*") }
+            OutlinedTextField(prompt, vm::updatePrompt, Modifier.weight(1f).padding(end = 4.dp), maxLines = 4, shape = RoundedCornerShape(24.dp),
                 placeholder = { Text(stringResource(R.string.im_draw_hint)) })
             val canSend = ready && prompt.isNotBlank()
             FilledIconButton(
@@ -243,7 +272,7 @@ private fun ImDrawComposer(vm: ImDrawVM, ready: Boolean, sized: Boolean) {
                 colors = if (generating) IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.errorContainer,
                     contentColor = MaterialTheme.colorScheme.onErrorContainer) else IconButtonDefaults.filledIconButtonColors(),
             ) {
-                Icon(if (generating) HugeIcons.Cancel01 else HugeIcons.ArrowUp02,
+                Icon(if (generating) HugeIcons.Stop else HugeIcons.ArrowUp02,
                     stringResource(if (generating) R.string.im_draw_stop else R.string.imggen_page_generate_image))
             }
         }
@@ -274,7 +303,7 @@ private fun ImDrawAlbum(vm: ImDrawVM, modifier: Modifier) {
                     modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp))
                         .imLongPress(menu::open).clickable { preview = image.filePath })
                 ImPressMenu(menu) {
-                    ImPressMenuItem(HugeIcons.FloppyDisk, stringResource(R.string.imggen_page_save)) {
+                    ImPressMenuItem(HugeIcons.Download04, stringResource(R.string.imggen_page_save)) {
                         menu.close()
                         scope.launch {
                             try {
