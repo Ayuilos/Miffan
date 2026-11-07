@@ -216,7 +216,7 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, listState: LazyL
                         ImCardDivider()
                         ImListRow(HugeIcons.Earth, stringResource(R.string.im_me_language), {
                             context.startActivity(Intent(AndroidSettings.ACTION_APP_LOCALE_SETTINGS).setData("package:${context.packageName}".toUri()))
-                        }, trailing = { ImRowValue(locale.getDisplayName(locale)) })
+                        }, trailing = { ImRowValue(languageName(locale)) })
                     }
                 }
             }
@@ -278,4 +278,11 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, listState: LazyL
             },
         )
     }
+}
+
+/** The language as its speakers name it, without the region: 简体中文, 繁體中文, English, 日本語. */
+private fun languageName(locale: java.util.Locale): String = when {
+    locale.language == "zh" && (locale.script == "Hant" || locale.country in setOf("TW", "HK", "MO")) -> "繁體中文"
+    locale.language == "zh" -> "简体中文"
+    else -> locale.getDisplayLanguage(locale).replaceFirstChar { it.titlecase(locale) }
 }
