@@ -69,7 +69,10 @@ fun RemoteTaskDetailPage(hostId: String, taskId: String) {
         scope.launch {
             try { block() } catch (error: Throwable) {
                 if (error is kotlinx.coroutines.CancellationException) throw error
-                snackbar.showSnackbar(error.message ?: resources.getString(R.string.remote_task_action_failed))
+                android.util.Log.w("RemoteTaskDetailPage", "Task action failed", error)
+                // Connection problems in plain words; anything else as a general failure, not the raw message.
+                snackbar.showSnackbar(me.ayuilos.miffan.ui.pages.extensions.workspace.screen.remoteSshError(resources, error)
+                    ?: resources.getString(R.string.remote_task_action_failed))
             } finally { busy = false }
         }
     }
