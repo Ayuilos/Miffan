@@ -520,6 +520,49 @@ class PartnerChatTest {
         assertEquals(listOf("a"), f.service.observeApprovals(id).first().map { it.tool.toolCallId })
     }
 
+    @Test fun approvalMembersListEveryWaitingMemberPerChatAndDropAnsweredOnes() = runTest {
+        val f = Fixture(this)
+        val direct = f.store.direct(a.id, b.id).id
+        val group = f.service.createGroup(listOf(a.id, b.id, c.id), "group")
+        f.service.sendFromOwner(direct, "hello", listOf(a.id)); runCurrent()
+        f.service.sendFromOwner(group, "hi all", listOf(b.id, c.id)); runCurrent()
+        fun pending(call: String) = UIMessagePart.Tool(call, "send_message", "{}", approvalState = me.rerere.ai.ui.ToolApprovalState.Pending)
+        val sa = f.store.member(direct, a.id).segmentId!!
+        val sb = f.store.member(group, b.id).segmentId!!
+        val sc = f.store.member(group, c.id).segmentId!!
+        f.segments[sa] = f.segments.getValue(sa).appendMessage(UIMessage.assistant("x").copy(parts = listOf(pending("1"))))
+        f.segments[sb] = f.segments.getValue(sb).appendMessage(UIMessage.assistant("y").copy(parts = listOf(pending("2"))))
+        f.segments[sc] = f.segments.getValue(sc).appendMessage(UIMessage.assistant("z").copy(parts = listOf(pending("3"))))
+        assertEquals(mapOf(direct to setOf(a.id), group to setOf(b.id, c.id)), f.service.observeApprovalMembers().first())
+        // The same answer every consumer of the per-chat flow sees.
+        assertEquals(setOf(b.id, c.id), f.service.observeApprovals(group).first().mapTo(HashSet()) { it.memberId })
+        f.segmentFlows.getValue(sb).value = f.segments.getValue(sb).copy(messageNodes = emptyList())
+        assertEquals(mapOf(direct to setOf(a.id), group to setOf(c.id)), f.service.observeApprovalMembers().first())
+    }
+
+    @Test fun summariesTakeTheNewestMessageAndGroupUnreadOfEachChatSeparately() = runTest {
+        val f = Fixture(this)
+        val g1 = f.service.createGroup(listOf(a.id, b.id), "one")
+        val g2 = f.service.createGroup(listOf(a.id, c.id), "two")
+        val direct = f.store.direct(b.id, c.id).id
+        f.service.sendFromOwner(g1, "to one", listOf(a.id)); runCurrent()
+        f.service.sendFromOwner(g2, "to two", listOf(c.id)); runCurrent()
+        f.service.sendFromOwner(g2, "again", listOf(c.id)); runCurrent()
+        val byId = f.service.observeSummaries().first().associateBy { it.chat.id }
+        val newest = { id: Uuid -> f.store.allMessages.last { it.message.chatId == id }.message }
+        assertEquals(newest(g1), byId.getValue(g1).last)
+        assertEquals(newest(g2), byId.getValue(g2).last)
+        assertEquals(null, byId.getValue(direct).last)
+        assertEquals(f.store.allMessages.count { it.message.chatId == g1 && it.message.senderId != OWNER_PARTICIPANT_ID }, byId.getValue(g1).unread)
+        assertEquals(f.store.allMessages.count { it.message.chatId == g2 && it.message.senderId != OWNER_PARTICIPANT_ID }, byId.getValue(g2).unread)
+        assertEquals(0, byId.getValue(direct).unread)
+        // Reading one group leaves the other's count alone.
+        f.prefs.value = me.ayuilos.miffan.data.thread.ThreadListPrefs(readAt = mapOf(g1.toString() to Long.MAX_VALUE))
+        val after = f.service.observeSummaries().first().associateBy { it.chat.id }
+        assertEquals(0, after.getValue(g1).unread)
+        assertEquals(byId.getValue(g2).unread, after.getValue(g2).unread)
+    }
+
     @Test fun answeringPerspectiveApprovalLetsItsWaitingTurnWriteTheFinalReply() = runTest {
         val f = Fixture(this)
         val id = f.service.createGroup(listOf(a.id,b.id), "approval")
@@ -674,10 +717,16 @@ internal class FakePartnerStore : PartnerChatStore {
     val members = mutableMapOf<Pair<Uuid, Uuid>, ChatMember>()
     val allMessages = mutableListOf<ChatMessage>()
     private val reserved = mutableMapOf<Uuid, Uuid>()
-    private val snapshots = MutableStateFlow(ChatSnapshot(emptyList(), emptyList()))
-    private fun publish() { snapshots.value = ChatSnapshot(chats.values.toList(), allMessages.toList(), members.values.toList()) }
-    override fun observeSnapshot() = snapshots
-    override fun observeMessages(chatId: Uuid) = snapshots.map { it.messages.filter { m -> m.message.chatId == chatId } }
+    private val snapshots = MutableStateFlow(0)
+    private fun publish() { snapshots.value++ }
+    override fun observeChats() = snapshots.map { chats.values.toList() }
+    override fun observeMembers() = snapshots.map { members.values.toList() }
+    override fun observeLastMessages() = snapshots.map {
+        allMessages.groupBy { it.message.chatId }.mapValues { (_, messages) -> messages.last().message }
+    }
+    override suspend fun countMessagesAfter(chatId: Uuid, excludedSender: Uuid, after: Long) =
+        allMessages.count { it.message.chatId == chatId && it.message.senderId != excludedSender && it.message.createdAt.toEpochMilli() > after }
+    override fun observeMessages(chatId: Uuid) = snapshots.map { allMessages.filter { it.message.chatId == chatId } }
     override suspend fun chat(chatId: Uuid) = chats[chatId]
     override suspend fun direct(a: Uuid, b: Uuid): PartnerChat {
         chats.values.firstOrNull { it.memberIds.toSet() == setOf(a, b) }?.let { return it }

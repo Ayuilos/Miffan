@@ -43,6 +43,9 @@ interface PartnerChatService {
     /** Tool calls by members of [chatId] waiting for the owner, oldest first. */
     fun observeApprovals(chatId: Uuid): Flow<List<PartnerChatApproval>>
 
+    /** Per chat, the members holding a tool call the owner has not answered; chats with none are absent. */
+    fun observeApprovalMembers(): Flow<Map<Uuid, Set<Uuid>>>
+
     /** The owner answers a member's pending tool call inside [chatId]. */
     suspend fun answerApproval(chatId: Uuid, memberId: Uuid, toolCallId: String, approved: Boolean)
 
