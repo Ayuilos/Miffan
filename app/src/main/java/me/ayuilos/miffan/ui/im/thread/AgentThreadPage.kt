@@ -215,9 +215,13 @@ fun AgentThreadPage(
         if (status != null) partnerLeft = true else if (partnerLeft) welcomeSettled = true
     }
     LaunchedEffect(timeline, topics) {
-        timeline.filterIsInstance<TimelineItem.Message>().forEach { message ->
+        // Runs on every streamed chunk: only messages of topics without a label yet build a preview.
+        timeline.forEach { item ->
+            val message = item as? TimelineItem.Message ?: return@forEach
             message.quote?.let { quote -> labels.putIfAbsent(quote.ref.conversationId, quote.preview) }
-            message.message.previewText().takeIf { it.isNotBlank() }?.let { labels.putIfAbsent(message.segmentId, it) }
+            if (message.segmentId !in labels) {
+                message.message.previewText().takeIf { it.isNotBlank() }?.let { labels[message.segmentId] = it }
+            }
         }
     }
     LaunchedEffect(dragging, atBottom, highlighted, jumping) {
