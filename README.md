@@ -130,6 +130,7 @@ Miffan started as a fork of [RikkaHub](https://github.com/rikkahub/rikkahub), an
 | Oct 2026 | 4.6 | A first run that is a chat with Miffan, choosing how long a partner thinks, and a computer status page. |
 | Oct 2026 | 4.7 | A partner's own mini box, and a redesigned screen view. |
 | Nov 2026 | 4.8 | Using your computer away from home through Miffan's relay, without Tailscale. |
+| Nov 2026 | 4.9 | A smoother, faster easy chat: long replies stay in view, tabs keep their place, and errors in plain words. |
 
 Miffan still takes in selected RikkaHub improvements. Each one is reviewed and listed separately in the release notes (see the [upstream sync policy](docs/upstream-sync.md)). Upstream copyright and attribution are kept as the license requires. Miffan is not an official RikkaHub release.
 
