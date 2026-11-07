@@ -33,6 +33,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.conflate
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.context.LocalSettings
 import me.rerere.ai.ui.UIMessagePart
@@ -144,7 +145,8 @@ fun AgentThreadPage(
     val topicLabel = filter?.let { topics[it]?.title?.takeIf(String::isNotBlank) ?: labels[it] ?: fallbackTopic }
     val connectedSegments by vm.connectedSegmentIds.collectAsStateWithLifecycle()
     val online by koinInject<NetworkMonitor>().online.collectAsStateWithLifecycle()
-    val connection = ThreadConnection(connectedSegments, online)
+    // One instance per change: a new one on every streamed chunk made every visible bubble recompose.
+    val connection = remember(connectedSegments, online) { ThreadConnection(connectedSegments, online) }
     val status = threadHeaderStatus(timeline, generating, connection)
     val thinkHarder by vm.thinkHarder.collectAsStateWithLifecycle()
     val deepMessageIds by vm.deepMessageIds.collectAsStateWithLifecycle()
@@ -196,6 +198,15 @@ fun AgentThreadPage(
     suspend fun scrollToLatest(animate: Boolean = false) {
         val lastIndex = rowOf(timeline.size, timeline) + (if (newTopicPending) 1 else 0) + visibleErrors.size - 1
         if (lastIndex < 0) return
+        // Already on screen, as a streaming reply is while it grows: scroll by what it grew. Scrolling to the item
+        // first would show its start for a frame on every chunk, so the reply would flicker back to its top.
+        if (!animate) listState.layoutInfo.let { layout ->
+            layout.visibleItemsInfo.firstOrNull { it.index == lastIndex }?.let { last ->
+                val remaining = last.offset + last.size + layout.afterContentPadding - layout.viewportEndOffset
+                if (remaining > 0) listState.scrollBy(remaining.toFloat())
+                return
+            }
+        }
         if (animate) listState.animateScrollToItem(lastIndex) else listState.scrollToItem(lastIndex)
         withFrameNanos { }
         // A message can be taller than the viewport; reaching its start is not reaching the end.
@@ -237,12 +248,23 @@ fun AgentThreadPage(
                 (welcomeCutoff == null || historyShown)) listState.layoutInfo.visibleItemsInfo.firstOrNull()?.key else null
         }.distinctUntilChanged().collect { if (it != null && !jumping) vm.loadMore() }
     }
-    LaunchedEffect(timeline, visibleErrors, loaded, newTopicPending) {
-        val count = timeline.size + visibleErrors.size
-        if (loaded && followLatest && !jumping && count > 0) {
-            withFrameNanos { }
-            if (followLatest && !jumping) scrollToLatest()
-        }
+    // Follow new content with one long-lived collector, taking the newest state after each scroll. An effect keyed
+    // on the timeline restarted on every streamed chunk and was cancelled while waiting for its frame, so a long
+    // reply stayed at its start while it streamed and jumped to its end only when it finished.
+    val latestTimeline by rememberUpdatedState(timeline)
+    val latestErrorCount by rememberUpdatedState(visibleErrors.size)
+    val latestLoaded by rememberUpdatedState(loaded)
+    val latestNewTopic by rememberUpdatedState(newTopicPending)
+    val followScroll by rememberUpdatedState<suspend () -> Unit> { scrollToLatest() }
+    LaunchedEffect(listState) {
+        snapshotFlow { latestTimeline; latestErrorCount; latestNewTopic; latestLoaded; Any() }
+            .conflate()
+            .collect {
+                if (latestLoaded && followLatest && !jumping && latestTimeline.size + latestErrorCount > 0) {
+                    withFrameNanos { }
+                    if (followLatest && !jumping) followScroll()
+                }
+            }
     }
     LaunchedEffect(highlighted) {
         if (highlighted != null) { delay(1800); highlighted = null }
