@@ -4290,4 +4290,6 @@
   <string name="im_error_content_rule">碰到了這個服務的內容限制，換個說法試試</string>
   <string name="im_translate_failed">沒翻譯出來，再試一次吧</string>
   <string name="im_draw_failed">沒畫出來，再試一次吧</string>
+  <string name="im_backup_export_failed">備份沒存下來，看看手機空間夠不夠，再試一次</string>
+  <string name="im_backup_import_failed">這個檔案恢復不了：可能不是對應的備份檔案，或者已經損壞</string>
 </resources>

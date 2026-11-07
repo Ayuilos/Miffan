@@ -4297,4 +4297,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_error_content_rule">碰到了这个服务的内容限制，换个说法试试</string>
   <string name="im_translate_failed">没翻译出来，再试一次吧</string>
   <string name="im_draw_failed">没画出来，再试一次吧</string>
+  <string name="im_backup_export_failed">备份没存下来，看看手机空间够不够，再试一次</string>
+  <string name="im_backup_import_failed">这个文件恢复不了：可能不是对应的备份文件，或者已经损坏</string>
 </resources>

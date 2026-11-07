@@ -4328,4 +4328,6 @@
   <string name="im_error_content_rule">This request hit the service\'s content rules. Try saying it another way</string>
   <string name="im_translate_failed">Couldn\'t translate that. Try again</string>
   <string name="im_draw_failed">Couldn\'t draw that. Try again</string>
+  <string name="im_backup_export_failed">The backup wasn\'t saved. Check there\'s enough space and try again</string>
+  <string name="im_backup_import_failed">This file can\'t be restored. It may not be a backup from here, or it\'s damaged</string>
 </resources>

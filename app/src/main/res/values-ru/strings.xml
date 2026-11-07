@@ -4361,4 +4361,6 @@
   <string name="im_error_content_rule">Запрос нарушил правила сервиса. Попробуйте сформулировать иначе</string>
   <string name="im_translate_failed">Не удалось перевести. Попробуйте ещё раз</string>
   <string name="im_draw_failed">Не удалось нарисовать. Попробуйте ещё раз</string>
+  <string name="im_backup_export_failed">Не удалось сохранить резервную копию. Проверьте свободное место и попробуйте ещё раз</string>
+  <string name="im_backup_import_failed">Этот файл не удаётся восстановить. Возможно, это не та резервная копия или файл повреждён</string>
 </resources>

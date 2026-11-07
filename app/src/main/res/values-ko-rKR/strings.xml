@@ -4292,4 +4292,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_error_content_rule">서비스의 콘텐츠 제한에 걸렸어요. 다르게 표현해 보세요</string>
   <string name="im_translate_failed">번역하지 못했어요. 다시 시도해 보세요</string>
   <string name="im_draw_failed">그리지 못했어요. 다시 시도해 보세요</string>
+  <string name="im_backup_export_failed">백업을 저장하지 못했어요. 저장 공간을 확인하고 다시 시도해 보세요</string>
+  <string name="im_backup_import_failed">이 파일은 복원할 수 없어요. 맞는 백업 파일이 아니거나 손상되었을 수 있어요</string>
 </resources>
