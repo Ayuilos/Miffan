@@ -109,12 +109,15 @@ internal fun ImChatsTab(
         me.ayuilos.miffan.utils.ThreadOpenTrace.begin()
         navController.navigate(if (it.isPartnerChat) Screen.PartnerChat(it.chatId.toString()) else Screen.Thread(it.chatId.toString()))
     }
-    val actions = ImChatActions(
-        open = open,
-        setPinned = { chat, pinned -> vm.setPinned(chat.chatId, pinned) },
-        move = { moving = it },
-        hide = { vm.hide(it.chatId) },
-    )
+    // One instance for the page: a new one per recomposition made every row recompose when any chat changed.
+    val actions = remember(vm, navController) {
+        ImChatActions(
+            open = open,
+            setPinned = { chat, pinned -> vm.setPinned(chat.chatId, pinned) },
+            move = { moving = it },
+            hide = { vm.hide(it.chatId) },
+        )
+    }
 
     val current = sections
     // The list has its data (not only its frame): report the first full display for startup benchmarks.
