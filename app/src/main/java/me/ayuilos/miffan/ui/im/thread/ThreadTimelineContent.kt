@@ -153,12 +153,15 @@ internal fun ThreadMessageBubble(
     val handed = remember(parts) { if (user) emptyList() else handedFiles(parts) }
     val published = remember(parts) { !user && parts.any { it is UIMessagePart.Tool && it.workspaceArtifacts().isNotEmpty() } }
     // Edited files are listed once the reply finishes, so they do not count as content while it streams.
-    val visible = (published && !item.streaming) || parts.any { part ->
-        when (part) {
-            is UIMessagePart.Text -> part.text.isNotBlank()
-            is UIMessagePart.Image, is UIMessagePart.Document -> true
-            is UIMessagePart.Tool -> part.isThreadPrompt() || part.showsInThread(item.streaming) || part.addedCalendarEvent() != null
-            else -> false
+    // Remembered: the calendar check parses tool output, and every visible bubble recomposes while a reply streams.
+    val visible = remember(parts, item.streaming, published) {
+        (published && !item.streaming) || parts.any { part ->
+            when (part) {
+                is UIMessagePart.Text -> part.text.isNotBlank()
+                is UIMessagePart.Image, is UIMessagePart.Document -> true
+                is UIMessagePart.Tool -> part.isThreadPrompt() || part.showsInThread(item.streaming) || part.addedCalendarEvent() != null
+                else -> false
+            }
         }
     }
     // A reply made only of light process (thinking, a lookup or two) has nothing to show in easy mode;
