@@ -17,7 +17,9 @@ import androidx.room.PrimaryKey
         )
     ],
     indices = [
-        Index("conversation_id"),
+        // Serves `WHERE conversation_id = ? ORDER BY node_index` without a sort; also covers plain
+        // conversation_id lookups and the cascade delete, so the single-column index is gone.
+        Index(value = ["conversation_id", "node_index"]),
         Index(value = ["conversation_id", "parent_id"]),
     ]
 )

@@ -11,7 +11,11 @@ import androidx.room.PrimaryKey
  */
 @Entity(
     tableName = "revision",
-    indices = [Index(value = ["subject_type", "subject_id", "created_at"])],
+    indices = [
+        Index(value = ["subject_type", "subject_id", "created_at"]),
+        // RevisionDAO.observeByAuthor filters author and subject_id without a subject_type.
+        Index(value = ["author", "subject_id"]),
+    ],
 )
 data class RevisionEntity(
     @PrimaryKey

@@ -9,7 +9,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
-import me.rerere.ai.ui.UIMessagePart
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.shareIn
@@ -23,10 +22,13 @@ import me.ayuilos.miffan.data.model.ChatOrganization
 import me.ayuilos.miffan.data.model.OWNER_PARTICIPANT_ID
 import me.ayuilos.miffan.data.model.PartnerChatKind
 import me.ayuilos.miffan.data.partner.PartnerChatService
-import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.data.model.InterfaceMode
 import me.ayuilos.miffan.data.model.withInterfaceMode
 import me.ayuilos.miffan.data.repository.ConversationRepository
+import me.ayuilos.miffan.data.repository.LatestConversation
+import me.ayuilos.miffan.data.thread.ThreadDigestCache
+import me.ayuilos.miffan.data.thread.ThreadStamp
+import kotlinx.datetime.TimeZone
 import me.ayuilos.miffan.data.thread.PreviewKind
 import me.ayuilos.miffan.data.thread.listPreviewText
 import me.ayuilos.miffan.data.thread.ThreadListPrefs
@@ -101,37 +103,46 @@ class ImHomeVM(
     val updatePresentation: StateFlow<UpdatePresentation> = updateChecker.presentation
 
     /** Per partner chat, the members whose requests wait for the owner. */
-    private val chatApprovals = partnerChatService.observeSummaries()
-        .map { summaries -> summaries.map { it.chat.id } }
+    private val chatApprovals = partnerChatService.observeApprovalMembers()
+
+    /**
+     * The parts of settings the Chats tab and the Partners tab's lights read. Unrelated settings writes
+     * (the launch counter, for one) leave it equal, so nothing downstream recomputes.
+     */
+    private data class Roster(val assistants: List<Assistant>, val organization: ChatOrganization)
+
+    private val roster = settingsStore.settingsFlow
+        .map { Roster(it.assistants, it.chatOrganization) }
         .distinctUntilChanged()
-        .flatMapLatest { ids ->
-            if (ids.isEmpty()) flowOf(emptyMap())
-            else combine(ids.map { id ->
-                partnerChatService.observeApprovals(id).map { approvals -> id to approvals.mapTo(HashSet()) { it.memberId } }
-            }) { it.toMap() }
-        }
+
+    private val digests = ThreadDigestCache { id ->
+        ThreadListSummaries.digest(conversationRepository.getRecentMessageNodes(id, RECENT_MESSAGES))
+    }
 
     /** Threads by latest activity; hidden threads stay out until new activity unless pinned. */
     private val threads = combine(
-        settingsStore.settingsFlow,
-        conversationRepository.observeLatestConversationOfEachAssistant(),
+        roster,
+        conversationRepository.observeLatestConversationStamps(),
         chatService.getConversationJobs(),
         listState.value,
         chatApprovals,
-    ) { settings, latest, jobs, prefs, approvals -> Snapshot(settings, latest, jobs.keys, prefs, approvals) }
-        .mapLatest { (settings, latest, jobIds, prefs, approvals) ->
+    ) { roster, latest, jobs, prefs, approvals -> Snapshot(roster, latest, jobs.keys, prefs, approvals) }
+        .mapLatest { (roster, latest, jobIds, prefs, approvals) ->
             val waitingElsewhere = approvals.values.flatMapTo(HashSet()) { it }
-            val assistants = settings.assistants.associateBy { it.id }
+            val assistants = roster.assistants.associateBy { it.id }
             val typingAssistants = jobIds.mapNotNullTo(HashSet()) { chatService.getConversationFlow(it).value.assistantId }
-            val organization = settings.chatOrganization
-            val items = latest.mapNotNull { conversation ->
+            val organization = roster.organization
+            val zoneId = TimeZone.currentSystemDefault().id
+            val items = latest.mapNotNull { stamped ->
+                val conversation = stamped.conversation
                 val assistant = assistants[conversation.assistantId] ?: return@mapNotNull null
                 val key = assistant.id.toString()
-                val nodes = conversationRepository.getRecentMessageNodes(conversation.id, RECENT_MESSAGES)
-                val summary = ThreadListSummaries.summarize(nodes, readAt = prefs.readAt[key] ?: 0L)
-                val waiting = assistant.id in waitingElsewhere || nodes.any { node ->
-                    node.message.parts.any { it is UIMessagePart.Tool && it.isPending }
-                }
+                val digest = digests.digest(
+                    conversation.id,
+                    ThreadStamp(conversation.updateAt.toEpochMilli(), stamped.nodeCount, stamped.revisionSum, zoneId),
+                )
+                val summary = digest.summary(readAt = prefs.readAt[key] ?: 0L)
+                val waiting = assistant.id in waitingElsewhere || digest.hasPendingTool
                 val lastActivity = maxOf(summary.lastActivity ?: conversation.updateAt, conversation.updateAt)
                 val pinned = organization.isPinned(assistant.id)
                 val hiddenAt = prefs.hiddenAt[key]
@@ -148,6 +159,7 @@ class ImHomeVM(
                     waiting = waiting,
                 )
             }
+            digests.retainOnly(latest.mapTo(HashSet()) { it.conversation.id })
             // A pinned partner stays on top even before its first message.
             val started = items.mapTo(HashSet()) { it.chatId }
             val unstarted = organization.pinned.filter { it !in started }.mapNotNull { id ->
@@ -167,13 +179,13 @@ class ImHomeVM(
 
     /** Chats between partners; only groups count unread, a chat of two partners never does. */
     private val partnerChats = combine(
-        partnerChatService.observeSummaries(), settingsStore.settingsFlow, listState.value, chatApprovals,
-    ) { summaries, settings, prefs, approvals ->
-        val assistants = settings.assistants.associateBy { it.id }
+        partnerChatService.observeSummaries(), roster, listState.value, chatApprovals,
+    ) { summaries, roster, prefs, approvals ->
+        val assistants = roster.assistants.associateBy { it.id }
         summaries.mapNotNull { summary ->
             val members = summary.chat.memberIds.mapNotNull { assistants[it] }
             if (members.size < 2) return@mapNotNull null
-            val pinned = settings.chatOrganization.isPinned(summary.chat.id)
+            val pinned = roster.organization.isPinned(summary.chat.id)
             val hiddenAt = prefs.hiddenAt[summary.chat.id.toString()]
             if (!pinned && hiddenAt != null && summary.lastActivity.toEpochMilli() <= hiddenAt) return@mapNotNull null
             val last = summary.last
@@ -199,8 +211,8 @@ class ImHomeVM(
         (threads + partnerChats).sortedByDescending { it.lastActivity }
     }
 
-    val sections: StateFlow<ImChatSections?> = combine(chats, settingsStore.settingsFlow, listState.value) { chats, settings, prefs ->
-        val organization = settings.chatOrganization
+    val sections: StateFlow<ImChatSections?> = combine(chats, roster, listState.value) { chats, roster, prefs ->
+        val organization = roster.organization
         val byId = chats.associateBy { it.chatId }
         val pinned = organization.pinned.mapNotNull { byId[it] }
         val rest = chats.filterNot { it.pinned }
@@ -255,8 +267,8 @@ class ImHomeVM(
     }
 
     private data class Snapshot(
-        val settings: Settings,
-        val latest: List<Conversation>,
+        val roster: Roster,
+        val latest: List<LatestConversation>,
         val jobIds: Set<Uuid>,
         val prefs: ThreadListPrefs,
         val approvals: Map<Uuid, Set<Uuid>>,

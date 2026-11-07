@@ -16,8 +16,12 @@ interface PartnerChatDAO {
     fun observeChats(): Flow<List<PartnerChatEntity>>
     @Query("SELECT * FROM partner_chat_member ORDER BY joined_at, rowid")
     fun observeMembers(): Flow<List<PartnerChatMemberEntity>>
-    @Query("SELECT * FROM partner_chat_message ORDER BY rowid")
-    fun observeAllMessages(): Flow<List<PartnerChatMessageEntity>>
+    /** The newest message of every chat that has one: one index probe per chat, not a table read. */
+    @Query("SELECT m.* FROM partner_chat_message m WHERE m.rowid = (SELECT MAX(rowid) FROM partner_chat_message WHERE chat_id = m.chat_id)")
+    fun observeLastMessages(): Flow<List<PartnerChatMessageEntity>>
+    /** Messages of [chatId] newer than [after] that [excludedSender] did not write. */
+    @Query("SELECT COUNT(*) FROM partner_chat_message WHERE chat_id = :chatId AND sender_id != :excludedSender AND created_at > :after")
+    suspend fun countAfter(chatId: String, excludedSender: String, after: Long): Int
     @Query("SELECT * FROM partner_chat WHERE id = :id")
     suspend fun getChat(id: String): PartnerChatEntity?
     @Query("SELECT * FROM partner_chat_member WHERE chat_id = :id ORDER BY joined_at, rowid")

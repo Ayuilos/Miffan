@@ -20,10 +20,15 @@ import kotlin.uuid.Uuid
 internal data class ChatMember(val chatId: Uuid, val assistantId: Uuid,
     val segmentId: Uuid? = null, val syncedMessageId: Uuid? = null)
 internal data class ChatMessage(val message: PartnerChatMessage, val chain: List<Uuid> = emptyList())
-internal data class ChatSnapshot(val chats: List<PartnerChat>, val messages: List<ChatMessage>, val members: List<ChatMember> = emptyList())
 
 internal interface PartnerChatStore {
-    fun observeSnapshot(): Flow<ChatSnapshot>
+    /** Every chat with its members; the message table is never read. */
+    fun observeChats(): Flow<List<PartnerChat>>
+    fun observeMembers(): Flow<List<ChatMember>>
+    /** The newest message of each chat that has one, by chat id. */
+    fun observeLastMessages(): Flow<Map<Uuid, PartnerChatMessage>>
+    /** Messages in [chatId] after [after] (epoch millis) not written by [excludedSender]. */
+    suspend fun countMessagesAfter(chatId: Uuid, excludedSender: Uuid, after: Long): Int
     fun observeMessages(chatId: Uuid): Flow<List<ChatMessage>>
     suspend fun chat(chatId: Uuid): PartnerChat?
     suspend fun direct(a: Uuid, b: Uuid): PartnerChat
@@ -49,11 +54,16 @@ internal class RoomPartnerChatStore(
 ) : PartnerChatStore {
     private val dao = db.partnerChatDao()
     private val reservedReplies = mutableMapOf<Uuid, Uuid>()
-    override fun observeSnapshot(): Flow<ChatSnapshot> = combine(
-        dao.observeChats(), dao.observeMembers(), dao.observeAllMessages(),
-    ) { chats, members, messages ->
-        ChatSnapshot(chats.map { it.model(members.filter { m -> m.chatId == it.id }) }, messages.map { it.model() }, members.map { it.model() })
+    override fun observeChats(): Flow<List<PartnerChat>> = combine(dao.observeChats(), dao.observeMembers()) { chats, members ->
+        val byChat = members.groupBy { it.chatId }
+        chats.map { it.model(byChat[it.id].orEmpty()) }
     }
+    override fun observeMembers(): Flow<List<ChatMember>> = dao.observeMembers().map { rows -> rows.map { it.model() } }
+    override fun observeLastMessages(): Flow<Map<Uuid, PartnerChatMessage>> = dao.observeLastMessages().map { rows ->
+        rows.associate { Uuid.parse(it.chatId) to it.model().message }
+    }
+    override suspend fun countMessagesAfter(chatId: Uuid, excludedSender: Uuid, after: Long): Int =
+        dao.countAfter(chatId.toString(), excludedSender.toString(), after)
     override fun observeMessages(chatId: Uuid): Flow<List<ChatMessage>> =
         dao.observeMessages(chatId.toString()).map { rows -> rows.map { it.model() } }
     override suspend fun chat(chatId: Uuid): PartnerChat? =

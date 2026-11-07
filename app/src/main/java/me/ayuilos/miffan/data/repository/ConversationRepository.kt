@@ -20,6 +20,7 @@ import me.ayuilos.miffan.data.db.dao.ConversationDAO
 import me.ayuilos.miffan.data.db.dao.ThreadSegmentDigest
 import me.ayuilos.miffan.data.db.dao.ThreadSegmentStamp
 import me.ayuilos.miffan.data.db.dao.FavoriteDAO
+import me.ayuilos.miffan.data.db.dao.getFavoriteNodeIdsOfConversation
 import me.ayuilos.miffan.data.db.dao.MessageNodeDAO
 import me.ayuilos.miffan.data.db.entity.ConversationEntity
 import me.ayuilos.miffan.data.db.entity.MessageNodeEntity
@@ -104,6 +105,15 @@ class ConversationRepository(
         return conversationDAO
             .observeLatestConversationOfEachAssistant()
             .map { conversations -> conversations.map(::conversationSummaryToConversation) }
+    }
+
+    /** Like [observeLatestConversationOfEachAssistant], with a stamp that changes when the messages do. */
+    fun observeLatestConversationStamps(): Flow<List<LatestConversation>> {
+        return conversationDAO
+            .observeLatestConversationStamps()
+            .map { rows ->
+                rows.map { LatestConversation(conversationSummaryToConversation(it.conversation), it.nodeCount, it.revisionSum) }
+            }
     }
 
     fun getConversationsOfAssistant(assistantId: Uuid): Flow<List<Conversation>> {
@@ -612,6 +622,9 @@ data class LightConversationEntity(
     val folderId: String = "",
     val chatId: String? = null,
 )
+
+/** An assistant's newest conversation (without messages) and what identifies its current messages. */
+data class LatestConversation(val conversation: Conversation, val nodeCount: Int, val revisionSum: Long)
 
 data class ConversationPageResult(
     val items: List<Conversation>,
