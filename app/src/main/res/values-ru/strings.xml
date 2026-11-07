@@ -4366,4 +4366,5 @@
   <string name="im_search_recent">Недавние</string>
   <string name="im_search_hint">Ищите по имени партнёра или по словам из переписки</string>
   <string name="im_memory_empty_desc">Когда вы рассказываете о своих привычках и предпочтениях, партнёры записывают это сюда, чтобы не спрашивать дважды.</string>
+  <string name="im_draw_save_failed">Не удалось сохранить в галерею. Попробуйте ещё раз</string>
 </resources>

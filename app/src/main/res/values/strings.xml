@@ -4333,4 +4333,5 @@
   <string name="im_search_recent">Recent</string>
   <string name="im_search_hint">Search a partner\'s name, or something said in a chat</string>
   <string name="im_memory_empty_desc">When you mention what you like or how you do things, partners note it here so you never have to say it twice.</string>
+  <string name="im_draw_save_failed">Couldn\'t save it to the gallery. Try again</string>
 </resources>

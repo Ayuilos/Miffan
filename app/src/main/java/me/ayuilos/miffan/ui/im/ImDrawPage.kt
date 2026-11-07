@@ -188,7 +188,7 @@ private fun ImDrawing(image: GeneratedImage, onOpen: () -> Unit) {
             filesManager.saveMessageImage(context, "file://${image.filePath}")
             toaster.show(resources.getString(R.string.imggen_page_image_saved_success), type = ToastType.Success)
         } catch (e: Exception) {
-            toaster.show(resources.getString(R.string.imggen_page_save_failed, e.message), type = ToastType.Error)
+            android.util.Log.w("ImDrawPage", "Saving a drawing failed", e); toaster.show(resources.getString(R.string.im_draw_save_failed), type = ToastType.Error)
         }
     }
     Box {
@@ -311,7 +311,7 @@ private fun ImDrawAlbum(vm: ImDrawVM, modifier: Modifier) {
                                 filesManager.saveMessageImage(context, "file://${image.filePath}")
                                 toaster.show(resources.getString(R.string.imggen_page_image_saved_success), type = ToastType.Success)
                             } catch (e: Exception) {
-                                toaster.show(resources.getString(R.string.imggen_page_save_failed, e.message), type = ToastType.Error)
+                                android.util.Log.w("ImDrawPage", "Saving a drawing failed", e); toaster.show(resources.getString(R.string.im_draw_save_failed), type = ToastType.Error)
                             }
                         }
                     }
