@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im
 
+import androidx.compose.foundation.lazy.LazyListState
 import me.ayuilos.miffan.ui.pages.update.UpdateWhatsNewCard
 import android.content.Context
 import androidx.core.content.edit
@@ -82,6 +83,7 @@ import java.time.ZoneId
 internal fun ImChatsTab(
     vm: ImHomeVM,
     innerPadding: PaddingValues,
+    listState: LazyListState,
     onFindPartner: () -> Unit,
     searchOpen: Boolean,
     onSearch: () -> Unit,
@@ -114,6 +116,7 @@ internal fun ImChatsTab(
     val current = sections
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
+        state = listState,
         contentPadding = innerPadding,
     ) {
         item("title") {

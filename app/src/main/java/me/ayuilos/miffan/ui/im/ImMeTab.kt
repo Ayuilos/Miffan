@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im
 
+import androidx.compose.foundation.lazy.LazyListState
 import me.ayuilos.miffan.ui.components.ui.permission.LocalNetworkPermissionCard
 import me.ayuilos.miffan.ui.components.ui.permission.rememberLocalNetworkPermissionState
 import android.content.Intent
@@ -82,7 +83,7 @@ import kotlin.uuid.Uuid
  * plain words, and the professional settings folded away under "advanced".
  */
 @Composable
-internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues) {
+internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, listState: LazyListState) {
     val navController = LocalNavController.current
     val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -110,6 +111,7 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
+        state = listState,
         contentPadding = innerPadding,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {

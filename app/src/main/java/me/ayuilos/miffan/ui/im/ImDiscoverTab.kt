@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im
 
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -41,13 +42,13 @@ import java.time.ZoneId
  * messages and recent drawings, each a step away from its full page.
  */
 @Composable
-internal fun ImDiscoverTab(innerPadding: PaddingValues, vm: ImDiscoverVM = koinViewModel()) {
+internal fun ImDiscoverTab(innerPadding: PaddingValues, listState: LazyListState, vm: ImDiscoverVM = koinViewModel()) {
     val nav = LocalNavController.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val favorites by vm.savedMessages.collectAsStateWithLifecycle()
     val drawings by vm.recentDrawings.collectAsStateWithLifecycle()
     val colors = MaterialTheme.colorScheme
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = innerPadding, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = innerPadding, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item("title") { ImTabTitle(R.string.im_tab_discover) }
         item("tools") {
             Row(Modifier.padding(horizontal = 16.dp).height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
