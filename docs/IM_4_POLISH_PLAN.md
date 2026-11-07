@@ -43,7 +43,7 @@
 
 总管（我）：拆任务、写规格、指派、代码审查、真机与模拟器验收、合并、发布。所有改动先进 `feature/im-4.0`，按批次发布。
 
-分工依据 `~/.agents/AGENTS.md`：界面/Compose 由我亲自做；非界面、规格清楚的任务交给 herdr 里的 Claude 代理（Sonnet，medium/high），每个任务独立 git worktree 和分支，代理不向 `feature/im-4.0` 提交；翻译交给 Haiku 代理；代码审查用 `/code-review`。本机 8 核 16 GB，同一时间最多两个代理在编译。
+分工依据 `~/.agents/AGENTS.md`：界面/Compose 由我亲自做；派给 herdr 代理的任务（非界面、规格清楚的功能，翻译，机械改动）自 2026-11-07 起交给 Codex + Kimi K3.1 Pro（`codex -m workbuddy/kimi-k3.1-pro`），做不好再按表交给对应的 Claude 代理（Sonnet/Haiku）；每个任务独立 git worktree 和分支，代理不向 `feature/im-4.0` 提交；代码审查用 `/code-review`。Codex 的沙箱确认由你在窗格里批准。本机 8 核 16 GB，同一时间最多两个代理在编译。（W0、W1.1–W1.4、W3.3 是在此之前由 Sonnet 代理完成的。）
 
 ### W0 测量基建（先做，其他性能任务以它为准）
 
