@@ -4298,4 +4298,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_search_hint">パートナーの名前や、チャットで話した内容を検索できます</string>
   <string name="im_memory_empty_desc">チャットで話した好みや習慣はパートナーがここに記録するので、同じことを二度言う必要はありません。</string>
   <string name="im_draw_save_failed">ギャラリーに保存できませんでした。もう一度試してください</string>
+  <string name="im_nickname_title">パートナーからの呼び名</string>
+  <string name="im_nickname_hint">変更すると、次の返事から新しい呼び名になります</string>
+  <string name="im_sheet_done">完了</string>
 </resources>

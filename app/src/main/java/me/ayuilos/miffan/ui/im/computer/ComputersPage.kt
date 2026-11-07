@@ -745,43 +745,24 @@ private fun PartnerPickerDialog(
     onPick: (Assistant) -> Unit,
     extra: Pair<String, () -> Unit>? = null,
 ) {
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = {
-        Column(Modifier.heightIn(max = 420.dp)) {
-            LazyColumn(Modifier.weight(1f, fill = false)) {
-                items(partners, key = { it.id.toString() }) { partner ->
-                    Surface(onClick = { onPick(partner) }, color = Color.Transparent, shape = MaterialTheme.shapes.medium) {
-                        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            AssistantAvatar(partner.name, partner.avatar, Modifier.size(36.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(threadAssistantName(partner), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                supporting(partner)?.let {
-                                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
+    me.ayuilos.miffan.ui.im.ImPartnerPickSheet(title = title, partners = partners, onDismiss = onDismiss, onPick = onPick,
+        supporting = supporting, footer = if (extra == null && footer == null) null else { {
+            extra?.let { (label, onClick) ->
+                Surface(onClick = onClick, color = Color.Transparent, shape = MaterialTheme.shapes.large) {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                            Icon(HugeIcons.ComputerScreenShare, null, tint = MaterialTheme.colorScheme.primary)
                         }
-                    }
-                }
-                extra?.let { (label, onClick) ->
-                    item("extra") {
-                        Surface(onClick = onClick, color = Color.Transparent, shape = MaterialTheme.shapes.medium) {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
-                                    Icon(HugeIcons.ComputerScreenShare, null, tint = MaterialTheme.colorScheme.primary)
-                                }
-                                Text(label)
-                            }
-                        }
+                        Text(label)
                     }
                 }
             }
             footer?.let {
-                Text(it, Modifier.padding(top = 12.dp), style = MaterialTheme.typography.bodySmall,
+                Text(it, Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-        }
-    }, confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } })
+        } })
 }
 
 /** A computer's screen opened from "my computers" with no partner: the same screen page, without the partner strip. */

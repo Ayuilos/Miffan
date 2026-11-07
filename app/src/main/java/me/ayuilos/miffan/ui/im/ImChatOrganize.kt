@@ -179,28 +179,18 @@ private fun ImGroupPickerRow(icon: ImageVector?, label: String, selected: Boolea
     }
 }
 
+/** Naming a group (new, rename, a group chat's title) in easy mode's input sheet. */
 @Composable
 internal fun ImGroupNameDialog(title: Int, initial: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit, allowBlank: Boolean = false) {
-    var name by remember { mutableStateOf(initial) }
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
     // A group chat with no name shows its members' names instead, so clearing the name is allowed there.
-    val valid = allowBlank || name.isNotBlank()
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(title)) },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it.take(GROUP_NAME_MAX) },
-                placeholder = { Text(stringResource(R.string.im_chats_group_name)) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { if (valid) onConfirm(name.trim()) }),
-                modifier = Modifier.fillMaxWidth().focusRequester(focus),
-            )
-        },
-        confirmButton = { TextButton(enabled = valid, onClick = { onConfirm(name.trim()) }) { Text(stringResource(R.string.confirm)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    ImTextInputSheet(
+        title = stringResource(title),
+        initial = initial,
+        placeholder = stringResource(R.string.im_chats_group_name),
+        confirmLabel = stringResource(R.string.im_sheet_done),
+        maxLength = GROUP_NAME_MAX,
+        allowBlank = allowBlank,
+        onDismiss = onDismiss,
+        onConfirm = onConfirm,
     )
 }

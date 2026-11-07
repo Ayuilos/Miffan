@@ -4298,4 +4298,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_search_hint">파트너 이름이나 대화에서 나온 말을 검색할 수 있어요</string>
   <string name="im_memory_empty_desc">대화 중에 말한 취향과 습관을 파트너가 여기에 기록해서, 같은 말을 두 번 할 필요가 없어요.</string>
   <string name="im_draw_save_failed">갤러리에 저장하지 못했어요. 다시 시도해 보세요</string>
+  <string name="im_nickname_title">파트너가 부르는 이름</string>
+  <string name="im_nickname_hint">바꾸면 다음 답장부터 새 이름으로 불러요</string>
+  <string name="im_sheet_done">완료</string>
 </resources>

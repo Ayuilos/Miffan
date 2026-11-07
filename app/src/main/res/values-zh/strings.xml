@@ -4303,4 +4303,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_search_hint">可以搜伙伴的名字，或聊天里说过的话</string>
   <string name="im_memory_empty_desc">聊天时说起的喜好和习惯，伙伴会记在这里，下次就不用再说一遍。</string>
   <string name="im_draw_save_failed">没存到相册，再试一次吧</string>
+  <string name="im_nickname_title">伙伴们怎么称呼你</string>
+  <string name="im_nickname_hint">改了之后，下一句就会用新的称呼</string>
+  <string name="im_sheet_done">好了</string>
 </resources>

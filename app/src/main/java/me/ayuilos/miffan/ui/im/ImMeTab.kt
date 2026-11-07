@@ -258,24 +258,15 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, listState: LazyL
     }
 
     nicknameEditState.EditStateContent { value, onUpdate ->
-        AlertDialog(
-            onDismissRequest = { nicknameEditState.dismiss() },
-            title = { Text(stringResource(R.string.chat_page_edit_nickname)) },
-            text = {
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = onUpdate,
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    placeholder = { Text(stringResource(R.string.chat_page_nickname_placeholder)) },
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { nicknameEditState.confirm() }) { Text(stringResource(R.string.chat_page_save)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { nicknameEditState.dismiss() }) { Text(stringResource(R.string.chat_page_cancel)) }
-            },
+        ImTextInputSheet(
+            title = stringResource(R.string.im_nickname_title),
+            subtitle = stringResource(R.string.im_nickname_hint),
+            initial = value,
+            placeholder = stringResource(R.string.chat_page_nickname_placeholder),
+            confirmLabel = stringResource(R.string.im_sheet_done),
+            allowBlank = true,
+            onDismiss = { nicknameEditState.dismiss() },
+            onConfirm = { onUpdate(it); nicknameEditState.confirm() },
         )
     }
 }
