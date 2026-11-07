@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im.thread
 
+import androidx.compose.ui.platform.testTag
 import me.ayuilos.miffan.utils.NetworkMonitor
 import org.koin.compose.koinInject
 import androidx.compose.runtime.CompositionLocalProvider
@@ -115,6 +116,7 @@ fun AgentThreadPage(
     val deliveries by delivery.summaries.collectAsStateWithLifecycle()
     val taskDelivery = deliveries[assistantId]
     val listState = rememberLazyListState()
+    LaunchedEffect(loaded) { if (loaded) me.ayuilos.miffan.utils.ThreadOpenTrace.end() }
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val missingMessage = stringResource(R.string.im_thread_missing_message)
@@ -375,7 +377,7 @@ fun AgentThreadPage(
         handOff = welcome != null && welcomeDecided && (status != null || partnerLeft))) {
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         assistant?.let { AssistantBackground(it, Modifier.fillMaxSize().hazeSource(hazeState, zIndex = -1f)) }
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().hazeSource(hazeState),
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().hazeSource(hazeState).testTag("thread_list"),
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = topChrome + 4.dp, bottom = bottomChrome + 8.dp)) {
             if (welcomeDecided) {
                 if (welcome == null) {

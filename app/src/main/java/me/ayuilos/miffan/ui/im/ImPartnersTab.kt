@@ -1,6 +1,7 @@
 package me.ayuilos.miffan.ui.im
 
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.ui.platform.testTag
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -101,7 +102,7 @@ internal fun ImPartnersTab(vm: ImHomeVM, innerPadding: PaddingValues, listState:
         ImPartnerRow(partner, taglines[partner.id], threads[partner.id], organization.isPinned(partner.id), vm) { moving = partner }
     }
 
-    LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = innerPadding) {
+    LazyColumn(Modifier.fillMaxSize().testTag("im_partner_list"), state = listState, contentPadding = innerPadding) {
         item("title") {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ImTabTitle(R.string.im_tab_partners, Modifier.weight(1f))
@@ -195,7 +196,7 @@ private fun ImPartnerRow(assistant: Assistant, tagline: String?, thread: ImChatI
     val menu = rememberPressMenu()
     Box {
         Row(
-            Modifier.fillMaxWidth().imLongPress(menu::open).clickable(onClick = openProfile).padding(horizontal = 16.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().testTag("im_partner_row_${assistant.id}").imLongPress(menu::open).clickable(onClick = openProfile).padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {

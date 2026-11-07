@@ -1,6 +1,8 @@
 package me.ayuilos.miffan.ui.im
 
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.activity.compose.ReportDrawn
+import androidx.compose.ui.platform.testTag
 import me.ayuilos.miffan.ui.pages.update.UpdateWhatsNewCard
 import android.content.Context
 import androidx.core.content.edit
@@ -104,6 +106,7 @@ internal fun ImChatsTab(
     var renaming by remember { mutableStateOf<ChatGroup?>(null) }
     var deleting by remember { mutableStateOf<ChatGroup?>(null) }
     val open: (ImChatItem) -> Unit = {
+        me.ayuilos.miffan.utils.ThreadOpenTrace.begin()
         navController.navigate(if (it.isPartnerChat) Screen.PartnerChat(it.chatId.toString()) else Screen.Thread(it.chatId.toString()))
     }
     val actions = ImChatActions(
@@ -114,8 +117,10 @@ internal fun ImChatsTab(
     )
 
     val current = sections
+    // The list has its data (not only its frame): report the first full display for startup benchmarks.
+    if (current != null) ReportDrawn()
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().testTag("im_chat_list"),
         state = listState,
         contentPadding = innerPadding,
     ) {
@@ -235,6 +240,7 @@ private fun ImPinnedChat(chat: ImChatItem, avatarSize: Dp, width: Dp, nameStyle:
         Column(
             modifier = Modifier
                 .width(width)
+                .testTag("im_chat_row_${chat.chatId}")
                 .clip(RoundedCornerShape(20.dp))
                 .imLongPress(menu::open)
                 .clickable { actions.open(chat) }
@@ -309,6 +315,7 @@ private fun ImChatRow(chat: ImChatItem, actions: ImChatActions) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .testTag("im_chat_row_${chat.chatId}")
                 .imLongPress(menu::open)
                 .clickable { actions.open(chat) }
                 .padding(horizontal = 16.dp, vertical = 12.dp),

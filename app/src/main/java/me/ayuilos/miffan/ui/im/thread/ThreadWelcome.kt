@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im.thread
 
+import androidx.compose.ui.platform.testTag
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
@@ -107,7 +108,7 @@ internal fun ThreadWelcomeHero(
                 }
             }
             AnimatedVisibility(historyHidden, exit = fadeOut() + shrinkVertically()) {
-                FilledTonalButton(onClick = onShowHistory, modifier = Modifier.padding(top = 20.dp)) {
+                FilledTonalButton(onClick = onShowHistory, modifier = Modifier.padding(top = 20.dp).testTag("thread_show_history")) {
                     Icon(HugeIcons.Clock02, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.im_thread_show_history))

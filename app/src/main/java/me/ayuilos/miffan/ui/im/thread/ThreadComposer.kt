@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im.thread
 
+import androidx.compose.ui.platform.testTag
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -298,7 +299,7 @@ internal fun ThreadComposer(
                     } else Box(Modifier.weight(1f).heightIn(max = maxFieldHeight).verticalScroll(fieldScroll)) {
                         BasicTextField(value = field, onValueChange = { field = keepChipsWhole(field, it, mentionables); onInput(field.text) },
                         visualTransformation = chipStyle, onTextLayout = { textLayout = it },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp).onFocusChanged { if (it.isFocused) menu = false },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp).testTag("thread_input").onFocusChanged { if (it.isFocused) menu = false },
                         textStyle = textStyle.copy(color = MaterialTheme.colorScheme.onSurface),
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -325,6 +326,7 @@ internal fun ThreadComposer(
                     val hasDraft = input.isNotBlank() || attachments.messageContent.isNotEmpty()
                     val stops = generating && !hasDraft
                     if (generating || hasDraft) FilledIconButton(
+                        modifier = Modifier.testTag(if (stops) "thread_stop" else "thread_send"),
                         onClick = {
                             if (stops) onStop() else sendDraft()
                         }, enabled = loaded && (stops || (!importing && !asrState.isRecording)),
