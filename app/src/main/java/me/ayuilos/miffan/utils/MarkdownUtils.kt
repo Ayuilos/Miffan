@@ -7,8 +7,9 @@ package me.ayuilos.miffan.utils
 fun String.stripMarkdown(): String {
     // The patterns are compiled once: previews are built for every quote and list row, often per frame.
     return this
-        // 移除代码块 (```...``` 和 `...`)
-        .replace(StripMarkdown.code, "")
+        // 移除代码块；行内代码只去掉反引号，保留内容（文件名、命令在预览里要看得到）
+        .replace(StripMarkdown.codeBlock, "")
+        .replace(StripMarkdown.inlineCode, "$1")
         // 移除图片和链接，但保留其文本内容
         .replace(StripMarkdown.link, "$1")
         // 移除加粗和斜体 (先处理两个星号的)
@@ -34,7 +35,8 @@ fun String.stripMarkdown(): String {
 }
 
 private object StripMarkdown {
-    val code = Regex("```[\\s\\S]*?```|`[^`]*?`")
+    val codeBlock = Regex("```[\\s\\S]*?```")
+    val inlineCode = Regex("`([^`]*?)`")
     val link = Regex("!?\\[([^\\]]+)\\]\\([^\\)]*\\)")
     val bold = Regex("\\*\\*([^*]+?)\\*\\*")
     val italic = Regex("\\*([^*]+?)\\*")
