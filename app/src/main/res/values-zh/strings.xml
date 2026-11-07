@@ -4301,4 +4301,5 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_backup_import_failed">这个文件恢复不了：可能不是对应的备份文件，或者已经损坏</string>
   <string name="im_search_recent">最近聊过</string>
   <string name="im_search_hint">可以搜伙伴的名字，或聊天里说过的话</string>
+  <string name="im_memory_empty_desc">聊天时说起的喜好和习惯，伙伴会记在这里，下次就不用再说一遍。</string>
 </resources>

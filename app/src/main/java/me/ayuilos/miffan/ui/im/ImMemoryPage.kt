@@ -27,6 +27,8 @@ import java.time.ZoneId
 import kotlin.uuid.Uuid
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Brain02
+import me.rerere.hugeicons.stroke.Delete02
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 @Composable
 fun ImMemoryPage(ownerId: String, assistantId: String? = null, vm: ImMemoryVM = koinViewModel(key = ownerId, parameters = { parametersOf(ownerId) })) {
@@ -45,25 +47,29 @@ fun ImMemoryPage(ownerId: String, assistantId: String? = null, vm: ImMemoryVM = 
     } }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp)) {
             assistantId?.let { id -> item("remember") { ImRememberSwitch(vm, Uuid.parse(id)) } }
-            item("explanation") { Text(stringResource(R.string.im_p5_memory_info), Modifier.padding(bottom = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            if (rows?.isEmpty() == true) item("empty") { ImEmpty(stringResource(R.string.im_p5_memory_empty)) }
+            // The empty state explains itself; the line above a list says what the list is.
+            if (rows?.isEmpty() != true) item("explanation") { Text(stringResource(R.string.im_p5_memory_info), Modifier.padding(bottom = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (rows?.isEmpty() == true) item("empty") { ImMemoryEmpty() }
             items(rows.orEmpty(), key = { it.memory.id }) { row ->
                 val memory = row.memory
+                // One card per memory, like the other easy-mode lists; tapping it opens where it was said.
+                Surface(Modifier.fillMaxWidth().padding(bottom = 8.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    shape = RoundedCornerShape(20.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).clickable {
                         if (row.sourceAssistantId != null && memory.sourceMessageId.isNotBlank()) nav.navigate(Screen.Thread(row.sourceAssistantId, memory.sourceMessageId))
                         else scope.launch { snackbar.showSnackbar(missing) }
-                    }.padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(memory.content, style = MaterialTheme.typography.titleMedium)
+                    }.padding(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(memory.content, style = MaterialTheme.typography.bodyLarge)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            row.partner?.let { AssistantAvatar(it.name, it.avatar, Modifier.size(28.dp)) }
+                            row.partner?.let { AssistantAvatar(it.name, it.avatar, Modifier.size(24.dp)) }
                             val name = row.partner?.name?.ifBlank { stringResource(R.string.assistant_page_default_assistant) } ?: stringResource(R.string.im_p5_unknown_source)
                             val date = if (memory.createdAt > 0) Instant.ofEpochMilli(memory.createdAt).atZone(ZoneId.systemDefault()).toLocalDate().toLocalString(includeYear = true)
                                 else stringResource(R.string.im_p5_unknown_date)
                             Text(stringResource(R.string.im_p5_memory_by, name, date), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    TextButton(enabled = memory.id !in deleting, onClick = {
+                    IconButton(enabled = memory.id !in deleting, onClick = {
                         deleting = deleting + memory.id
                         scope.launch {
                             try {
@@ -75,9 +81,9 @@ fun ImMemoryPage(ownerId: String, assistantId: String? = null, vm: ImMemoryVM = 
                             catch (_: Exception) { snackbar.showSnackbar(failure) }
                             finally { deleting = deleting - memory.id }
                         }
-                    }) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }) { Icon(HugeIcons.Delete02, stringResource(R.string.delete), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
+                }
             }
         }
     }
@@ -93,5 +99,19 @@ private fun ImRememberSwitch(vm: ImMemoryVM, assistantId: Uuid) {
         ImListRow(HugeIcons.Brain02, stringResource(R.string.im_p5_remember), tone = ImIconTone.SECONDARY,
             onClick = { scope.launch { vm.setMemoryEnabled(assistantId, !on) } },
             trailing = { Switch(on, { scope.launch { vm.setMemoryEnabled(assistantId, it) } }) })
+    }
+}
+
+/** Nothing remembered yet: say what will show up here and how it gets here. */
+@Composable
+private fun ImMemoryEmpty() {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(20.dp)) {
+            Icon(HugeIcons.Brain02, null, Modifier.padding(16.dp).size(32.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+        }
+        Text(stringResource(R.string.im_p5_memory_empty), style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.im_memory_empty_desc), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }

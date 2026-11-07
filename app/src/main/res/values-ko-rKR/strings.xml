@@ -4296,4 +4296,5 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_backup_import_failed">이 파일은 복원할 수 없어요. 맞는 백업 파일이 아니거나 손상되었을 수 있어요</string>
   <string name="im_search_recent">최근 대화</string>
   <string name="im_search_hint">파트너 이름이나 대화에서 나온 말을 검색할 수 있어요</string>
+  <string name="im_memory_empty_desc">대화 중에 말한 취향과 습관을 파트너가 여기에 기록해서, 같은 말을 두 번 할 필요가 없어요.</string>
 </resources>

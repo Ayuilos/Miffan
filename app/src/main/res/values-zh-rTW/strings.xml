@@ -4294,4 +4294,5 @@
   <string name="im_backup_import_failed">這個檔案恢復不了：可能不是對應的備份檔案，或者已經損壞</string>
   <string name="im_search_recent">最近聊過</string>
   <string name="im_search_hint">可以搜夥伴的名字，或聊天裡說過的話</string>
+  <string name="im_memory_empty_desc">聊天時說起的喜好和習慣，夥伴會記在這裡，下次就不用再說一遍。</string>
 </resources>

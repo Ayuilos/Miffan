@@ -4332,4 +4332,5 @@
   <string name="im_backup_import_failed">This file can\'t be restored. It may not be a backup from here, or it\'s damaged</string>
   <string name="im_search_recent">Recent</string>
   <string name="im_search_hint">Search a partner\'s name, or something said in a chat</string>
+  <string name="im_memory_empty_desc">When you mention what you like or how you do things, partners note it here so you never have to say it twice.</string>
 </resources>

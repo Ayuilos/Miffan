@@ -4365,4 +4365,5 @@
   <string name="im_backup_import_failed">Этот файл не удаётся восстановить. Возможно, это не та резервная копия или файл повреждён</string>
   <string name="im_search_recent">Недавние</string>
   <string name="im_search_hint">Ищите по имени партнёра или по словам из переписки</string>
+  <string name="im_memory_empty_desc">Когда вы рассказываете о своих привычках и предпочтениях, партнёры записывают это сюда, чтобы не спрашивать дважды.</string>
 </resources>
