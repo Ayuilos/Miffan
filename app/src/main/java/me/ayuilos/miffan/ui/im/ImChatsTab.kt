@@ -60,6 +60,7 @@ import me.ayuilos.miffan.data.model.ChatGroup
 import me.ayuilos.miffan.data.thread.PreviewKind
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
+import me.ayuilos.miffan.utils.shortTimeFormatter
 import me.ayuilos.miffan.utils.toLocalString
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
@@ -76,8 +77,6 @@ import me.rerere.hugeicons.stroke.ViewOff
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 
 @Composable
 internal fun ImChatsTab(
@@ -394,7 +393,7 @@ internal fun imChatTime(instant: Instant): String {
     val today = LocalDate.now()
     val locale = LocalConfiguration.current.locales[0]
     return when (date.toLocalDate()) {
-        today -> DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale).format(date)
+        today -> shortTimeFormatter(locale).format(date)
         today.minusDays(1) -> stringResource(R.string.im_time_yesterday)
         else -> date.toLocalDate().toLocalString(includeYear = date.year != today.year)
     }

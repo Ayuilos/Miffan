@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
+import me.ayuilos.miffan.ui.im.computer.screenshotPixelSize
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.computer.PartnerComputer
 import me.ayuilos.miffan.data.ai.tools.COMPUTER_TOOL_PREFIX
@@ -71,6 +72,8 @@ import me.rerere.hugeicons.stroke.Cube
 import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Tick01
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 internal val computerObservationNames = setOf(
     "start", "get_desktop_state", "get_window_state", "list_windows", "list_apps", "read_guide",
@@ -352,18 +355,29 @@ private fun ComputerMiniScreen(url: String, pointerTool: UIMessagePart.Tool?, hi
     val colors = MaterialTheme.colorScheme
     val accent = colors.tertiary
     val shape = RoundedCornerShape(14.dp)
-    var image by remember(url) { mutableStateOf<Size?>(null) }
+    var decoded by remember(url) { mutableStateOf<Size?>(null) }
+    // The partner's x,y are in the picture's own pixels; read them from the header rather than decoding
+    // a full-size desktop picture (a 5K screen is tens of MB) for every card in the chat.
+    val local = url.startsWith("file:") || url.startsWith("/")
+    val original by produceState<Size?>(null, url) {
+        if (local) value = withContext(Dispatchers.IO) { screenshotPixelSize(url) }?.let { (w, h) -> Size(w.toFloat(), h.toFloat()) }
+    }
+    // A downscaled picture keeps its shape, so it can size the frame before the header is read.
+    val image = original ?: decoded
+    // Only the original pixel size maps the partner's x,y; anything else would misplace the pointer.
+    val pixels = if (local) original else decoded
     val context = LocalPlatformContext.current
-    // Full size: the partner's x,y are in the picture's own pixels.
-    val request = remember(url) { ImageRequest.Builder(context).data(url).size(coil3.size.Size.ORIGINAL).build() }
+    val request = remember(url) {
+        ImageRequest.Builder(context).data(url).size(if (local) coil3.size.Size(MINI_SCREEN_MAX_PX, MINI_SCREEN_MAX_PX) else coil3.size.Size.ORIGINAL).build()
+    }
     Box(Modifier.fillMaxWidth().aspectRatio((image?.let { it.width / it.height } ?: 1.6f).coerceIn(1f, 2.2f))
         .clip(shape).background(ScreenDark).border(2.dp, accent, shape)
         .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)) {
         AsyncImage(model = request, contentDescription = stringResource(R.string.im_computer_screenshot), contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize(), onSuccess = { image = Size(it.result.image.width.toFloat(), it.result.image.height.toFloat()) })
+            modifier = Modifier.fillMaxSize(), onSuccess = { decoded = Size(it.result.image.width.toFloat(), it.result.image.height.toFloat()) })
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val box = Size(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
-            val picture = image
+            val picture = pixels
             val point = if (pointerTool != null && picture != null) computerPointer(pointerTool, picture.width, picture.height) else null
             if (picture != null && point != null) {
                 val fit = minOf(box.width / picture.width, box.height / picture.height)
@@ -509,3 +523,6 @@ internal fun ThreadComputerApprovalCard(
         DefaultToolPreview(ToolUIContext(tool, tool.inputAsJson(), null, false))
     }
 }
+
+/** Wide enough for the card on any phone; the picture is never shown larger than the chat column. */
+private const val MINI_SCREEN_MAX_PX = 1600

@@ -157,6 +157,9 @@ private fun escapeHtml(text: CharSequence): String =
 
 // ---- Main composable ----
 
+// Settled messages scrolling back into view reuse their HTML instead of converting again.
+private val htmlCache = android.util.LruCache<String, String>(48)
+
 @Composable
 fun MarkdownNew(
     content: String,
@@ -166,7 +169,7 @@ fun MarkdownNew(
 ) {
     var html by remember {
         mutableStateOf(
-            value = generateMarkdownHtml(content),
+            value = htmlCache.get(content) ?: generateMarkdownHtml(content).also { htmlCache.put(content, it) },
         )
     }
 
@@ -174,7 +177,7 @@ fun MarkdownNew(
     LaunchedEffect(Unit) {
         snapshotFlow { updatedContent }
             .distinctUntilChanged()
-            .mapLatest { generateMarkdownHtml(it) }
+            .mapLatest { htmlCache.get(it) ?: generateMarkdownHtml(it) }
             .catch { it.printStackTrace() }
             .flowOn(Dispatchers.Default)
             .collect { html = it }

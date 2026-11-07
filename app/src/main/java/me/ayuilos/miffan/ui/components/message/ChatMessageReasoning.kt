@@ -112,7 +112,8 @@ private fun rememberReasoningState(reasoning: UIMessagePart.Reasoning): Pair<Rea
         if (loading) {
             while (isActive) {
                 state.duration = (reasoning.finishedAt ?: Clock.System.now()) - reasoning.createdAt
-                delay(50)
+                // Shown to a tenth of a second, so a faster tick only recomposes for nothing.
+                delay(100)
             }
         }
     }

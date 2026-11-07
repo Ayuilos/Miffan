@@ -117,19 +117,25 @@ private fun PartnerScreenContent(assistantId: Uuid, name: String, vm: RemoteScre
         onPauseOrDispose { thread.setVisible(false) }
     }
     val partnerName = threadAssistantName(assistant)
-    val replies = timeline.items.filterIsInstance<TimelineItem.Message>().filter { it.message.role == MessageRole.ASSISTANT }
-    val latest = replies.lastOrNull { it.streaming } ?: replies.lastOrNull()
-    // The feed follows the partner's current work, else the last reply that did something on a computer.
-    val subject = latest?.takeIf { it.streaming || it.message.parts.any { part -> part is UIMessagePart.Tool && part.isComputerTool() } }
-        ?: replies.lastOrNull { item -> item.message.parts.any { it is UIMessagePart.Tool && it.isComputerTool() } }
-    // The panel is a short window on the chat: the latest messages both ways, so a question typed below
-    // gets its answer here too. The partner's computer steps show inside its replies.
-    val recent = timeline.items.filterIsInstance<TimelineItem.Message>()
-        .filter { it.message.role == MessageRole.USER || it.message.role == MessageRole.ASSISTANT }
-        .takeLast(RECENT_MESSAGES)
-    // Everything the partner is waiting on, not only computer actions: commands and questions block it too.
-    val pending = replies.flatMap { item -> item.message.parts.filterIsInstance<UIMessagePart.Tool>()
-        .filter { it.approvalState is ToolApprovalState.Pending }.map { item to it } }
+    // Derived from the timeline only, so typing in the box below or a controller change reuses them.
+    val feed = remember(timeline.items) {
+        val messages = timeline.items.filterIsInstance<TimelineItem.Message>()
+        val replies = messages.filter { it.message.role == MessageRole.ASSISTANT }
+        val latest = replies.lastOrNull { it.streaming } ?: replies.lastOrNull()
+        // The feed follows the partner's current work, else the last reply that did something on a computer.
+        val subject = latest?.takeIf { it.streaming || it.message.parts.any { part -> part is UIMessagePart.Tool && part.isComputerTool() } }
+            ?: replies.lastOrNull { item -> item.message.parts.any { it is UIMessagePart.Tool && it.isComputerTool() } }
+        // The panel is a short window on the chat: the latest messages both ways, so a question typed below
+        // gets its answer here too. The partner's computer steps show inside its replies.
+        val recent = messages
+            .filter { it.message.role == MessageRole.USER || it.message.role == MessageRole.ASSISTANT }
+            .takeLast(RECENT_MESSAGES)
+        // Everything the partner is waiting on, not only computer actions: commands and questions block it too.
+        val pending = replies.flatMap { item -> item.message.parts.filterIsInstance<UIMessagePart.Tool>()
+            .filter { it.approvalState is ToolApprovalState.Pending }.map { item to it } }
+        ScreenFeed(replies, latest, subject, recent, pending)
+    }
+    val (_, latest, subject, recent, pending) = feed
     val pendingComputer = pending.firstOrNull { it.second.isComputerTool() }
     val userHolds = controller == me.ayuilos.miffan.data.ai.computer.RemoteController.USER && holder != null
     val current = subject?.takeIf { it.streaming }?.message?.parts?.filterIsInstance<UIMessagePart.Tool>()
@@ -379,14 +385,15 @@ private fun rememberActionPoint(tool: UIMessagePart.Tool?, parts: List<UIMessage
     val screenshot = if (index < 0) null else parts.subList(0, index).filterIsInstance<UIMessagePart.Tool>()
         .flatMap { it.output }.filterIsInstance<UIMessagePart.Image>().lastOrNull()?.url
     val size by produceState<Pair<Int, Int>?>(null, screenshot) {
-        value = screenshot?.let { url -> withContext(Dispatchers.IO) { imageSize(url) } }
+        value = screenshot?.let { url -> withContext(Dispatchers.IO) { screenshotPixelSize(url) } }
     }
     val (width, height) = size ?: return null
     if (x == null || y == null || width <= 0 || height <= 0) return null
     return (x / width).coerceIn(0f, 1f) to (y / height).coerceIn(0f, 1f)
 }
 
-private fun imageSize(url: String): Pair<Int, Int>? = runCatching {
+/** A local picture's pixel size, read from its header without decoding it. */
+internal fun screenshotPixelSize(url: String): Pair<Int, Int>? = runCatching {
     val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(requireNotNull(url.toUri().path), options)
     options.outWidth to options.outHeight
@@ -394,3 +401,11 @@ private fun imageSize(url: String): Pair<Int, Int>? = runCatching {
 
 /** A reply that grows after the page opened (it was paused on a question, say) counts as new. */
 private fun replyKey(item: TimelineItem.Message) = "${item.message.id}:${item.message.parts.size}"
+
+private data class ScreenFeed(
+    val replies: List<TimelineItem.Message>,
+    val latest: TimelineItem.Message?,
+    val subject: TimelineItem.Message?,
+    val recent: List<TimelineItem.Message>,
+    val pending: List<Pair<TimelineItem.Message, UIMessagePart.Tool>>,
+)

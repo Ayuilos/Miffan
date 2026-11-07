@@ -235,6 +235,13 @@ private fun parseMarkdown(content: String): MarkdownParseResult {
     return MarkdownParseResult(preprocessed, astTree, astTree.containsHtml())
 }
 
+// Rows of a long chat leave and re-enter composition while scrolling; parsing a message again each
+// time it scrolls back into view costs frames. Only settled text is cached, not every streamed prefix.
+private val parseCache = android.util.LruCache<String, MarkdownParseResult>(48)
+
+private fun parseMarkdownCached(content: String): MarkdownParseResult =
+    parseCache.get(content) ?: parseMarkdown(content).also { parseCache.put(content, it) }
+
 @Composable
 fun MarkdownBlock(
     content: String,
@@ -242,7 +249,7 @@ fun MarkdownBlock(
     style: TextStyle = LocalTextStyle.current,
     onClickCitation: (String) -> Unit = {}
 ) {
-    var (data, setData) = remember { mutableStateOf(parseMarkdown(content)) }
+    var (data, setData) = remember { mutableStateOf(parseMarkdownCached(content)) }
 
     // 监听内容变化，重新解析AST树
     // 这里在后台线程解析AST树, 防止频繁更新的时候掉帧
@@ -250,7 +257,8 @@ fun MarkdownBlock(
     LaunchedEffect(Unit) {
         snapshotFlow { updatedContent }
             .distinctUntilChanged()
-            .mapLatest { parseMarkdown(it) }
+            // The first value is the text just parsed above; later ones are streamed and stay uncached.
+            .mapLatest { parseCache.get(it) ?: parseMarkdown(it) }
             .catch { exception -> exception.printStackTrace() }
             .flowOn(Dispatchers.Default)
             .collect { setData(it) }
