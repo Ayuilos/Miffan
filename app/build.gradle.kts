@@ -128,12 +128,6 @@ android {
     }
     sourceSets {
         getByName("androidTest").assets.srcDirs("$projectDir/schemas")
-        // The performance fixture (src/perfFixture) is compiled into debug and the macrobenchmark variants only,
-        // never into the shipping release. Debug declares its manifest entry in src/debug/AndroidManifest.xml.
-        matching { it.name in PERF_FIXTURE_VARIANTS }.configureEach {
-            kotlin.srcDir("src/perfFixture/java")
-            if (name != "debug") manifest.srcFile("src/perfFixture/AndroidManifest.xml")
-        }
     }
     androidResources {
         generateLocaleConfig = true
@@ -162,6 +156,17 @@ android {
         compilerOptions.optIn.add("kotlin.time.ExperimentalTime")
         compilerOptions.optIn.add("kotlinx.coroutines.ExperimentalCoroutinesApi")
         compilerOptions.optIn.add("androidx.navigation3.runtime.ExperimentalNavigation3Api")
+    }
+}
+
+// The performance fixture (src/perfFixture: sources and the receiver's manifest entry) is added to debug and to the
+// macrobenchmark variants only, never to the shipping release.
+androidComponents {
+    onVariants { variant ->
+        if (variant.buildType in PERF_FIXTURE_VARIANTS) {
+            variant.sources.kotlin?.addStaticSourceDirectory("src/perfFixture/java")
+            variant.sources.manifests.addStaticManifestFile("src/perfFixture/AndroidManifest.xml")
+        }
     }
 }
 

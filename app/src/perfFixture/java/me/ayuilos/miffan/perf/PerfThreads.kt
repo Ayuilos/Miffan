@@ -5,7 +5,6 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -73,6 +72,7 @@ internal class ThreadSpec(
  */
 internal fun buildThread(spec: ThreadSpec, images: List<String>): BuiltThread {
     val random = Random(spec.seed)
+    val topicOffset = spec.seed and Int.MAX_VALUE
     val sizes = segmentSizes(spec, random)
     val gapMs = spec.days * DAY_MS / spec.segmentCount
     val conversations = ArrayList<Conversation>(spec.segmentCount)
@@ -168,12 +168,12 @@ internal fun buildThread(spec: ThreadSpec, images: List<String>): BuiltThread {
         conversations += Conversation(
             id = segmentId,
             assistantId = spec.assistantId,
-            title = PerfCorpus.topicTitle(segment + spec.seed),
+            title = PerfCorpus.topicTitle(segment + topicOffset),
             messageNodes = nodes,
             selectedRootId = nodes.first().id,
             createAt = java.time.Instant.ofEpochMilli(startAt),
             updateAt = java.time.Instant.ofEpochMilli(clock),
-            threadSummary = if (last) "" else PerfCorpus.topicSummary(segment + spec.seed),
+            threadSummary = if (last) "" else PerfCorpus.topicSummary(segment + topicOffset),
             threadClosedAt = if (last) 0 else clock + 30 * 60_000L,
             topicStart = when {
                 segment == 0 -> null
@@ -320,6 +320,3 @@ private fun toolParts(random: Random, subject: String, id: String, at: Long, ima
             )
         }
     }
-
-@Suppress("unused")
-private val unusedPrimitive = JsonPrimitive("")

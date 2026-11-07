@@ -49,12 +49,18 @@ internal object PerfCorpus {
         "project retro", "tech talk outline", "quarterly goals",
     )
 
-    fun topicTitle(index: Int): String = if (index % 3 == 2) subjectsEn[index % subjectsEn.size].replaceFirstChar { it.uppercase() }
-    else subjects[index % subjects.size]
+    fun topicTitle(number: Int): String {
+        val index = number and Int.MAX_VALUE
+        return if (index % 3 == 2) subjectsEn[index % subjectsEn.size].replaceFirstChar { it.uppercase() }
+        else subjects[index % subjects.size]
+    }
 
-    fun topicSummary(index: Int): String = if (index % 3 == 2)
-        "Talked through the ${subjectsEn[index % subjectsEn.size]}: agreed on next steps and a rough timeline; open question is the order of the first two tasks."
-    else "聊了「${subjects[index % subjects.size]}」：确定了下一步的做法和大致时间，还剩第一、第二件事谁先做没有定。"
+    fun topicSummary(number: Int): String {
+        val index = number and Int.MAX_VALUE
+        return if (index % 3 == 2)
+            "Talked through the ${subjectsEn[index % subjectsEn.size]}: agreed on next steps and a rough timeline; open question is the order of the first two tasks."
+        else "聊了「${subjects[index % subjects.size]}」：确定了下一步的做法和大致时间，还剩第一、第二件事谁先做没有定。"
+    }
 
     fun userLine(random: Random): String = when (random.nextInt(10)) {
         in 0..5 -> userShortZh.random(random)

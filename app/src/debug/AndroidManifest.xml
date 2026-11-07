@@ -8,10 +8,5 @@
                 <action android:name="me.ayuilos.miffan.debug.DELIVER_EVENT" />
             </intent-filter>
         </receiver>
-        <receiver android:name="me.ayuilos.miffan.perf.PerfFixtureReceiver" android:exported="true">
-            <intent-filter>
-                <action android:name="me.ayuilos.miffan.PERF_FIXTURE" />
-            </intent-filter>
-        </receiver>
     </application>
 </manifest>
