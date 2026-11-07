@@ -89,6 +89,7 @@ tokens/s; a non-streamed request gets a one-line reply. `--tokens`, `--rate`, `-
 scripts/perf/run_bench.sh emulator-5560                      # whole suite
 scripts/perf/run_bench.sh <phone> --tests chatsScroll,streaming --iterations 10
 scripts/perf/run_bench.sh <phone> --compilation none         # without the baseline profile
+scripts/perf/run_bench.sh <phone> --frames timeline          # frame-timeline metric only
 ```
 
 It starts the fake model if nothing listens on 18799, runs
@@ -116,7 +117,11 @@ the frame count. Elements are found by resource id (`testTag` + `testTagsAsResou
 `im_partner_row_<id>`, `thread_list`, `thread_show_history`, `thread_input`, `thread_send`, `thread_stop`.
 
 Instrumentation arguments (via `-Pandroid.testInstrumentationRunnerArguments.<name>=…`): `compilation`
-(`partial` default, `none`, `full`), `iterations`, `class`.
+(`partial` default, `none`, `full`), `iterations`, `frames` (`both`, `timeline`, `gfx`), `class`. On emulators
+`run_bench.sh` defaults to `frames=gfx`: software rendering often records no frame-timeline slices, which makes
+`FrameTimingMetric` abort the test; the gfxinfo metric (5 ms buckets) still works. The benchmark process also
+drops its own HTTP proxy properties (the emulator's global proxy would answer the on-device trace processor at
+`localhost:9001` with 502); the device setting is never touched, and the app under test keeps the proxy.
 
 ## Baseline profile
 
@@ -136,6 +141,9 @@ needs an API 33+ device. Regenerate after larger changes to what the IM shell ru
 journeys; compare with `run_bench.sh --tests startup`.
 
 ## Things to know
+
+* A fresh git worktree needs the untracked native inputs before any release-type build: `git submodule update --init
+  material3/material-color-utilities`, and copies of `.deps/p6a` and `rdp/build/native` from the main checkout.
 
 * The fixture and benchmarks overwrite `me.ayuilos.miffan.app` data; they never touch the `.debug` app unless you
   run the fixture against it.
