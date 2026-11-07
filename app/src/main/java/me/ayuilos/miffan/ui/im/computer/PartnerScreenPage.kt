@@ -302,7 +302,7 @@ private fun PartnerScreenBubble(text: String) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(4.dp, 14.dp, 14.dp, 14.dp),
         modifier = Modifier.padding(end = 8.dp)) {
         // The partner writes Markdown, as in the chat; the feed scrolls, so nothing is cut short.
-        MarkdownBlock(text, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium)
+        CompositionLocalProvider(me.ayuilos.miffan.ui.components.richtext.LocalCompactMarkdownHeadings provides true) { MarkdownBlock(text, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium) }
     }
 }
 

@@ -429,11 +429,13 @@ private fun HtmlParagraphContent(
 @Composable
 private fun HtmlHeading(element: Element, onClickCitation: (String) -> Unit) {
     val level = element.tagName().removePrefix("h").toIntOrNull() ?: 1
+    val compact = LocalCompactMarkdownHeadings.current
     val headingStyle = HeaderStyle.fromLevel(
         level = level,
         fontSizeRatio = LocalSettings.current.displaySetting.fontSizeRatio,
+        compact = compact,
     )
-    val verticalPadding = HeaderStyle.verticalPadding(level)
+    val verticalPadding = HeaderStyle.verticalPadding(level, compact)
     ProvideTextStyle(LocalTextStyle.current.merge(headingStyle)) {
         Box(modifier = Modifier.padding(vertical = verticalPadding)) {
             HtmlParagraph(element = element, onClickCitation = onClickCitation)

@@ -209,8 +209,8 @@ internal fun ThreadMessageBubble(
                             else if (user && hasPartnerMention(part.text, partners)) Text(
                                 mentionText(part.text, partners, SpanStyle(fontWeight = FontWeight.SemiBold)),
                                 style = MaterialTheme.typography.bodyLarge, inlineContent = mentionAvatars(partners))
-                            else MarkdownBlock(part.text.withWorkspaceFiles(imageContext),
-                                style = MaterialTheme.typography.bodyLarge)
+                            else CompositionLocalProvider(me.ayuilos.miffan.ui.components.richtext.LocalCompactMarkdownHeadings provides true) { MarkdownBlock(part.text.withWorkspaceFiles(imageContext),
+                                style = MaterialTheme.typography.bodyLarge) }
                             is UIMessagePart.Image -> ZoomableAsyncImage(part.url, stringResource(R.string.im_thread_photo), Modifier.heightIn(max = 200.dp))
                             is UIMessagePart.Document -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Icon(HugeIcons.File01, null, Modifier.size(18.dp))

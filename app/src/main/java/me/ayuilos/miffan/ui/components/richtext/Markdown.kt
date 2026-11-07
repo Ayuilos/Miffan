@@ -294,11 +294,22 @@ private fun dumpAst(node: ASTNode, text: String, indent: String = "") {
     }
 }
 
+/**
+ * True inside easy-mode chat bubbles: headings sit closer to the 16 sp body text, so a reply reads like a message
+ * rather than a document page. Professional mode keeps the full sizes.
+ */
+val LocalCompactMarkdownHeadings = androidx.compose.runtime.staticCompositionLocalOf { false }
+
 object HeaderStyle {
     private const val LINE_HEIGHT_RATIO = 1.25f
 
-    fun fromLevel(level: Int, fontSizeRatio: Float): TextStyle {
-        val fontSize = when (level) {
+    fun fromLevel(level: Int, fontSizeRatio: Float, compact: Boolean = false): TextStyle {
+        val fontSize = if (compact) when (level) {
+            1 -> 20.sp
+            2 -> 18.sp
+            3 -> 17.sp
+            else -> 16.sp
+        } * fontSizeRatio else when (level) {
             1 -> 24.sp
             2 -> 22.sp
             3 -> 20.sp
@@ -315,7 +326,12 @@ object HeaderStyle {
         )
     }
 
-    fun verticalPadding(level: Int) = when (level) {
+    fun verticalPadding(level: Int, compact: Boolean = false) = if (compact) when (level) {
+        1 -> 10.dp
+        2 -> 8.dp
+        3 -> 6.dp
+        else -> 4.dp
+    } else when (level) {
         1 -> 16.dp
         2 -> 14.dp
         3 -> 12.dp
@@ -324,7 +340,7 @@ object HeaderStyle {
         else -> 6.dp
     }
 
-    fun fromMarkdownType(type: IElementType, fontSizeRatio: Float): TextStyle = fromLevel(
+    fun fromMarkdownType(type: IElementType, fontSizeRatio: Float, compact: Boolean = false): TextStyle = fromLevel(
         level = when (type) {
             MarkdownElementTypes.ATX_1 -> 1
             MarkdownElementTypes.ATX_2 -> 2
@@ -335,9 +351,10 @@ object HeaderStyle {
             else -> 6
         },
         fontSizeRatio = fontSizeRatio,
+        compact = compact,
     )
 
-    fun verticalPadding(type: IElementType) = verticalPadding(
+    fun verticalPadding(type: IElementType, compact: Boolean = false) = verticalPadding(
         level = when (type) {
             MarkdownElementTypes.ATX_1 -> 1
             MarkdownElementTypes.ATX_2 -> 2
@@ -345,7 +362,8 @@ object HeaderStyle {
             MarkdownElementTypes.ATX_4 -> 4
             MarkdownElementTypes.ATX_5 -> 5
             else -> 6
-        }
+        },
+        compact = compact,
     )
 }
 
@@ -376,11 +394,13 @@ private fun MarkdownNode(
 
         // 标题
         MarkdownElementTypes.ATX_1, MarkdownElementTypes.ATX_2, MarkdownElementTypes.ATX_3, MarkdownElementTypes.ATX_4, MarkdownElementTypes.ATX_5, MarkdownElementTypes.ATX_6 -> {
+            val compact = LocalCompactMarkdownHeadings.current
             val style = HeaderStyle.fromMarkdownType(
                 type = node.type,
                 fontSizeRatio = LocalSettings.current.displaySetting.fontSizeRatio,
+                compact = compact,
             )
-            val headingPadding = HeaderStyle.verticalPadding(node.type)
+            val headingPadding = HeaderStyle.verticalPadding(node.type, compact)
             ProvideTextStyle(value = LocalTextStyle.current.merge(style)) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     node.children.fastForEach { node ->
