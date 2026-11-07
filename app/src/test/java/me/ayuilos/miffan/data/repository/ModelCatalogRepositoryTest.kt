@@ -128,7 +128,10 @@ class ModelCatalogRepositoryTest {
         val restarted = repository(cache)
         restarted.refreshIfStale()
         assertEquals(1, requests.size)
-        time += 24 * 60 * 60 * 1000L
+        time += 4 * 60 * 60 * 1000L - 1
+        restarted.refreshIfStale()
+        assertEquals(1, requests.size)
+        time += 1
         restarted.refreshIfStale()
         assertEquals(2, requests.size)
         assertEquals("\"updated\"", requests.last().header("If-None-Match"))

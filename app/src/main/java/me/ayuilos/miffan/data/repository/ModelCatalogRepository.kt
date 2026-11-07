@@ -28,7 +28,7 @@ import java.io.IOException
 import java.time.Instant
 
 private const val TAG = "ModelCatalogRepository"
-private const val REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000L
+private const val REFRESH_INTERVAL_MS = 4 * 60 * 60 * 1000L
 
 class ModelCatalogRepository internal constructor(
     private val cacheFile: File,
