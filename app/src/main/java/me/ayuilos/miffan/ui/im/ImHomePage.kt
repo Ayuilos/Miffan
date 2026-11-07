@@ -36,6 +36,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -86,6 +87,7 @@ private val TabBarBottomMargin = 12.dp
 @Composable
 fun ImHomePage(vm: ImHomeVM = koinViewModel()) {
     var tab by rememberSaveable { mutableStateOf(ImTab.CHATS) }
+    val tabStates = rememberSaveableStateHolder()
     val hazeState = rememberHazeState()
     val layoutDirection = LocalLayoutDirection.current
     val isPlayStore = rememberIsPlayStoreVersion()
@@ -117,7 +119,8 @@ fun ImHomePage(vm: ImHomeVM = koinViewModel()) {
                     .background(MaterialTheme.colorScheme.background)
                     .hazeSource(hazeState)
             ) {
-                when (tab) {
+                // Each tab keeps its scroll position, search and folded groups while another tab is shown.
+                tabStates.SaveableStateProvider(tab) { when (tab) {
                     ImTab.CHATS -> ImChatsTab(
                         vm, contentPadding,
                         onFindPartner = { tab = ImTab.PARTNERS },
@@ -128,7 +131,7 @@ fun ImHomePage(vm: ImHomeVM = koinViewModel()) {
                     ImTab.PARTNERS -> ImPartnersTab(vm, contentPadding)
                     ImTab.DISCOVER -> ImDiscoverTab(contentPadding)
                     ImTab.ME -> ImMeTab(vm, contentPadding)
-                }
+                } }
             }
             // Lists scroll under the transparent status bar; the fade stays inside the titles' top padding.
             EdgeBlurScrim(hazeState, EdgeScrimPosition.Top, innerPadding.calculateTopPadding() + 8.dp,
