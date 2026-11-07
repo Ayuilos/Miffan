@@ -4289,4 +4289,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_screen_window_gnome_check_again">다시 확인</string>
   <string name="workspace_screen_window_input_dropped">창을 앞으로 가져오지 못해 방금 입력은 보내지 않았습니다. 다시 시도해 주세요.</string>
   <string name="workspace_screen_window_authorize_failed">컴퓨터에서 권한을 부여하지 못했습니다. 다시 시도하거나 전체 화면을 보세요.</string>
+  <string name="im_error_content_rule">서비스의 콘텐츠 제한에 걸렸어요. 다르게 표현해 보세요</string>
+  <string name="im_translate_failed">번역하지 못했어요. 다시 시도해 보세요</string>
+  <string name="im_draw_failed">그리지 못했어요. 다시 시도해 보세요</string>
 </resources>

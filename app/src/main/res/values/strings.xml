@@ -4325,4 +4325,7 @@
   <string name="workspace_screen_window_gnome_check_again">Check again</string>
   <string name="workspace_screen_window_input_dropped">Couldn\'t bring the window to the front, so that input wasn\'t sent. Try again.</string>
   <string name="workspace_screen_window_authorize_failed">Couldn\'t grant the permission on the computer. Try again, or view the whole screen.</string>
+  <string name="im_error_content_rule">This request hit the service\'s content rules. Try saying it another way</string>
+  <string name="im_translate_failed">Couldn\'t translate that. Try again</string>
+  <string name="im_draw_failed">Couldn\'t draw that. Try again</string>
 </resources>

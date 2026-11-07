@@ -4294,4 +4294,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_screen_window_gnome_check_again">再查一次</string>
   <string name="workspace_screen_window_input_dropped">没能把窗口切到前面，刚才的操作没有发出，请再试一次。</string>
   <string name="workspace_screen_window_authorize_failed">没能在电脑上完成授权。可以再试一次，或者改看整个屏幕。</string>
+  <string name="im_error_content_rule">碰到了这个服务的内容限制，换个说法试试</string>
+  <string name="im_translate_failed">没翻译出来，再试一次吧</string>
+  <string name="im_draw_failed">没画出来，再试一次吧</string>
 </resources>

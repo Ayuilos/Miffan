@@ -4358,4 +4358,7 @@
   <string name="workspace_screen_window_gnome_check_again">Проверить снова</string>
   <string name="workspace_screen_window_input_dropped">Не удалось вывести окно на передний план, поэтому ввод не отправлен. Попробуйте ещё раз.</string>
   <string name="workspace_screen_window_authorize_failed">Не удалось выдать разрешение на компьютере. Попробуйте ещё раз или откройте весь экран.</string>
+  <string name="im_error_content_rule">Запрос нарушил правила сервиса. Попробуйте сформулировать иначе</string>
+  <string name="im_translate_failed">Не удалось перевести. Попробуйте ещё раз</string>
+  <string name="im_draw_failed">Не удалось нарисовать. Попробуйте ещё раз</string>
 </resources>

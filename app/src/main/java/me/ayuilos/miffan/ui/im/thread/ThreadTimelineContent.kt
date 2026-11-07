@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import me.ayuilos.miffan.ui.im.RunningLight
+import me.ayuilos.miffan.ui.im.imProblemOf
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalConfiguration
@@ -259,22 +260,14 @@ internal fun ThreadTyping(assistant: Assistant?, segmentIds: Set<Uuid>, connecti
 @Composable
 internal fun ThreadErrorBubble(error: ChatError, canRetry: Boolean, onRetry: () -> Unit, onDismiss: () -> Unit) {
     val menu = rememberPressMenu()
-    val detail = error.error.message.orEmpty().lowercase(Locale.ROOT)
     // The reply still arrives without tools, so this is a notice rather than a failed reply.
     val toolsOff = error.solution == ChatErrorSolution.EnableModelTools
-    val text = when {
-        toolsOff -> R.string.im_thread_error_tools_off
-        listOf("401", "403", "api key", "unauthorized", "authentication").any { it in detail } -> R.string.im_thread_error_connection
-        // Checked before "busy": an empty balance also answers 429 ("insufficient_quota").
-        listOf("402", "insufficient", "balance", "余额", "欠费").any { it in detail } -> R.string.im_thread_error_balance
-        listOf("429", "rate limit", "quota").any { it in detail } -> R.string.im_thread_error_busy
-        error.error is java.io.IOException -> R.string.im_thread_error_network
-        else -> R.string.im_thread_error_reply
-    }
+    val problem = imProblemOf(error.error)
+    val text = if (toolsOff) R.string.im_thread_error_tools_off else problem.textOr(R.string.im_thread_error_reply)
     val retry = canRetry && !toolsOff
     // Problems only the service's settings can fix lead there.
     val nav = LocalNavController.current
-    val toService = text == R.string.im_thread_error_connection || text == R.string.im_thread_error_balance
+    val toService = !toolsOff && problem.opensService
     Row(Modifier.fillMaxWidth().padding(top = 16.dp)) {
         Box(Modifier.widthIn(max = threadBubbleMaxWidth())) {
             Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainer,

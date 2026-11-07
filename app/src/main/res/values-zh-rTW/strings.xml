@@ -4287,4 +4287,7 @@
   <string name="workspace_screen_window_gnome_check_again">再查一次</string>
   <string name="workspace_screen_window_input_dropped">沒能把視窗切到前面，剛才的操作沒有送出，請再試一次。</string>
   <string name="workspace_screen_window_authorize_failed">沒能在電腦上完成授權。可以再試一次，或改看整個螢幕。</string>
+  <string name="im_error_content_rule">碰到了這個服務的內容限制，換個說法試試</string>
+  <string name="im_translate_failed">沒翻譯出來，再試一次吧</string>
+  <string name="im_draw_failed">沒畫出來，再試一次吧</string>
 </resources>

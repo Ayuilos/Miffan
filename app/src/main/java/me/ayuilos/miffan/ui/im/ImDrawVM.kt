@@ -74,8 +74,8 @@ class ImDrawVM(
     val references: StateFlow<List<String>> = _references.asStateFlow()
     private val _drawing = MutableStateFlow(false)
     val drawing: StateFlow<Boolean> = _drawing.asStateFlow()
-    private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error.asStateFlow()
+    private val _error = MutableStateFlow<ImProblem?>(null)
+    val error: StateFlow<ImProblem?> = _error.asStateFlow()
 
     /** This visit's last request and what came back. */
     private val _session = MutableStateFlow<Pair<String, List<GeneratedImage>>?>(null)
@@ -129,13 +129,18 @@ class ImDrawVM(
                 val outputs = List(_count.value) { async { tool.execute(args) } }.awaitAll()
                 val pictures = outputs.flatMap { parts -> parts.filterIsInstance<UIMessagePart.Image>() }
                     .map { keep(it.url, request, model.displayName.ifBlank { model.modelId }) }
-                if (pictures.isEmpty()) _error.value = outputs.firstNotNullOfOrNull { failure(it) } ?: "No image came back"
+                if (pictures.isEmpty()) {
+                    val detail = outputs.firstNotNullOfOrNull { failure(it) }
+                    android.util.Log.w(TAG, "No picture came back: $detail")
+                    _error.value = imProblemOf(detail)
+                }
                 _session.value = request to pictures
                 if (pictures.isNotEmpty()) _prompt.value = ""
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _error.value = e.message ?: e.javaClass.simpleName
+                android.util.Log.w(TAG, "Drawing failed", e)
+                _error.value = imProblemOf(e)
             } finally {
                 _drawing.value = false
             }
@@ -168,5 +173,6 @@ class ImDrawVM(
 
     private companion object {
         const val MAX_REFERENCES = 4
+        const val TAG = "ImDrawVM"
     }
 }

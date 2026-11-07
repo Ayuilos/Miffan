@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -62,8 +63,12 @@ fun ImTranslatePage(vm: TranslatorVM = koinViewModel()) {
     val speaking by tts.isSpeaking.collectAsState()
     val scope = rememberCoroutineScope()
     val copied = stringResource(R.string.im_translate_copied)
+    val resources = LocalResources.current
     LaunchedEffect(Unit) {
-        vm.errorFlow.collect { toaster.show(it.message ?: it.javaClass.simpleName, type = ToastType.Error) }
+        vm.errorFlow.collect { error ->
+            android.util.Log.w("ImTranslatePage", "Translation failed", error)
+            toaster.show(resources.getString(imProblemOf(error).textOr(R.string.im_translate_failed)), type = ToastType.Error)
+        }
     }
     val model = settings.translationModel()
     val models = rememberModelListState(model?.id, settings.providers, ModelType.CHAT, textOnly = true)

@@ -4289,4 +4289,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_window_gnome_check_again">もう一度確認</string>
   <string name="workspace_screen_window_input_dropped">ウィンドウを前面に出せなかったため、今の操作は送信していません。もう一度お試しください。</string>
   <string name="workspace_screen_window_authorize_failed">コンピュータで許可を設定できませんでした。もう一度試すか、画面全体を表示してください。</string>
+  <string name="im_error_content_rule">サービスのコンテンツ制限に触れました。言い方を変えて試してください</string>
+  <string name="im_translate_failed">翻訳できませんでした。もう一度試してください</string>
+  <string name="im_draw_failed">描けませんでした。もう一度試してください</string>
 </resources>
