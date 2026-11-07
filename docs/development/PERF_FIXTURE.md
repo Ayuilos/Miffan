@@ -22,7 +22,8 @@ adb shell am broadcast -a me.ayuilos.miffan.PERF_FIXTURE \
 
 The command prints `data="OK partners=6 segments=… messages=…"` when it is done (about 10–40 s) or
 `data="FAILED …"`. Restart the app afterwards (`adb shell am force-stop <package>`): the receiver replaces data
-under a possibly running app, and the unread state of the Chats list is read once at start.
+under a possibly running app, and the unread state of the Chats list is read once at start (the benchmarks
+force-stop the app after loading).
 
 **It replaces everything.** The fixture first updates the settings, then clears every database table and the
 full-text index, then writes its data, so running it twice gives identical counts (names and ids are
@@ -71,7 +72,7 @@ generated images (small local PNGs in `files/images/perf_fixture/`) and 30 "the 
 preferences" turns, each with a matching agent revision (the notices in the thread).
 
 Other data: 50 favorites (40 from the main thread), 30 revisions/notices, unread replies (阿青 3, Nova 12,
-墨玉 20, 海盐 1; the group chat has 7), a partner contact grant between 阿青 and 糯米.
+墨玉 10 (all of its replies), 海盐 1; the group chat 4), a partner contact grant between 阿青 and 糯米.
 
 ## The fake model
 
@@ -102,7 +103,7 @@ start (the streaming test reloads it first, because its replies add messages).
 | --- | --- | --- |
 | `startupCold` / `startupWarm` | start into the 消息 tab; the list calls `ReportDrawn` once it has data | TTID, TTFD, frames |
 | `chatsScroll` | fling the 消息 list down and up, three rounds | frames |
-| `threadOpenAndScroll` | tap 小米, open the 2000-message thread, show the history if the welcome screen is up, fling back six times | `ThreadOpenMs` (trace slice from tap to messages loaded), frames |
+| `threadOpenAndScroll` | tap 小米, open the 2000-message thread, show the history if the welcome screen is up, fling back six times | `ThreadOpenFirstMs` (trace slice from tap to messages loaded), frames |
 | `tabSwitch` | 消息 → 伙伴 → 发现 → 我 → 消息, three rounds | frames |
 | `streaming` | send a message in 小米's thread, let the fake model stream ~1500 tokens | frames over the whole reply |
 

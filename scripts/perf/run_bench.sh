@@ -8,6 +8,9 @@
 #                          threadOpenAndScroll, tabSwitch, streaming) or "startup" for StartupBenchmarks
 #   --compilation MODE     partial (default; uses the app's baseline profile), none or full
 #   --iterations N         override the iteration count of every test
+#   --frames MODE          both (default on a phone), timeline (FrameTimingMetric) or gfx (dumpsys gfxinfo only).
+#                          The emulator renders in software and often records no frame-timeline slices, which makes
+#                          FrameTimingMetric abort the test, so emulator serials default to gfx.
 #   --no-llm               do not start scripts/perf/fake_llm.py (the streaming test then fails)
 #
 # The tests load the performance fixture themselves (docs/development/PERF_FIXTURE.md). On a phone the
@@ -21,14 +24,16 @@ SERIAL="${ANDROID_SERIAL:-}"
 TESTS=""
 COMPILATION="partial"
 ITERATIONS=""
+FRAMES=""
 START_LLM=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tests) TESTS="$2"; shift 2 ;;
     --compilation) COMPILATION="$2"; shift 2 ;;
     --iterations) ITERATIONS="$2"; shift 2 ;;
+    --frames) FRAMES="$2"; shift 2 ;;
     --no-llm) START_LLM=0; shift ;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
     -*) echo "unknown option: $1" >&2; exit 2 ;;
     *) SERIAL="$1"; shift ;;
   esac
@@ -54,7 +59,11 @@ if (( START_LLM )); then
   fi
 fi
 
-ARGS=("-Pandroid.testInstrumentationRunnerArguments.compilation=$COMPILATION")
+if [[ -z "$FRAMES" ]]; then
+  if [[ "$SERIAL" == emulator-* ]]; then FRAMES="gfx"; else FRAMES="both"; fi
+fi
+ARGS=("-Pandroid.testInstrumentationRunnerArguments.compilation=$COMPILATION"
+      "-Pandroid.testInstrumentationRunnerArguments.frames=$FRAMES")
 if [[ -n "$ITERATIONS" ]]; then
   ARGS+=("-Pandroid.testInstrumentationRunnerArguments.iterations=$ITERATIONS")
 fi

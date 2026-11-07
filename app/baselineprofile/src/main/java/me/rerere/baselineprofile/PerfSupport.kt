@@ -6,6 +6,7 @@ import androidx.benchmark.macro.MacrobenchmarkScope
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Direction
+import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.Until
 
 /**
@@ -65,6 +66,8 @@ internal object Perf {
         val device = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
         val out = device.executeShellCommand("am broadcast -a $FIXTURE_ACTION -n $targetPackage/$FIXTURE_RECEIVER")
         check("data=\"OK" in out) { "Fixture did not load: $out" }
+        // The app reads some state (the Chats list's read marks) once at process start: start it fresh.
+        device.executeShellCommand("am force-stop $targetPackage")
         return out.lineSequence().firstOrNull { "data=" in it }.orEmpty()
     }
 }
@@ -98,23 +101,38 @@ internal fun MacrobenchmarkScope.showHistoryIfWelcome() {
     }
 }
 
+/**
+ * One fast swipe over the list with this resource id; the node is looked up again each time because Compose
+ * recreates it. A DOWN direction moves the finger down (earlier content into view), UP the other way.
+ */
+private fun MacrobenchmarkScope.flingOnce(res: String, direction: Direction, steps: Int = 6) {
+    repeat(3) {
+        try {
+            val bounds = (device.findObject(By.res(res)) ?: error("List $res not found")).visibleBounds
+            val x = bounds.centerX()
+            val top = bounds.top + bounds.height() / 6
+            val bottom = bounds.bottom - bounds.height() / 6
+            if (direction == Direction.DOWN) device.swipe(x, top, x, bottom, steps) else device.swipe(x, bottom, x, top, steps)
+            return
+        } catch (_: StaleObjectException) {
+            // Looked up again on the next attempt.
+        }
+    }
+}
+
 /** Fling the open thread back through its history. A DOWN gesture moves older messages into view. */
 internal fun MacrobenchmarkScope.flingThreadHistory(times: Int) {
-    val list = device.findObject(By.res("thread_list")) ?: return
-    list.setGestureMargin(device.displayWidth / 8)
     repeat(times) {
-        list.fling(Direction.DOWN)
+        flingOnce("thread_list", Direction.DOWN)
         device.waitForIdle()
     }
 }
 
-internal fun MacrobenchmarkScope.flingList(res: String, rounds: Int) {
-    val list = device.findObject(By.res(res)) ?: return
-    list.setGestureMargin(device.displayWidth / 8)
+internal fun MacrobenchmarkScope.flingList(res: String, rounds: Int, steps: Int = 6) {
     repeat(rounds) {
-        list.fling(Direction.DOWN)
+        flingOnce(res, Direction.UP, steps)
         device.waitForIdle()
-        list.fling(Direction.UP)
+        flingOnce(res, Direction.DOWN, steps)
         device.waitForIdle()
     }
 }

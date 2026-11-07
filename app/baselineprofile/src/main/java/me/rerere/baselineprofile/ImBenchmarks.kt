@@ -9,6 +9,7 @@ import androidx.benchmark.macro.TraceSectionMetric
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Until
 import org.junit.Before
@@ -42,7 +43,11 @@ class ImBenchmarks {
         if (testName.methodName == "streaming") Perf.loadFixture()
     }
 
-    private val frames get() = listOf(FrameTimingMetric(), FrameTimingGfxInfoMetric())
+    private val frames get() = when (InstrumentationRegistry.getArguments().getString("frames")) {
+        "gfx" -> listOf(FrameTimingGfxInfoMetric())
+        "timeline" -> listOf(FrameTimingMetric())
+        else -> listOf(FrameTimingMetric(), FrameTimingGfxInfoMetric())
+    }
 
     /** Cold start into the 消息 tab: TTID and TTFD (the list reports fully drawn once it has data). */
     @Test
@@ -82,7 +87,7 @@ class ImBenchmarks {
         iterations = Perf.iterations(6),
         setupBlock = { startToChats() },
     ) {
-        flingList("im_chat_list", rounds = 3)
+        flingList("im_chat_list", rounds = 4, steps = 25)
     }
 
     /** Open the 2000-message thread (trace slice `ThreadOpen`), show its history, fling back through it. */
