@@ -144,8 +144,9 @@ object ThreadTimeline {
         val entries = segments
             .filter { filterSegmentId == null || it.id == filterSegmentId }
             .flatMap { segment ->
-                val newest = segment.currentMessageNodes.lastOrNull()
-                segment.currentMessageNodes.mapNotNull { node ->
+                val path = segment.currentMessageNodes
+                val newest = path.lastOrNull()
+                path.mapNotNull { node ->
                     if (node.origin is MessageOrigin.Partner || node.role !in visibleRoles || !seenMessages.add(node.message.id)) return@mapNotNull null
                     // Replies are placed when they arrive, as in a messenger: a finished reply at its
                     // finishing time, a reply still being written at the bottom.
@@ -165,13 +166,23 @@ object ThreadTimeline {
 
         // Each reply is quoted when it belongs to a batch of overlapping question → reply spans
         // that involves more than one segment, so a parallel batch reads consistently.
+        // The owner message each reply answers: the last user message before it in its own segment. One walk
+        // per segment; this runs on every streamed chunk, and walking a long segment per reply adds up.
+        val triggers = HashMap<Uuid, HashMap<Uuid, MessageNode>>()
+        for (segment in segments) {
+            if (filterSegmentId != null && segment.id != filterSegmentId) continue
+            val bySegment = HashMap<Uuid, MessageNode>()
+            var lastUser: MessageNode? = null
+            for (node in segment.currentMessageNodes) {
+                if (node.role == MessageRole.ASSISTANT) lastUser?.let { bySegment[node.id] = it }
+                if (node.role == MessageRole.USER) lastUser = node
+            }
+            triggers[segment.id] = bySegment
+        }
         val triggerIndex = IntArray(entries.size) { -1 }
         for ((index, entry) in entries.withIndex()) {
             if (entry.node.role != MessageRole.ASSISTANT) continue
-            val trigger = entry.segment.currentMessageNodes
-                .takeWhile { it.id != entry.node.id }
-                .lastOrNull { it.role == MessageRole.USER }
-                ?: continue
+            val trigger = triggers[entry.segment.id]?.get(entry.node.id) ?: continue
             if (trigger.origin == null) triggerIndex[index] = indexByNodeId[trigger.id] ?: -1
         }
         val quoted = BooleanArray(entries.size)
