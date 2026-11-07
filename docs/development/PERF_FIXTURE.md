@@ -153,3 +153,17 @@ journeys; compare with `run_bench.sh --tests startup`.
 * The `streaming` test needs the fake model; without it the reply never starts and the test fails.
 * Because the main thread is not touched for hours in the fixture's timeline (midnight anchor), the thread may
   open on the partner's welcome screen (`thread_show_history`); the benchmarks tap through it.
+
+## Composable names in traces
+
+The benchmark build (`benchmarkRelease`) carries `androidx.compose.runtime:runtime-tracing`, and the benchmark
+module the matching `androidx.tracing:tracing-perfetto(-binary)` 1.0.1. Pass
+`-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.fullTracing.enable=true` to a
+`connectedBenchmarkReleaseAndroidTest` run to record each composable as a trace slice (`Name (File.kt:line)`).
+The trace grows fast (a 40 s streaming run fills the buffer within a few seconds), so use it to find *which*
+composables recompose, and the normal run for timings. The shipping release never has these libraries.
+
+Finding (2026-11-08, emulator): while a reply streams, recomposition is dominated by the streaming reply's
+own Markdown (`MarkdownBlock` → `MarkdownNode` → `Paragraph`). Letting unchanged top-level blocks skip by text
+equality did not lower the recompose count, so the remaining work is driven by state the blocks read, not by
+their parameters.

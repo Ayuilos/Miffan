@@ -385,3 +385,11 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }
+
+// Composable names in benchmark traces (androidx.benchmark.fullTracing.enable); never in the shipping release.
+// The baselineprofile plugin creates the benchmark build type after the dependencies block runs.
+configurations.configureEach {
+    if (name == "benchmarkReleaseImplementation") {
+        project.dependencies.add(name, "androidx.compose.runtime:runtime-tracing:1.12.0")
+    }
+}

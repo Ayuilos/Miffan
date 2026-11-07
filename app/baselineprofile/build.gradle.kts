@@ -41,6 +41,9 @@ dependencies {
     implementation(libs.androidx.espresso.core)
     implementation(libs.androidx.junit)
     implementation(libs.androidx.uiautomator)
+    // Full tracing sideloads this binary into the app; it must match the version runtime-tracing pulls into the app.
+    implementation("androidx.tracing:tracing-perfetto:1.0.1")
+    implementation("androidx.tracing:tracing-perfetto-binary:1.0.1")
 }
 
 androidComponents {
