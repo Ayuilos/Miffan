@@ -20,6 +20,7 @@ import me.ayuilos.miffan.data.db.dao.ConversationDAO
 import me.ayuilos.miffan.data.db.dao.ThreadSegmentDigest
 import me.ayuilos.miffan.data.db.dao.ThreadSegmentStamp
 import me.ayuilos.miffan.data.db.dao.FavoriteDAO
+import me.ayuilos.miffan.data.db.dao.deleteNodeFavoritesOfConversation
 import me.ayuilos.miffan.data.db.dao.getFavoriteNodeIdsOfConversation
 import me.ayuilos.miffan.data.db.dao.MessageNodeDAO
 import me.ayuilos.miffan.data.db.entity.ConversationEntity
@@ -399,7 +400,11 @@ class ConversationRepository(
         messageFtsManager.indexConversation(source)
     }
 
-    suspend fun deleteConversation(conversation: Conversation) {
+    /**
+     * [keepFavorites] leaves the conversation's node favorites in place so an undo can bring the conversation
+     * back with them; the caller then calls [deleteNodeFavorites] once the delete is final.
+     */
+    suspend fun deleteConversation(conversation: Conversation, keepFavorites: Boolean = false) {
         // 获取完整的 Conversation（包含 messageNodes）以正确清理文件
         val fullConversation = if (conversation.messageNodes.isEmpty()) {
             getConversationById(conversation.id) ?: conversation
@@ -408,12 +413,19 @@ class ConversationRepository(
         }
         messageFtsManager.deleteConversation(conversation.id.toString())
         database.withTransaction {
+            // The favorites table has no foreign key to conversations, so its rows are deleted by hand.
+            if (!keepFavorites) favoriteDAO.deleteNodeFavoritesOfConversation(conversation.id.toString())
             // message_node 会通过 CASCADE 自动删除
             conversationDAO.delete(
                 conversationToConversationEntity(conversation)
             )
         }
         filesManager.deleteChatFiles(fullConversation.files)
+    }
+
+    /** Finishes a [deleteConversation] made with `keepFavorites = true` once it can no longer be undone. */
+    suspend fun deleteNodeFavorites(conversationId: Uuid) {
+        favoriteDAO.deleteNodeFavoritesOfConversation(conversationId.toString())
     }
 
     suspend fun searchMessages(

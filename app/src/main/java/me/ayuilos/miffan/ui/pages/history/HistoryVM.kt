@@ -34,9 +34,16 @@ class HistoryVM(
         Log.e(TAG, "Error: ${it.message}")
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    /** Keeps the conversation's favorites so Undo restores them; call [discardFavorites] once it is final. */
     fun deleteConversation(conversation: Conversation) {
         viewModelScope.launch {
-            chatService.deleteConversation(conversation)
+            chatService.deleteConversation(conversation, keepFavorites = true)
+        }
+    }
+
+    fun discardFavorites(conversationId: Uuid) {
+        viewModelScope.launch {
+            chatService.deleteNodeFavorites(conversationId)
         }
     }
 

@@ -125,6 +125,8 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
                             )
                             if (result == SnackbarResult.ActionPerformed) {
                                 vm.restoreConversation(fullConversation)
+                            } else {
+                                vm.discardFavorites(conversation.id)
                             }
                         }
                     },
