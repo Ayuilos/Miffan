@@ -22,9 +22,10 @@ data class MessageSearchResult(
 )
 
 enum class MessageSearchSort(val orderBy: String) {
-    RELEVANCE("rank, update_at DESC"),
-    NEWEST_FIRST("update_at DESC, rank"),
-    OLDEST_FIRST("update_at ASC, rank"),
+    // update_at is the conversation's own (see search): the index rows keep only what they were saved with.
+    RELEVANCE("rank, c.update_at DESC"),
+    NEWEST_FIRST("c.update_at DESC, rank"),
+    OLDEST_FIRST("c.update_at ASC, rank"),
 }
 
 private const val TAG = "MessageFtsManager"
@@ -33,25 +34,47 @@ class MessageFtsManager(private val database: AppDatabase, private val imMode: (
 
     private val db get() = database.openHelper.writableDatabase
 
+    /**
+     * Brings the index of [conversation] up to date by touching only the nodes that were added, edited
+     * or removed since the last call. Rows are compared by node id, message id and text, so the index
+     * heals itself even if an earlier save never reached it.
+     */
     suspend fun indexConversation(conversation: Conversation) = withContext(Dispatchers.IO) {
         val conversationId = conversation.id.toString()
-        db.execSQL("DELETE FROM message_fts WHERE conversation_id = ?", arrayOf(conversationId))
-        conversation.messageNodes.forEach { node ->
-            val message = node.message
-            val text = message.extractFtsText()
-            if (text.isNotBlank()) {
+        val desired = conversation.messageNodes.mapNotNull { node ->
+            val text = node.message.extractFtsText()
+            if (text.isBlank()) null else FtsRow(node.id.toString(), node.message.id.toString(), text)
+        }
+        db.beginTransaction()
+        try {
+            val existing = db.query(
+                "SELECT rowid, node_id, message_id, text FROM message_fts WHERE conversation_id = ?",
+                arrayOf(conversationId)
+            ).use {
+                buildList {
+                    while (it.moveToNext()) {
+                        add(FtsStoredRow(it.getLong(0), FtsRow(it.getString(1), it.getString(2), it.getString(3))))
+                    }
+                }
+            }
+            val plan = planFtsUpdate(existing, desired)
+            plan.deleteRowIds.forEach { db.execSQL("DELETE FROM message_fts WHERE rowid = ?", arrayOf(it)) }
+            plan.inserts.forEach { row ->
                 db.execSQL(
                     "INSERT INTO message_fts(text, node_id, message_id, conversation_id, title, update_at) VALUES (?, ?, ?, ?, ?, ?)",
                     arrayOf(
-                        text,
-                        node.id.toString(),
-                        message.id.toString(),
+                        row.text,
+                        row.nodeId,
+                        row.messageId,
                         conversationId,
                         conversation.title,
                         conversation.updateAt.toEpochMilli().toString(),
                     )
                 )
             }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
         }
     }
 
@@ -73,17 +96,18 @@ class MessageFtsManager(private val database: AppDatabase, private val imMode: (
         val matchQuery = buildFtsMatchQuery(keyword, ::simpleQuery) ?: return@withContext results
         val cursor = db.query(
             """
-            SELECT node_id, message_id, conversation_id, title, update_at,
+            SELECT node_id, message_id, conversation_id, c.title, c.update_at,
                    simple_snippet(message_fts, 0, '[', ']', '...', 30) AS snippet,
-                   (SELECT chat_id FROM conversationentity WHERE id = conversation_id) AS chat_id
+                   c.chat_id
             FROM message_fts
-            WHERE text MATCH ?
-              AND conversation_id IN (SELECT id FROM conversationentity WHERE (? IS NULL AND chat_id IS NULL)
-                  OR (assistant_id = ? AND (
-                    (? = 1 AND chat_id IS NULL)
-                    OR (? = 1 AND chat_id IS NOT NULL AND EXISTS (
+            JOIN conversationentity c ON c.id = message_fts.conversation_id
+            WHERE message_fts.text MATCH ?
+              AND ((? IS NULL AND c.chat_id IS NULL)
+                  OR (c.assistant_id = ? AND (
+                    (? = 1 AND c.chat_id IS NULL)
+                    OR (? = 1 AND c.chat_id IS NOT NULL AND EXISTS (
                       SELECT 1 FROM partner_chat_member member
-                      WHERE member.chat_id = conversationentity.chat_id AND member.assistant_id = ?
+                      WHERE member.chat_id = c.chat_id AND member.assistant_id = ?
                     ))
                   )))
             ORDER BY ${sort.orderBy}
@@ -152,3 +176,27 @@ private fun UIMessage.extractFtsText(): String =
     parts.filterIsInstance<UIMessagePart.Text>()
         .joinToString("\n") { it.text }
         .take(10_000)
+
+/** One searchable node as stored in the index. */
+internal data class FtsRow(val nodeId: String, val messageId: String, val text: String)
+
+internal data class FtsStoredRow(val rowId: Long, val row: FtsRow)
+
+internal data class FtsPlan(val deleteRowIds: List<Long>, val inserts: List<FtsRow>)
+
+/**
+ * What to change so the rows of one conversation equal [desired]: stored rows whose node is gone or
+ * whose message id or text differ are deleted, and nodes without an identical stored row are inserted.
+ * Unchanged nodes cost nothing. [desired] keeps node order so inserts stay in node order.
+ */
+internal fun planFtsUpdate(existing: List<FtsStoredRow>, desired: List<FtsRow>): FtsPlan {
+    val wanted = desired.associateBy { it.nodeId }
+    val kept = HashSet<String>()
+    val delete = ArrayList<Long>()
+    existing.forEach { stored ->
+        // A second stored row of the same node is a leftover; keep one identical row at most.
+        if (wanted[stored.row.nodeId] == stored.row && kept.add(stored.row.nodeId)) return@forEach
+        delete.add(stored.rowId)
+    }
+    return FtsPlan(delete, desired.filter { it.nodeId !in kept })
+}
