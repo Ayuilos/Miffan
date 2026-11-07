@@ -110,10 +110,20 @@ def tour(dev: Device, t: dict, out: Path, only: set[str] | None, package: str):
         else:
             skipped.append(name)
 
+    activity = dev.shell(f"cmd package resolve-activity --brief {package}").strip().splitlines()[-1]
+
     def home_tab(key: str) -> bool:
+        if dev.tap_text(t[key], contains=False):
+            return True
+        # Left the app or stuck on a page: bring the app back (it resumes where it was), then back out to the tabs.
+        dev.shell(f"am start -n {activity}")
+        time.sleep(2)
+        for _ in range(3):
+            if dev.find(t["chats"], contains=False):
+                break
+            dev.back()
         return dev.tap_text(t[key], contains=False)
 
-    activity = dev.shell(f"cmd package resolve-activity --brief {package}").strip().splitlines()[-1]
     dev.shell(f"am force-stop {package}")
     dev.shell(f"am start -W -n {activity}")
     time.sleep(3)
@@ -137,7 +147,7 @@ def tour(dev: Device, t: dict, out: Path, only: set[str] | None, package: str):
     dev.shell(f"input tap {int(w * .09)} {int(h * .94)}")
     time.sleep(1)
     step("thread-plus")
-    dev.back(); dev.back(); dev.back()
+    dev.back(); dev.back()
 
     step("partners", home_tab("partners"))
     dev.shell(f"input tap {w // 2} {int(h * .30)}")
