@@ -98,7 +98,8 @@ fun ImWelcomePage(vm: ImWelcomeVM = koinViewModel(), backupVM: BackupVM = koinVi
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                vm.restoreFailed(e.message ?: resources.getString(R.string.im_p5_failed))
+                android.util.Log.w("ImWelcomePage", "Restore during onboarding failed", e)
+                vm.restoreFailed(resources.getString(R.string.im_backup_import_failed))
             } finally {
                 temp.delete()
             }
