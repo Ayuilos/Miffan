@@ -87,6 +87,7 @@ object CustomJsSearchService : SearchService<SearchServiceOptions.CustomJsOption
     }
 
     private fun executeScript(userScript: String, invocation: String): String {
+        com.whl.quickjs.android.QuickJSLoader.init() // Idempotent; launch loads it in the background, maybe not yet.
         val context = QuickJSContext.create()
         try {
             context.injectFetch(httpClient)

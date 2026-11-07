@@ -233,7 +233,7 @@ fun AgentThreadPage(
             val message = item as? TimelineItem.Message ?: return@forEach
             message.quote?.let { quote -> labels.putIfAbsent(quote.ref.conversationId, quote.preview) }
             if (message.segmentId !in labels) {
-                message.message.previewText().takeIf { it.isNotBlank() }?.let { labels[message.segmentId] = it }
+                message.message.previewText(300).takeIf { it.isNotBlank() }?.let { labels[message.segmentId] = it }
             }
         }
     }
@@ -511,7 +511,7 @@ fun AgentThreadPage(
                 GlassSurface(hazeState, RoundedCornerShape(20.dp), Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(HugeIcons.Reply, null, Modifier.padding(start = 16.dp).size(18.dp), tint = color)
-                        Text(target.message.previewText(), Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 12.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(target.message.previewText(300), Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 12.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
                         IconButton(onClick = { vm.setReplyTarget(null) }) { Icon(HugeIcons.Cancel01, stringResource(R.string.im_thread_dismiss), Modifier.size(18.dp)) }
                     }
                 }

@@ -25,6 +25,15 @@ object ImageEncodeCache {
         dir = cacheDir.resolve("encoded_images")
     }
 
+    /**
+     * Drops every cached copy. Called when chat files are deleted: entries are keyed by a hash, so the copies of
+     * a deleted picture can't be picked out, and compressed copies of private photos must not outlive them.
+     */
+    @Synchronized
+    fun clear() {
+        dir?.listFiles()?.forEach { it.delete() }
+    }
+
     internal fun get(key: String): File? {
         val file = fileOf(key) ?: return null
         if (!file.isFile || file.length() == 0L) return null

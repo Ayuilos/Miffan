@@ -36,6 +36,7 @@ internal fun buildJavascriptTool(): Tool = Tool(
     },
     execute = {
         val logs = arrayListOf<String>()
+        com.whl.quickjs.android.QuickJSLoader.init() // Idempotent; launch loads it in the background, maybe not yet.
         val context = QuickJSContext.create()
         context.setConsole(object : QuickJSContext.Console {
             override fun log(info: String?) {

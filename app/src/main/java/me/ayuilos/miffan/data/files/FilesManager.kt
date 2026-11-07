@@ -212,6 +212,8 @@ class FilesManager(
         }
         if (relativePaths.isNotEmpty()) {
             appScope.launch(Dispatchers.IO) {
+                // Compressed copies of the deleted pictures sent to models go with them.
+                me.rerere.ai.util.ImageEncodeCache.clear()
                 relativePaths.forEach { path ->
                     repository.deleteByPath(path)
                 }

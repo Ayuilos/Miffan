@@ -270,13 +270,13 @@ object ThreadTimeline {
             val explicit = entry.node.replyTo?.let { ref ->
                 val target = byMessageId[ref.messageId] ?: return@let null
                 if (target.node.origin != null) return@let null
-                Quote(ref, target.node.message.previewText(), topicIndex.getValue(target.segment.id), explicit = true)
+                Quote(ref, target.node.message.previewText(QUOTE_PREVIEW_CHARS), topicIndex.getValue(target.segment.id), explicit = true)
             }
             val automatic = if (quoted[index]) {
                 val trigger = entries[triggerIndex[index]]
                 Quote(
                     MessageRef(trigger.segment.id, trigger.node.message.id),
-                    trigger.node.message.previewText(),
+                    trigger.node.message.previewText(QUOTE_PREVIEW_CHARS),
                     topicIndex.getValue(trigger.segment.id),
                     explicit = false,
                 )
@@ -324,12 +324,19 @@ fun UIMessage.listPreviewText(): String = listPreviewText(
 
 fun listPreviewText(text: String): String = text.stripMarkdown().replace(whitespace, " ").trim()
 
-/** The text of a message on one line without Markdown marks, used by quote bars and topic labels. */
-fun UIMessage.previewText(): String = parts
-    .filterIsInstance<UIMessagePart.Text>()
-    .joinToString(" ") { it.text }
-    .stripMarkdown()
-    .replace(whitespace, " ")
-    .trim()
+/**
+ * The text of a message on one line without Markdown marks, used by quote bars and topic labels. [limit] cuts the
+ * raw text first, so a quote bar showing two lines does not strip a long reply on every streamed chunk. A message
+ * that is only marks or code keeps its raw text rather than becoming blank.
+ */
+fun UIMessage.previewText(limit: Int = Int.MAX_VALUE): String {
+    val raw = parts.filterIsInstance<UIMessagePart.Text>().joinToString(" ") { it.text }
+    val head = if (raw.length > limit) raw.take(limit) else raw
+    return head.stripMarkdown().replace(whitespace, " ").trim()
+        .ifBlank { head.replace(whitespace, " ").trim() }
+}
+
+/** Enough raw text for a quote bar's two lines. */
+private const val QUOTE_PREVIEW_CHARS = 300
 
 private val whitespace = Regex("\\s+")

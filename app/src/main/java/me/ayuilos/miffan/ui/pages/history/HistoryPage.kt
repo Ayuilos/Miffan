@@ -118,15 +118,20 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
                             // 先获取完整的对话数据（包含 messageNodes），用于撤销恢复
                             val fullConversation = vm.getFullConversation(conversation.id) ?: conversation
                             vm.deleteConversation(conversation)
-                            val result = snackbarHostState.showSnackbar(
-                                message = snackMessageDeleted,
-                                actionLabel = snackMessageUndo,
-                                withDismissAction = true,
-                            )
-                            if (result == SnackbarResult.ActionPerformed) {
-                                vm.restoreConversation(fullConversation)
-                            } else {
-                                vm.discardFavorites(conversation.id)
+                            // Leaving the page (or the snackbar queue) cancels this; the delete is final then too.
+                            var restored = false
+                            try {
+                                val result = snackbarHostState.showSnackbar(
+                                    message = snackMessageDeleted,
+                                    actionLabel = snackMessageUndo,
+                                    withDismissAction = true,
+                                )
+                                if (result == SnackbarResult.ActionPerformed) {
+                                    restored = true
+                                    vm.restoreConversation(fullConversation)
+                                }
+                            } finally {
+                                if (!restored) vm.discardFavorites(conversation.id)
                             }
                         }
                     },

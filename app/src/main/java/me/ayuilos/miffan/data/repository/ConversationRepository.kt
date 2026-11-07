@@ -383,6 +383,8 @@ class ConversationRepository(
         database.withTransaction {
             conversationDAO.update(conversationToConversationEntity(target))
             saveMessageNodes(target.id.toString(), target.messageNodes)
+            // The source's messages now live in the target: their favorites follow them before the source goes.
+            moveNodeFavorites(source.id, target.id, target.messageNodes.mapTo(HashSet()) { it.id.toString() })
             conversationDAO.deleteById(source.id.toString())
         }
         messageFtsManager.deleteConversation(source.id.toString())
@@ -395,9 +397,25 @@ class ConversationRepository(
             saveMessageNodes(target.id.toString(), target.messageNodes)
             conversationDAO.insert(conversationToConversationEntity(source))
             saveMessageNodes(source.id.toString(), source.messageNodes)
+            moveNodeFavorites(target.id, source.id, source.messageNodes.mapTo(HashSet()) { it.id.toString() })
         }
         messageFtsManager.indexConversation(target)
         messageFtsManager.indexConversation(source)
+    }
+
+    /** Re-keys the node favorites of [nodeIds] from conversation [from] to [to] (keys are `node:<conversation>:<node>`). */
+    private suspend fun moveNodeFavorites(from: Uuid, to: Uuid, nodeIds: Set<String>) {
+        val prefix = "node:$from:"
+        favoriteDAO.listByKeyRange(prefix, "node:$from;").forEach { favorite ->
+            val nodeId = favorite.refKey.removePrefix(prefix)
+            if (nodeId !in nodeIds) return@forEach
+            favoriteDAO.deleteByRefKey(favorite.refKey)
+            favoriteDAO.upsert(favorite.copy(
+                refKey = "node:$to:$nodeId",
+                refJson = favorite.refJson.replace(from.toString(), to.toString()),
+                snapshotJson = favorite.snapshotJson.replace(from.toString(), to.toString()),
+            ))
+        }
     }
 
     /**

@@ -23,6 +23,8 @@ class HistoryVM(
     private val conversationRepo: ConversationRepository,
     private val settingsStore: SettingsStore,
     private val chatService: ChatService,
+    /** Outlives the page: a delete made final as the page closes must still drop its favorites. */
+    private val appScope: me.ayuilos.miffan.AppScope,
 ) : ViewModel() {
     val assistant = settingsStore.settingsFlow
         .map { it.getCurrentAssistant() }
@@ -42,7 +44,7 @@ class HistoryVM(
     }
 
     fun discardFavorites(conversationId: Uuid) {
-        viewModelScope.launch {
+        appScope.launch {
             chatService.deleteNodeFavorites(conversationId)
         }
     }

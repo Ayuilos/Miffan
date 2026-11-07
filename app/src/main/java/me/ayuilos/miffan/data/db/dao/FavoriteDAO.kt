@@ -43,6 +43,9 @@ interface FavoriteDAO {
     @Query("DELETE FROM favorites WHERE id = :id")
     suspend fun deleteById(id: String): Int
 
+    @Query("SELECT * FROM favorites WHERE ref_key >= :prefix AND ref_key < :prefixEnd")
+    suspend fun listByKeyRange(prefix: String, prefixEnd: String): List<FavoriteEntity>
+
     /** Range counterpart of [getFavoriteNodeIdsByKeyRange]: deletes every ref_key in [prefix, prefixEnd). */
     @Query("DELETE FROM favorites WHERE ref_key >= :prefix AND ref_key < :prefixEnd")
     suspend fun deleteByKeyRange(prefix: String, prefixEnd: String): Int

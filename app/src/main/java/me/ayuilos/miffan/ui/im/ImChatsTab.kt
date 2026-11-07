@@ -106,7 +106,8 @@ internal fun ImChatsTab(
     var renaming by remember { mutableStateOf<ChatGroup?>(null) }
     var deleting by remember { mutableStateOf<ChatGroup?>(null) }
     val open: (ImChatItem) -> Unit = {
-        me.ayuilos.miffan.utils.ThreadOpenTrace.begin()
+        // Only a partner thread ends this trace (AgentThreadPage); a partner chat would leave it open.
+        if (!it.isPartnerChat) me.ayuilos.miffan.utils.ThreadOpenTrace.begin()
         navController.navigate(if (it.isPartnerChat) Screen.PartnerChat(it.chatId.toString()) else Screen.Thread(it.chatId.toString()))
     }
     // One instance for the page: a new one per recomposition made every row recompose when any chat changed.
