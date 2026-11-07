@@ -229,10 +229,10 @@ internal fun ThreadMessageBubble(
                     handed.forEach { file -> key(file.toolCallId) { ThreadHandedFileCard(file, threadAssistantName(assistant)) } }
                 }
             }
-            val text = item.message.previewText()
+            val hasText = parts.any { it is UIMessagePart.Text && it.text.isNotBlank() }
             ImPressMenu(menu) {
                 ImPressMenuItem(HugeIcons.Reply, stringResource(R.string.im_thread_reply)) { menu.close(); onReply() }
-                if (text.isNotBlank()) ImPressMenuItem(HugeIcons.Copy01, stringResource(R.string.im_thread_copy)) {
+                if (hasText) ImPressMenuItem(HugeIcons.Copy01, stringResource(R.string.im_thread_copy)) {
                     menu.close()
                     scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("", item.message.toText()))) }
                 }
@@ -240,11 +240,11 @@ internal fun ThreadMessageBubble(
                 if (onFavorite != null && !item.streaming) ImPressMenuItem(HugeIcons.Star, stringResource(if (favorited) R.string.im_thread_unfavorite else R.string.im_thread_favorite)) {
                     menu.close(); onFavorite()
                 }
-                if (canSpeak && !user && text.isNotBlank()) {
+                if (canSpeak && !user && hasText) {
                     ImPressMenuItem(if (speaking) HugeIcons.VolumeOff else HugeIcons.VolumeHigh,
                         stringResource(if (speaking) R.string.im_thread_stop_reading else R.string.im_thread_read_aloud)) {
                         menu.close()
-                        if (speaking) tts.stop() else tts.speak(text)
+                        if (speaking) tts.stop() else tts.speak(item.message.previewText())
                     }
                 }
                 ImPressMenuItem(HugeIcons.Filter, stringResource(R.string.im_thread_filter)) { menu.close(); onFilter() }

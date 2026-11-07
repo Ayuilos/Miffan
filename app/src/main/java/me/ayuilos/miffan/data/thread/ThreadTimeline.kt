@@ -322,11 +322,14 @@ fun UIMessage.listPreviewText(): String = listPreviewText(
     parts.filterIsInstance<UIMessagePart.Text>().lastOrNull { it.text.isNotBlank() }?.text.orEmpty()
 )
 
-fun listPreviewText(text: String): String = text.stripMarkdown().replace(Regex("\\s+"), " ").trim()
+fun listPreviewText(text: String): String = text.stripMarkdown().replace(whitespace, " ").trim()
 
-/** First text of a message on one line, used by quote bars. */
+/** The text of a message on one line without Markdown marks, used by quote bars and topic labels. */
 fun UIMessage.previewText(): String = parts
     .filterIsInstance<UIMessagePart.Text>()
     .joinToString(" ") { it.text }
-    .replace(Regex("\\s+"), " ")
+    .stripMarkdown()
+    .replace(whitespace, " ")
     .trim()
+
+private val whitespace = Regex("\\s+")
