@@ -20,6 +20,7 @@ import me.ayuilos.miffan.data.db.dao.ConversationDAO
 import me.ayuilos.miffan.data.db.dao.ThreadSegmentDigest
 import me.ayuilos.miffan.data.db.dao.ThreadSegmentStamp
 import me.ayuilos.miffan.data.db.dao.FavoriteDAO
+import me.ayuilos.miffan.data.db.dao.getFavoriteNodeIdsOfConversation
 import me.ayuilos.miffan.data.db.dao.MessageNodeDAO
 import me.ayuilos.miffan.data.db.entity.ConversationEntity
 import me.ayuilos.miffan.data.db.entity.MessageNodeEntity

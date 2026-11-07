@@ -24,8 +24,12 @@ interface FavoriteDAO {
     @Query("SELECT ref_key FROM favorites WHERE type = :type")
     suspend fun getRefKeysByType(type: String): List<String>
 
-    @Query("SELECT substr(ref_key, length('node:' || :conversationId || ':') + 1) FROM favorites WHERE ref_key LIKE 'node:' || :conversationId || ':%'")
-    suspend fun getFavoriteNodeIdsOfConversation(conversationId: String): List<String>
+    /**
+     * Node ids of favorites whose ref_key starts with [prefix]. The caller passes the exclusive upper
+     * bound [prefixEnd] (`prefix` with its last char + 1) so the unique ref_key index serves a range scan; LIKE can't.
+     */
+    @Query("SELECT substr(ref_key, length(:prefix) + 1) FROM favorites WHERE ref_key >= :prefix AND ref_key < :prefixEnd")
+    suspend fun getFavoriteNodeIdsByKeyRange(prefix: String, prefixEnd: String): List<String>
 
     @Query("SELECT * FROM favorites WHERE ref_key = :refKey LIMIT 1")
     suspend fun getByRefKey(refKey: String): FavoriteEntity?
@@ -38,4 +42,11 @@ interface FavoriteDAO {
 
     @Query("DELETE FROM favorites WHERE id = :id")
     suspend fun deleteById(id: String): Int
+}
+
+/** Node ids favorited within [conversationId]; ref keys look like `node:<conversationId>:<nodeId>`. */
+suspend fun FavoriteDAO.getFavoriteNodeIdsOfConversation(conversationId: String): List<String> {
+    val prefix = "node:$conversationId:"
+    // ';' is the character after ':', so [prefix, prefixEnd) is exactly the keys starting with prefix.
+    return getFavoriteNodeIdsByKeyRange(prefix, "node:$conversationId;")
 }

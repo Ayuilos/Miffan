@@ -30,7 +30,9 @@ data class PartnerChatMemberEntity(
 @Entity(tableName = "partner_chat_message",
     foreignKeys = [ForeignKey(entity = PartnerChatEntity::class, parentColumns = ["id"],
         childColumns = ["chat_id"], onDelete = ForeignKey.CASCADE)],
-    indices = [Index("chat_id"), Index("exchange_id")])
+    indices = [Index("chat_id"), Index("exchange_id"),
+        // Unread counts: partner messages of one chat after the owner's read time.
+        Index(value = ["chat_id", "created_at"])])
 data class PartnerChatMessageEntity(
     @PrimaryKey val id: String,
     @ColumnInfo("chat_id") val chatId: String,
