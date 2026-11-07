@@ -61,9 +61,6 @@ const val COMPUTER_NOTIFICATION_CHANNEL_ID = "computer"
 class MiffanApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        // Bring newly introduced share/deep-link aliases in line with a pre-upgrade choice.
-        runCatching { LauncherIconManager(this).reconcileExternalEntries() }
-            .onFailure { Log.w(TAG, "Unable to synchronize external entry icons", it) }
         startKoin {
             androidLogger()
             androidContext(this@MiffanApp)
@@ -78,8 +75,16 @@ class MiffanApp : Application() {
         // install crash handler
         CrashHandler.install(this)
 
-        // Init QuickJS native library
-        QuickJSLoader.init()
+        // Work that nothing on the first screen needs leaves the main thread, so the first frame comes sooner.
+        get<AppScope>().launch(Dispatchers.IO) {
+            // Bring newly introduced share/deep-link aliases in line with a pre-upgrade choice.
+            runCatching { LauncherIconManager(this@MiffanApp).reconcileExternalEntries() }
+                .onFailure { Log.w(TAG, "Unable to synchronize external entry icons", it) }
+            // Only the JavaScript tool and custom search scripts use QuickJS, long after launch.
+            QuickJSLoader.init()
+            // Watches direct connections from now on, to keep relay connectors at the pinned version.
+            get<me.ayuilos.miffan.data.repository.relay.RelayConnectorUpdates>()
+        }
 
         // delete temp files
         deleteTempFiles()
@@ -108,8 +113,6 @@ class MiffanApp : Application() {
         startModelCatalog()
 
         deliverRemoteTaskResults()
-        // Watches direct connections from now on, to keep relay connectors at the pinned version.
-        get<me.ayuilos.miffan.data.repository.relay.RelayConnectorUpdates>()
 
         startUpdateChecks()
 
