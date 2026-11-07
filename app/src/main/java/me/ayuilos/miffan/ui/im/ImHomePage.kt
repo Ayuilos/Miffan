@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im
 
+import androidx.compose.ui.platform.testTag
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.animation.animateColorAsState
@@ -228,6 +229,7 @@ private fun ImFloatingTabItem(tab: ImTab, selected: Boolean, notice: String?, on
     Column(
         modifier = Modifier
             .size(TabItemWidth, TabItemHeight)
+            .testTag("im_tab_${tab.name.lowercase()}")
             .clip(RoundedCornerShape(50))
             .selectable(
                 selected = selected,
