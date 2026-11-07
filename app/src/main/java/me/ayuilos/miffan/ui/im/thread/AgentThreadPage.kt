@@ -379,13 +379,13 @@ fun AgentThreadPage(
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = topChrome + 4.dp, bottom = bottomChrome + 8.dp)) {
             if (welcomeDecided) {
                 if (welcome == null) {
-                    items(timeline, key = { it.key }) { TimelineRow(it) }
+                    items(timeline, key = { it.key }, contentType = ::timelineContentType) { TimelineRow(it) }
                 } else {
                     // The list content is re-read lazily against the newest timeline, so split that same
                     // snapshot here: a split computed in an earlier composition can exceed a shrunk timeline.
                     val items = timeline
                     val history = historySize(items).coerceIn(0, items.size)
-                    if (historyShown) items(items.subList(0, history), key = { it.key }) { TimelineRow(it) }
+                    if (historyShown) items(items.subList(0, history), key = { it.key }, contentType = ::timelineContentType) { TimelineRow(it) }
                     item(key = "welcome") {
                         val fill = !historyShown && history == items.size && visibleErrors.isEmpty()
                         ThreadWelcomeHero(assistant, welcome, headerPhase, historyHidden = !historyShown, fill = fill,
@@ -394,7 +394,7 @@ fun AgentThreadPage(
                             modifier = if (fill) Modifier.fillParentMaxHeight() else Modifier,
                             onContinue = welcomeTopic()?.let { topic -> { startMerge(topic) } })
                     }
-                    items(items.subList(history, items.size), key = { it.key }) { TimelineRow(it) }
+                    items(items.subList(history, items.size), key = { it.key }, contentType = ::timelineContentType) { TimelineRow(it) }
                 }
             }
             if (newTopicPending) item(key = "new-topic") {
@@ -525,3 +525,6 @@ fun AgentThreadPage(
     }
     }
 }
+
+/** Rows of one kind reuse each other's compositions while scrolling; a message bubble never becomes a date line. */
+private fun timelineContentType(item: TimelineItem): Any = item::class

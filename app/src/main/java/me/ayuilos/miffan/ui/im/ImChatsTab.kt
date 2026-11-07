@@ -147,7 +147,7 @@ internal fun ImChatsTab(
         }
         if (current != null) {
             if (current.pinned.isNotEmpty()) item("pinned") { ImPinnedChats(current.pinned, actions) }
-            items(current.ungrouped, key = { it.chatId.toString() }) { chat -> ImChatRow(chat, actions) }
+            items(current.ungrouped, key = { it.chatId.toString() }, contentType = { "chat" }) { chat -> ImChatRow(chat, actions) }
             val order = current.allGroups.map { it.id }
             current.groups.forEach { section ->
                 val position = order.indexOf(section.group.id)
@@ -162,7 +162,7 @@ internal fun ImChatsTab(
                         onDelete = { deleting = section.group },
                     )
                 }
-                if (!section.collapsed) items(section.chats, key = { it.chatId.toString() }) { chat -> ImChatRow(chat, actions) }
+                if (!section.collapsed) items(section.chats, key = { it.chatId.toString() }, contentType = { "chat" }) { chat -> ImChatRow(chat, actions) }
             }
         }
         if (showHint) item("hint") {
