@@ -4292,4 +4292,6 @@
   <string name="im_draw_failed">沒畫出來，再試一次吧</string>
   <string name="im_backup_export_failed">備份沒存下來，看看手機空間夠不夠，再試一次</string>
   <string name="im_backup_import_failed">這個檔案恢復不了：可能不是對應的備份檔案，或者已經損壞</string>
+  <string name="im_search_recent">最近聊過</string>
+  <string name="im_search_hint">可以搜夥伴的名字，或聊天裡說過的話</string>
 </resources>

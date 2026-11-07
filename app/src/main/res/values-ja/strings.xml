@@ -4294,4 +4294,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_draw_failed">描けませんでした。もう一度試してください</string>
   <string name="im_backup_export_failed">バックアップを保存できませんでした。空き容量を確認してもう一度試してください</string>
   <string name="im_backup_import_failed">このファイルは復元できません。対応するバックアップではないか、壊れている可能性があります</string>
+  <string name="im_search_recent">最近のやりとり</string>
+  <string name="im_search_hint">パートナーの名前や、チャットで話した内容を検索できます</string>
 </resources>

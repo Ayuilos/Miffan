@@ -4363,4 +4363,6 @@
   <string name="im_draw_failed">Не удалось нарисовать. Попробуйте ещё раз</string>
   <string name="im_backup_export_failed">Не удалось сохранить резервную копию. Проверьте свободное место и попробуйте ещё раз</string>
   <string name="im_backup_import_failed">Этот файл не удаётся восстановить. Возможно, это не та резервная копия или файл повреждён</string>
+  <string name="im_search_recent">Недавние</string>
+  <string name="im_search_hint">Ищите по имени партнёра или по словам из переписки</string>
 </resources>

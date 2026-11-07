@@ -4330,4 +4330,6 @@
   <string name="im_draw_failed">Couldn\'t draw that. Try again</string>
   <string name="im_backup_export_failed">The backup wasn\'t saved. Check there\'s enough space and try again</string>
   <string name="im_backup_import_failed">This file can\'t be restored. It may not be a backup from here, or it\'s damaged</string>
+  <string name="im_search_recent">Recent</string>
+  <string name="im_search_hint">Search a partner\'s name, or something said in a chat</string>
 </resources>
