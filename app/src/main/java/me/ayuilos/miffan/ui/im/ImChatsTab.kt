@@ -238,6 +238,7 @@ private fun ImPinnedChat(chat: ImChatItem, avatarSize: Dp, width: Dp, nameStyle:
         Column(
             modifier = Modifier
                 .width(width)
+                .testTag("im_chat_row_${chat.chatId}")
                 .clip(RoundedCornerShape(20.dp))
                 .imLongPress(menu::open)
                 .clickable { actions.open(chat) }
