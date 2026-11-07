@@ -21,6 +21,8 @@ val hasReleaseSigningConfig = listOf(
     releaseKeyPassword,
 ).none { it.isNullOrBlank() }
 val hasGoogleServicesConfig = file("google-services.json").isFile
+// Build types that carry src/perfFixture: debug, plus the ones the baselineprofile plugin derives from release.
+val PERF_FIXTURE_VARIANTS = setOf("debug", "benchmarkRelease", "nonMinifiedRelease")
 
 plugins {
     alias(libs.plugins.android.application)
@@ -126,6 +128,12 @@ android {
     }
     sourceSets {
         getByName("androidTest").assets.srcDirs("$projectDir/schemas")
+        // The performance fixture (src/perfFixture) is compiled into debug and the macrobenchmark variants only,
+        // never into the shipping release. Debug declares its manifest entry in src/debug/AndroidManifest.xml.
+        matching { it.name in PERF_FIXTURE_VARIANTS }.configureEach {
+            kotlin.srcDir("src/perfFixture/java")
+            if (name != "debug") manifest.srcFile("src/perfFixture/AndroidManifest.xml")
+        }
     }
     androidResources {
         generateLocaleConfig = true
