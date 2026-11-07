@@ -5,6 +5,7 @@ import me.ayuilos.miffan.ui.im.computer.cuaMarkColor
 import me.ayuilos.miffan.ui.im.computer.CuaMark
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -93,10 +94,24 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
         val other = when (vm.assistantId) { pair.first -> pair.second; pair.second -> pair.first; else -> null }
         other?.let { id -> currentSettings.assistants.firstOrNull { it.id == id } }
     }
-    Scaffold(topBar = { ImPageBar("") }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+    val listState = rememberLazyListState()
+    // Once the big name has scrolled away, the bar says whose profile this is.
+    val headerGone by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
+    Scaffold(topBar = {
+        ImPageBar("") {}
+        androidx.compose.animation.AnimatedVisibility(headerGone, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
+            assistant?.let { partner ->
+                Row(Modifier.statusBarsPadding().height(64.dp).padding(start = 56.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    AssistantAvatar(partner.name, partner.avatar, Modifier.size(32.dp))
+                    Text(partnerName(partner), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         val partner = assistant
         if (partner == null) ImEmpty(stringResource(R.string.im_p5_missing_partner))
-        else LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
+        else LazyColumn(Modifier.fillMaxSize().padding(padding), state = listState, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item("identity") {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
