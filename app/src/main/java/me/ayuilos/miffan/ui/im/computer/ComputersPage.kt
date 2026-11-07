@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import me.ayuilos.miffan.ui.im.ImScrolledTitleBar
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -304,8 +306,14 @@ fun ComputerDetailPage(hostId: String) {
     }
     val current = computer
     RetainComputerConnection(workspaceList.firstOrNull { it.isRemote && !it.isSpace && it.remoteHostId == hostId }?.id)
-    // The name heads the page itself.
-    Scaffold(topBar = { ImPageBar("") }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+    // The name heads the page itself; once it scrolls away the bar names the computer.
+    val detailList = rememberLazyListState()
+    val headerGone by remember { derivedStateOf { detailList.firstVisibleItemIndex > 0 } }
+    Scaffold(topBar = {
+        ImScrolledTitleBar(headerGone && current != null, current?.name.orEmpty()) {
+            current?.let { ComputerBadge(it.platform, 32.dp) }
+        }
+    }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         if (current == null) return@Scaffold
         val partners = current.partnerIds.mapNotNull { id -> assistants.find { it.id == id } }
         // Partners with their own mini box here work in that, not on this computer's desktop.
@@ -320,7 +328,7 @@ fun ComputerDetailPage(hostId: String) {
                 else -> stringResource(R.string.im_computer_replaces_phone)
             }
         }
-        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 0.dp, bottom = 24.dp),
+        LazyColumn(Modifier.fillMaxSize().padding(padding), state = detailList, contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 0.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item("identity") {
                 Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally,

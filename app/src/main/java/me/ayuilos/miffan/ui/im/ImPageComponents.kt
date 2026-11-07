@@ -189,3 +189,21 @@ internal fun ImIconAction(icon: ImageVector, label: String, tonal: Boolean = fal
         else IconButton(onClick = onClick) { Icon(icon, label, Modifier.size(20.dp)) }
     }
 }
+
+/**
+ * A page bar for pages that lead with a big identity header (a partner, a computer): empty while the header
+ * shows, and once it has scrolled away the bar fades in a small [leading] picture and [title].
+ */
+@Composable
+internal fun ImScrolledTitleBar(headerGone: Boolean, title: String, leading: @Composable () -> Unit) {
+    ImPageBar("") {}
+    androidx.compose.animation.AnimatedVisibility(headerGone, enter = androidx.compose.animation.fadeIn(),
+        exit = androidx.compose.animation.fadeOut()) {
+        Row(Modifier.statusBarsPadding().height(64.dp).padding(start = 56.dp, end = 16.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            leading()
+            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        }
+    }
+}

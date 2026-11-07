@@ -98,15 +98,8 @@ fun ImPartnerProfilePage(assistantId: String, vm: ImPartnerVM = koinViewModel(ke
     // Once the big name has scrolled away, the bar says whose profile this is.
     val headerGone by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
     Scaffold(topBar = {
-        ImPageBar("") {}
-        androidx.compose.animation.AnimatedVisibility(headerGone, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
-            assistant?.let { partner ->
-                Row(Modifier.statusBarsPadding().height(64.dp).padding(start = 56.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    AssistantAvatar(partner.name, partner.avatar, Modifier.size(32.dp))
-                    Text(partnerName(partner), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
+        ImScrolledTitleBar(headerGone && assistant != null, assistant?.let { partnerName(it) }.orEmpty()) {
+            assistant?.let { AssistantAvatar(it.name, it.avatar, Modifier.size(32.dp)) }
         }
     }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         val partner = assistant
