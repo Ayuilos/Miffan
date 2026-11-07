@@ -65,6 +65,7 @@ import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -101,6 +102,7 @@ import me.ayuilos.miffan.ui.hooks.useEditState
 import me.ayuilos.miffan.ui.theme.CustomColors
 import me.ayuilos.miffan.utils.plus
 import org.koin.androidx.compose.koinViewModel
+import sh.calvin.reorderable.ReorderableColumn
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -906,14 +908,35 @@ private fun LorebookEditSheet(
                     }
                 }
 
-                book.entries.forEach { entry ->
-                    RegexInjectionEntryCard(
-                        entry = entry,
-                        onEdit = { entryEditState.open(entry) },
-                        onDelete = {
-                            onEdit(book.copy(entries = book.entries - entry))
+                ReorderableColumn(
+                    list = book.entries,
+                    onSettle = { fromIndex, toIndex ->
+                        val entries = book.entries.toMutableList().apply {
+                            add(toIndex, removeAt(fromIndex))
                         }
-                    )
+                        onEdit(book.copy(entries = entries))
+                    },
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) { _, entry, isDragging ->
+                    key(entry.id) {
+                        ReorderableItem {
+                            RegexInjectionEntryCard(
+                                entry = entry,
+                                modifier = Modifier
+                                    .longPressDraggableHandle(enabled = book.entries.size > 1)
+                                    .graphicsLayer {
+                                        if (isDragging) {
+                                            scaleX = 1.05f
+                                            scaleY = 1.05f
+                                        }
+                                    },
+                                onEdit = { entryEditState.open(entry) },
+                                onDelete = {
+                                    onEdit(book.copy(entries = book.entries - entry))
+                                }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -946,10 +969,11 @@ private fun LorebookEditSheet(
 @Composable
 private fun RegexInjectionEntryCard(
     entry: PromptInjection.RegexInjection,
+    modifier: Modifier = Modifier,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

@@ -42,6 +42,10 @@ interface FavoriteDAO {
 
     @Query("DELETE FROM favorites WHERE id = :id")
     suspend fun deleteById(id: String): Int
+
+    /** Range counterpart of [getFavoriteNodeIdsByKeyRange]: deletes every ref_key in [prefix, prefixEnd). */
+    @Query("DELETE FROM favorites WHERE ref_key >= :prefix AND ref_key < :prefixEnd")
+    suspend fun deleteByKeyRange(prefix: String, prefixEnd: String): Int
 }
 
 /** Node ids favorited within [conversationId]; ref keys look like `node:<conversationId>:<nodeId>`. */
@@ -50,3 +54,7 @@ suspend fun FavoriteDAO.getFavoriteNodeIdsOfConversation(conversationId: String)
     // ';' is the character after ':', so [prefix, prefixEnd) is exactly the keys starting with prefix.
     return getFavoriteNodeIdsByKeyRange(prefix, "node:$conversationId;")
 }
+
+/** Drops every node favorite of [conversationId]; the favorites table has no foreign key to conversations. */
+suspend fun FavoriteDAO.deleteNodeFavoritesOfConversation(conversationId: String): Int =
+    deleteByKeyRange("node:$conversationId:", "node:$conversationId;")
