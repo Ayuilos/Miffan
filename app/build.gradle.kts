@@ -22,7 +22,8 @@ val hasReleaseSigningConfig = listOf(
 ).none { it.isNullOrBlank() }
 val hasGoogleServicesConfig = file("google-services.json").isFile
 // Build types that carry src/perfFixture: debug, plus the ones the baselineprofile plugin derives from release.
-val PERF_FIXTURE_VARIANTS = setOf("debug", "benchmarkRelease", "nonMinifiedRelease")
+val BENCHMARK_BUILD_TYPES = setOf("benchmarkRelease", "nonMinifiedRelease")
+val PERF_FIXTURE_VARIANTS = BENCHMARK_BUILD_TYPES + "debug"
 
 plugins {
     alias(libs.plugins.android.application)
@@ -166,6 +167,11 @@ androidComponents {
         if (variant.buildType in PERF_FIXTURE_VARIANTS) {
             variant.sources.kotlin?.addStaticSourceDirectory("src/perfFixture/java")
             variant.sources.manifests.addStaticManifestFile("src/perfFixture/AndroidManifest.xml")
+        }
+        // The macrobenchmark variants are debug-signed. Under the shipping id they could only be installed by
+        // uninstalling the real app (and its data) from a device, so they get their own package.
+        if (variant.buildType in BENCHMARK_BUILD_TYPES) {
+            variant.applicationId.set(variant.applicationId.get() + ".bench")
         }
     }
 }

@@ -20,6 +20,14 @@ class PerfFixtureReceiver : BroadcastReceiver(), KoinComponent {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION) return
         val pending = goAsync()
+        // The fixture wipes every table. Only the debug and macrobenchmark packages may run it, so a build that
+        // somehow carries it under another id (the shipping one) refuses instead of destroying real data.
+        if (!context.packageName.endsWith(".debug") && !context.packageName.endsWith(".bench")) {
+            Log.e(TAG, "Refusing to run in ${context.packageName}: not a .debug or .bench package")
+            pending.setResult(Activity.RESULT_CANCELED, "REFUSED ${context.packageName}", null)
+            pending.finish()
+            return
+        }
         val anchor = if (intent.hasExtra(EXTRA_ANCHOR)) intent.getLongExtra(EXTRA_ANCHOR, 0L) else PerfFixture.defaultAnchor()
         get<AppScope>().launch {
             try {

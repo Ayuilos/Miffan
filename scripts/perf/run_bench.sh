@@ -76,6 +76,19 @@ case "$TESTS" in
      ARGS+=("-Pandroid.testInstrumentationRunnerArguments.class=${CLASSES%,}") ;;
 esac
 
+# Gradle installs the app under test on the device and uninstalls it afterwards (which deletes its data). Never let
+# that happen to a real install: only a package ending in ".bench" (the debug-signed benchmarkRelease build, which has
+# its own application id) may be installed or removed by this script.
+cd "$ROOT"
+./gradlew :app:assembleBenchmarkRelease
+TARGET_PACKAGE="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["applicationId"])' \
+  "$ROOT/app/build/outputs/apk/benchmarkRelease/output-metadata.json")"
+if [[ "$TARGET_PACKAGE" != *.bench ]]; then
+  echo "refusing to run: the benchmark app's package is '$TARGET_PACKAGE', not a '.bench' package" >&2
+  exit 3
+fi
+echo "benchmark package: $TARGET_PACKAGE (installed and uninstalled by the test task; other packages are never touched)"
+
 OUT="$ROOT/app/baselineprofile/build/outputs/connected_android_test_additional_output"
 rm -rf "$OUT/benchmarkRelease"
 cd "$ROOT"

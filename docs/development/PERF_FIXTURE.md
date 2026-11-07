@@ -18,7 +18,7 @@ adb shell am broadcast -a me.ayuilos.miffan.PERF_FIXTURE \
 | Build | `<package>` |
 | --- | --- |
 | debug (`assembleDebug`) | `me.ayuilos.miffan.app.debug` |
-| macrobenchmark (`assembleBenchmarkRelease`, `assembleNonMinifiedRelease`) | `me.ayuilos.miffan.app` |
+| macrobenchmark (`assembleBenchmarkRelease`, `assembleNonMinifiedRelease`) | `me.ayuilos.miffan.app.bench` |
 
 The command prints `data="OK partners=6 segments=… messages=…"` when it is done (about 10–40 s) or
 `data="FAILED …"`. Restart the app afterwards (`adb shell am force-stop <package>`): the receiver replaces data
@@ -94,7 +94,7 @@ scripts/perf/run_bench.sh <phone> --frames timeline          # frame-timeline me
 
 It starts the fake model if nothing listens on 18799, runs
 `./gradlew :app:baselineprofile:connectedBenchmarkReleaseAndroidTest` (which builds and installs the
-`benchmarkRelease` app, debug-signed, over `me.ayuilos.miffan.app` and uninstalls it afterwards) and prints
+`benchmarkRelease` app, debug-signed, as `me.ayuilos.miffan.app.bench` and uninstalls it afterwards) and prints
 a table from the JSON files under
 `app/baselineprofile/build/outputs/connected_android_test_additional_output/benchmarkRelease/`
 (`scripts/perf/summarize.py <dir>` prints the table again). The tests load the fixture themselves before they
@@ -145,8 +145,10 @@ journeys; compare with `run_bench.sh --tests startup`.
 * A fresh git worktree needs the untracked native inputs before any release-type build: `git submodule update --init
   material3/material-color-utilities`, and copies of `.deps/p6a` and `rdp/build/native` from the main checkout.
 
-* The fixture and benchmarks overwrite `me.ayuilos.miffan.app` data; they never touch the `.debug` app unless you
-  run the fixture against it.
+* The fixture wipes all data of the app it runs in. The benchmark variants carry their own application id
+  (`me.ayuilos.miffan.app.bench`, set in `app/build.gradle.kts`), so the real app (`me.ayuilos.miffan.app`, release
+  key) is never replaced or uninstalled. `PerfFixtureReceiver` answers `REFUSED` unless its package ends in `.debug`
+  or `.bench`, and `run_bench.sh` refuses to run unless the benchmark package ends in `.bench`.
 * `benchmarkRelease` is R8-minified like the release; a debug build is not comparable.
 * The `streaming` test needs the fake model; without it the reply never starts and the test fails.
 * Because the main thread is not touched for hours in the fixture's timeline (midnight anchor), the thread may
