@@ -14,9 +14,9 @@
 
 <table>
   <tr>
-    <td align="center" valign="top"><img src="docs/img/v4/zh/01-chats-light.webp" alt="夥伴訊息列表，含未讀數與正在輸入狀態" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/v4/zh/03-parallel-light.webp" alt="同時問三件事，每則回覆都引用對應的問題" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/v4/zh/05-self-config-light.webp" alt="夥伴依你的要求調整偏好，並提供復原" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/zh/01-chats-light.webp" alt="夥伴訊息列表，含未讀數與正在輸入狀態" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/zh/03-parallel-light.webp" alt="同時問三件事，每則回覆都引用對應的問題" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/zh/05-approval-light.webp" alt="夥伴加行程前先在聊天裡問你" width="260" /></td>
   </tr>
 </table>
 
@@ -34,6 +34,19 @@
 - **看看 AI 記住了你什麼。** 每則記憶都能看到來源，隨時可以刪除。
 - **想要圖片就說。** 選好一個繪圖模型，所有夥伴都能幫你畫圖；說一句「把它改成……」，就能接著修改上一張圖片。
 - **重要的話收起來。** 長按一則訊息就能收藏。「發現」頁匯集收藏的訊息和最近的畫作，不找夥伴也能直接畫圖、翻譯。
+
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="docs/img/v5/zh/02-thread-light.webp" alt="含表格的長回覆，前一天的聊天點一下就能接上" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/zh/10-memory-light.webp" alt="每則記憶都標明是哪個夥伴、哪天記下的" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/zh/09-discover-light.webp" alt="畫圖、翻譯、收藏和最近的畫作" width="260" /></td>
+  </tr>
+  <tr>
+    <td align="center">長聊天還是一條時間軸</td>
+    <td align="center">看看它記住了什麼</td>
+    <td align="center">「發現」頁</td>
+  </tr>
+</table>
 
 ## 夥伴之間合作
 

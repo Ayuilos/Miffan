@@ -14,9 +14,9 @@
 
 <table>
   <tr>
-    <td align="center" valign="top"><img src="docs/img/v4/en/01-chats-light.webp" alt="Chats with partners, unread counts and typing indicators" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/v4/en/03-parallel-light.webp" alt="Three questions at once, each reply quoting its question" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/v4/en/05-self-config-light.webp" alt="A partner adjusting its own preferences with an undo notice" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/en/01-chats-light.webp" alt="Chats with partners, unread counts and typing indicators" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/en/03-parallel-light.webp" alt="Three questions at once, each reply quoting its question" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/en/05-approval-light.webp" alt="A partner asking before it adds an event to your calendar" width="260" /></td>
   </tr>
 </table>
 
@@ -34,6 +34,19 @@ Each AI partner is one ongoing chat. There's nothing to start and nothing you ha
 - **See what AI knows about you.** Each memory shows where it came from, and you can delete it at any time.
 - **Ask for a picture.** Pick a drawing model once and any partner can draw, or edit its last picture when you say "change it to…".
 - **Keep what matters.** Long-press a message to save it. The Discover tab gathers your saved messages and recent drawings, and lets you draw or translate without picking a partner.
+
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="docs/img/v5/en/02-thread-light.webp" alt="A long reply with a table, and the day before one tap away" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/en/10-memory-light.webp" alt="Each memory shows which partner noted it and when" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/en/09-discover-light.webp" alt="Draw, translate, favorites and recent drawings" width="260" /></td>
+  </tr>
+  <tr>
+    <td align="center">Long chats stay one timeline</td>
+    <td align="center">See what it remembers</td>
+    <td align="center">The Discover tab</td>
+  </tr>
+</table>
 
 ## Partners that work together
 
