@@ -153,10 +153,11 @@ class UpdateApkDownloader internal constructor(
 
     private fun publish(id: Long, value: UpdateDownloadState) = synchronized(lock) {
         if (id == generation) {
-            state.value = value
+            // Notify first: whoever sees the terminal state can rely on the notification already being posted.
             if (value is UpdateDownloadState.Ready || (value is UpdateDownloadState.Failed && !quiet)) {
                 onTerminal(value)
             }
+            state.value = value
         }
     }
 
