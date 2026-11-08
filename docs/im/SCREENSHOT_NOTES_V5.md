@@ -82,3 +82,51 @@
 - 画面 11、12、13（按任务说明由总管用真实电脑拍）。
 - 画面 07 的第三个快捷操作（见偏差 1）。
 - README 区块没有改（任务只要求截图和本记录）。
+
+# 第二批（画面 11、12、13，重拍 06、07）
+
+2026-11-08，工作目录 `.claude/worktrees/screens-v5b`，分支 `docs/screens-v5b`，基线 `a6a94d267`。仍用 `emulator-5560` 与 `me.ayuilos.miffan.app.bench`（4.9.0，`assembleBenchmarkRelease`，arm64）。分支里只有截图和本记录；没有提交应用代码。
+
+产出（`docs/img/v5/{zh|en}/`，1080 × 2400 无损 WebP，逐张核对尺寸且与 PNG 逐像素一致）：新增 `11-screen-light`、`12-minibox-light`、`13-away-light`（中英各一张，仅浅色）；重拍 `06-partners`、`07-profile`（中英 × 浅深，覆盖第一批同名文件）。共 6 + 8 张。
+
+## 演示电脑与流程
+
+- 演示电脑是用户的 Windows 11 测试机（Tailscale `100.64.0.8`，账号 `ekk`），**不是规格里的 Mac**。应用里的名字：中文「书房的电脑」，英文 "Study PC"（添加时系统名为主机名，添加完在「连接设置」里改名；拍英文前改为 Study PC，拍中文前改回）。
+- 按应用正常的「连接一台电脑 → 输入地址添加」流程走：用 bench 应用生成的公钥，没有粘贴准备脚本，而是 ssh 到测试机把公钥追加进 `administrators_authorized_keys`（追加前备份并保持 ACL，注释 `miffan-emulator-5560-bench`），之后 helper、Sunshine 配对、cua 助手都由应用自己装好/配好。
+- 英文数据来自 `demo_en.zip`（拍完中文后重新还原），因此两种语言各自从干净的演示设置开始；Miffan 的聊天只含本批新造的内容。
+- 中转：在应用的「出门在外」里开启（官方中转 `relay.miffan.ayuilos.me`）。
+
+## 逐画面
+
+| 画面 | 做法与核验 |
+| --- | --- |
+| 11 screen | Miffan 绑定「书房的电脑」并设为「直接做」后，在伙伴页或屏幕页底部输入框发「用记事本记一句话」/ "Jot a note in Notepad"。演示模型依次发起 `computer_start` → `launch_app notepad` → `list_windows` → `set_window_frame`（铺满 2560×1380）→ `bring_to_front` → `type_text`（「今晚吃番茄炒蛋」/ "Tomato and eggs tonight"，前台输入），都是真实的 cua-driver 调用，画面是 Sunshine 实时流（720p · 30 fps），步骤时间线四步全部成功，最后一句「记好了，记事本里已经写下这句话。」。「将窗口切到前台」按产品规则必须在聊天里点一次「允许」，已点；记事本里实际出现了那句话。 |
+| 12 minibox | 在「书房的电脑」里为 Miffan 新建小电脑（应用正常流程：下载并开机约 1.3 GB，约 1.5 分钟），拍详情页：截图头图（Thunar 文件管理器窗口，来自一次真实的看屏幕）、「醒着」状态、「看屏幕 / 收发文件」两个按钮。内存、CPU 在刚开机时显示「—」，是应用当时的真实状态。 |
+| 13 away | 电脑详情里「不在家也能用」已开启、「Miffan 免费中转」「今天经中转 4 / 60 分钟」。连接器的「检测连接」在模拟器上两次都显示「没有连通」（见偏差 3），所以画面里只有已开启状态与用量，没有「检测通过」的结果。 |
+| 07 profile | Miffan 绑定电脑后资料页出现三个快捷操作：发消息 / 看屏幕 / 编辑资料；其余同第一批。 |
+| 06 partners | 大标题「伙伴」/ "Partners" 完整可见（页面停在顶部再滑到「再添一位伙伴」条露出），分组「生活」、抹茶的「运行中」状态灯、Miffan 名字旁的电脑图标和「再添一位伙伴」模板条（只露上半部分）都在画面里。拍摄前重发了「再加上买菜」让抹茶显示「运行中」。 |
+
+## 偏差与限制
+
+1. **电脑是 Windows 不是 Mac**（用户指定）；规格里「书房的 Mac」改为「书房的电脑 / Study PC」。
+2. **模拟器解不了 Sunshine 的 HEVC 画面**：模拟器只有软件解码器，应用默认只接受硬件解码，所以第一次进屏幕页是「没能通过 Sunshine 连上这台 Windows 电脑」。我**临时**把 `StreamSession.allowSoftwareDecoder` 改成 `true` 重新打了一个 bench 包用于拍 11（应用自己有这个只给测试用的开关，真机不受影响），拍完用 `git checkout` 恢复源码并把模拟器上的包换回未改动的构建。**所以 11 里的画面和 07、06、12、13 都来自改过这一个开关的包，其余界面代码与基线完全一致。**真机上同样的流程不需要这个改动。
+3. **模拟器连不通中转**：中转连接器在 Windows 上已装好并连上官方中转（`state.json` 显示 connected/registered），但模拟器经宿主机代理（`10.0.2.2:8889`）走的出口不能完成中转的试连，应用提示「没有连上中转」，「检测连接」也显示「没有连通」。用量条「4 / 60 分钟」来自我做的几次检测。13 因此展示的是「已开启」状态而非「检测通过」，没有伪造。
+4. **画面 11 里的真实桌面**：电脑桌面上有个人文件名和快捷方式（含密码相关文件名、网盘/游戏图标）。我把记事本铺满桌面并置前，画面里只有记事本窗口（空白文档 + 演示文字）和屏幕最下方一条极细的任务栏及托盘小图标（图标很小，辨认不出内容），没有桌面图标、聊天窗口或通知。**总管验收时请再看一眼 11 的最底部。**我没有修改用户的桌面或文件。
+5. 屏幕页的时间线在英文里「Open app: notepad」等是应用对 cua 工具的原文标题；演示用户句子「用记事本记一句话」/ "Jot a note in Notepad" 与回复台词是我补的（规格未给）。
+6. 11 的演示窗口里 Windows 记事本本身的界面是中文系统语言（菜单、状态栏小字），英文截图里也一样，因为 Windows 是中文系统。
+7. 记事本的状态栏、标签页标题含「无标题」被替换前的文件名：第一次调试时记事本曾恢复出 `p7b2-notepad.txt`（Codex 10 月做真机验收时留下的测试文档标签），拍摄用画面里已经没有它；见「Windows 清理」。
+
+## Windows 清理与设备复原
+
+测试机（`ssh win-desktop`）：
+
+- 小电脑：在应用里「删除这个小电脑」（英文拍完后删）；`docker ps -a` 只剩 `miffan-8f63dca7`（`6ccf8498d268`，状态仍是 `Exited (255)`，只是「22 小时前」变「24 小时前」，没有被碰过）。应用为这台小电脑多拉了一个新镜像（`ghcr.io/trycua/linux` `e17026257885`，4.93 GB），已 `docker rmi`；原来的镜像 `f01a87c27929` 还在。`.miffan\space\miffan-37896690.handoff`（空目录，本次生成）已删，其他 handoff 目录没动。
+- 中转：应用里已关闭这台电脑的「不在家也能用」（开关关，「这台手机暂停使用」）。**但这个开关只让手机暂停使用，Windows 上的连接器仍然装着并在运行**（计划任务 `Miffan-connector` Running + 进程 `miffan-connector`）。我用 ssh 手工停掉并注销了该任务、结束进程、删除 `%LOCALAPPDATA%\Miffan\connector` 和 `bin\miffan-connector.exe`；复核：计划任务、进程、文件都已不在，与拍摄前基线一致。
+- 记事本：全程只在拍摄用的窗口里输入，没有保存任何文件，已关闭。记事本的会话恢复文件（`%LOCALAPPDATA%\Packages\Microsoft.WindowsNotepad_8wekyb3d8bbwe\LocalState\TabState|WindowState`）因为反复拉起/结束，里面 10 月留下的几个小文件（20–198 字节）已被记事本自己清掉，现在是空的；其中是 Codex 当时测试用的未保存标签，不是用户文件。我做的临时备份已删除。
+- `administrators_authorized_keys`：已删掉 `miffan-emulator-5560-bench` 那一行，内容与拍摄前一致（SHA-256 `15F1A80B…557769` 相同，仍是 4 行，ACL 仍是 SYSTEM / Administrators 完全控制）；备份文件已删。目录里其他 `.bak-*` 文件是原来就有的，没动。
+- 我放在用户目录里的临时脚本（`*-v5b.ps1`）已删除。
+- **没有清理的**：Sunshine 里留着一条模拟器的配对记录 `Miffan (sdk_gphone64_arm64)`（还有 3 条用户手机的 `Miffan (PGEM10)`）。删除它需要重启 Sunshine，我没有擅自做；如要清掉，可在 Sunshine 网页里「配对」→ 取消配对该条。计划任务 `cua-driver-serve`、`Miffan-cua-spaces` 在复核时显示 `Ready` 而不是基线的 `Running`，对应进程（cua-driver、cua）仍在、PID 没变，我判断只是任务状态标签的差别，没有去动它们。
+
+模拟器 `emulator-5560`：输入法已设回 Gboard，自制 `shot.ime` 已卸载；演示模式关（`sysui_demo_allowed=0`）；`cmd uimode night no`；自动时间一直开着没改，时钟与主机一致；应用语言清回跟随系统；代理 `10.0.2.2:8889`、字体缩放 1.0 没动；`/sdcard/Download` 里我放的两个演示 zip 已删（`demo_v5_*.zip`、`secret.pdf` 等不是我放的，没动）；bench 应用留在模拟器上（数据停在英文演示数据，已换回未改动的 bench 包），日历读写权限已收回，`me.ayuilos.miffan.app.debug` 没有碰。模拟器留着运行。
+
+演示模型服务已停；开始前没有别的 Gradle 构建在跑，`./gradlew --stop` 已执行。
