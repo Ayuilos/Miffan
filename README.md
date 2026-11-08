@@ -72,14 +72,14 @@ Connect a Mac, Windows or Linux computer over SSH, including over Tailscale or, 
 
 <table>
   <tr>
-    <td align="center" valign="top"><img src="docs/img/v4/en/11-computer-screen-light.webp" alt="The partner typing into a note while you watch" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/v4/en/12-computer-approval-light.webp" alt="The partner asking before it types" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/v4/en/13-computer-setup-light.webp" alt="Guided setup with a live view of the desktop" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/en/11-screen-light.webp" alt="Miffan typing a note into Notepad while you watch the computer's screen" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/en/12-minibox-light.webp" alt="Miffan's own mini box on your computer, with its latest picture" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/en/13-away-light.webp" alt="Away from home through Miffan's free relay" width="260" /></td>
   </tr>
   <tr>
     <td align="center">Watch it work</td>
-    <td align="center">Approve each step</td>
-    <td align="center">Connect in a few steps</td>
+    <td align="center">A computer of its own</td>
+    <td align="center">Away from home too</td>
   </tr>
 </table>
 

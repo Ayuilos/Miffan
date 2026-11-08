@@ -72,14 +72,14 @@
 
 <table>
   <tr>
-    <td align="center" valign="top"><img src="docs/img/v4/zh/11-computer-screen-light.webp" alt="伙伴正在便签里写字，你在手机上看着" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/v4/zh/12-computer-approval-light.webp" alt="伙伴输入文字前先征求你的同意" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/v4/zh/13-computer-setup-light.webp" alt="引导流程中实时显示电脑桌面" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/zh/11-screen-light.webp" alt="伙伴在记事本里写字，你在手机上看着电脑屏幕" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/zh/12-minibox-light.webp" alt="伙伴在你电脑上的小电脑，带最近的画面" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/zh/13-away-light.webp" alt="不在家时经 Miffan 免费中转连回电脑" width="260" /></td>
   </tr>
   <tr>
     <td align="center">看着它操作</td>
-    <td align="center">每一步先问你</td>
-    <td align="center">几步就能连上</td>
+    <td align="center">伙伴自己的小电脑</td>
+    <td align="center">出门在外也能用</td>
   </tr>
 </table>
 
