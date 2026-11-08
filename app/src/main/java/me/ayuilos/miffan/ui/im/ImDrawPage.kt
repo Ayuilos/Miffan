@@ -87,12 +87,13 @@ private val DRAW_EXAMPLES = listOf(R.string.im_draw_example_1, R.string.im_draw_
 @Composable
 fun ImDrawPage(gallery: Boolean, vm: ImDrawVM = koinViewModel()) {
     val toaster = LocalToaster.current
+    val resources = LocalResources.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     var album by rememberSaveable { mutableStateOf(gallery) }
     var choosing by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(error) {
-        error?.let { toaster.show(message = it, type = ToastType.Error); vm.clearError() }
+        error?.let { toaster.show(message = resources.getString(it.textOr(R.string.im_draw_failed)), type = ToastType.Error); vm.clearError() }
     }
     // The same model as Me → service → drawing, the one partners draw with; switching it here switches both.
     val model = settings.imageToolModelOrNull()
@@ -187,7 +188,7 @@ private fun ImDrawing(image: GeneratedImage, onOpen: () -> Unit) {
             filesManager.saveMessageImage(context, "file://${image.filePath}")
             toaster.show(resources.getString(R.string.imggen_page_image_saved_success), type = ToastType.Success)
         } catch (e: Exception) {
-            toaster.show(resources.getString(R.string.imggen_page_save_failed, e.message), type = ToastType.Error)
+            android.util.Log.w("ImDrawPage", "Saving a drawing failed", e); toaster.show(resources.getString(R.string.im_draw_save_failed), type = ToastType.Error)
         }
     }
     Box {
@@ -310,7 +311,7 @@ private fun ImDrawAlbum(vm: ImDrawVM, modifier: Modifier) {
                                 filesManager.saveMessageImage(context, "file://${image.filePath}")
                                 toaster.show(resources.getString(R.string.imggen_page_image_saved_success), type = ToastType.Success)
                             } catch (e: Exception) {
-                                toaster.show(resources.getString(R.string.imggen_page_save_failed, e.message), type = ToastType.Error)
+                                android.util.Log.w("ImDrawPage", "Saving a drawing failed", e); toaster.show(resources.getString(R.string.im_draw_save_failed), type = ToastType.Error)
                             }
                         }
                     }

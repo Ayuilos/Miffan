@@ -41,9 +41,10 @@ class NearbyComputerDiscoveryLifecycleTest {
     private var probeBanner: suspend (String, Int) -> String? = { _, _ -> null }
     private val probes = mutableListOf<Triple<String, SocketFactory, Int>>()
     private var probeKey: suspend (String, Int, SocketFactory, Int) -> String? = { _, _, _, _ -> null }
+    // No real reverse DNS: its thread-pool results resumed the discovery loop off the test scheduler and raced the asserts.
     private val discovery = NearbyComputerDiscovery(context, hostKeyProbe = { host, port, factory, timeout ->
         probeKey(host, port, factory, timeout)
-    }) { host, port, factory, timeout ->
+    }, nameLookup = { _, _, _, _ -> null }) { host, port, factory, timeout ->
         probes += Triple(host, factory, timeout)
         probeBanner(host, port)
     }

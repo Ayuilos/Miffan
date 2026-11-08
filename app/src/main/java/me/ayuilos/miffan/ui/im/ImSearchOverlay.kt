@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -37,6 +38,8 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -193,7 +196,32 @@ private fun ImSearchResults(vm: ImSearchVM, query: String, onScroll: () -> Unit,
     val listState = rememberLazyListState()
     LaunchedEffect(listState.isScrollInProgress) { if (listState.isScrollInProgress) onScroll() }
     val bottom = WindowInsets.navigationBars.union(WindowInsets.ime).asPaddingValues().calculateBottomPadding()
+    val recent by vm.recentPartners.collectAsStateWithLifecycle()
     LazyColumn(modifier, state = listState, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = bottom + 16.dp)) {
+        if (query.isBlank()) {
+            if (recent.isNotEmpty()) {
+                item("recent-title") {
+                    Text(stringResource(R.string.im_search_recent), Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.titleMedium)
+                }
+                item("recent") {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        items(recent, key = { it.id.toString() }) { partner ->
+                            val open = { nav.navigate(Screen.Thread(partner.id.toString())) }
+                            Column(Modifier.width(64.dp).clip(MaterialTheme.shapes.medium).clickable(onClick = open).padding(vertical = 4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                AssistantAvatar(partner.name, partner.avatar, Modifier.size(52.dp), onClick = open)
+                                Text(partner.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
+                                    style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+            item("hint") {
+                Text(stringResource(R.string.im_search_hint), Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            }
+        }
         if (query.isNotBlank() && ready) {
             if (results.partners.isNotEmpty()) {
                 item("partners") { Text(stringResource(R.string.im_tab_partners), Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.titleMedium) }
@@ -242,9 +270,11 @@ private fun imHighlight(text: String, query: String, color: Color): AnnotatedStr
 }
 
 /** The FTS API returns its own token boundaries, including segmented Chinese matches. */
+private val snippetMatch = Regex("\\[(.*?)]")
+
 private fun imSnippet(text: String, color: Color): AnnotatedString = buildAnnotatedString {
     var cursor = 0
-    Regex("\\[(.*?)]").findAll(text).forEach { match ->
+    snippetMatch.findAll(text).forEach { match ->
         append(text.substring(cursor, match.range.first))
         withStyle(SpanStyle(background = color)) { append(match.groupValues[1]) }
         cursor = match.range.last + 1

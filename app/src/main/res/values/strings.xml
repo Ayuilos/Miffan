@@ -4325,4 +4325,16 @@
   <string name="workspace_screen_window_gnome_check_again">Check again</string>
   <string name="workspace_screen_window_input_dropped">Couldn\'t bring the window to the front, so that input wasn\'t sent. Try again.</string>
   <string name="workspace_screen_window_authorize_failed">Couldn\'t grant the permission on the computer. Try again, or view the whole screen.</string>
+  <string name="im_error_content_rule">This request hit the service\'s content rules. Try saying it another way</string>
+  <string name="im_translate_failed">Couldn\'t translate that. Try again</string>
+  <string name="im_draw_failed">Couldn\'t draw that. Try again</string>
+  <string name="im_backup_export_failed">The backup wasn\'t saved. Check there\'s enough space and try again</string>
+  <string name="im_backup_import_failed">This file can\'t be restored. It may not be a backup from here, or it\'s damaged</string>
+  <string name="im_search_recent">Recent</string>
+  <string name="im_search_hint">Search a partner\'s name, or something said in a chat</string>
+  <string name="im_memory_empty_desc">When you mention what you like or how you do things, partners note it here so you never have to say it twice.</string>
+  <string name="im_draw_save_failed">Couldn\'t save it to the gallery. Try again</string>
+  <string name="im_nickname_title">What partners call you</string>
+  <string name="im_nickname_hint">Partners use the new name from their next reply</string>
+  <string name="im_sheet_done">Done</string>
 </resources>

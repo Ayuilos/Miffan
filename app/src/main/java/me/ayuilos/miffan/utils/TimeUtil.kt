@@ -1,15 +1,14 @@
 package me.ayuilos.miffan.utils
 
+import android.text.format.DateFormat
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.format.DateTimeFormatterBuilder
 import java.time.format.FormatStyle
-import java.time.format.TextStyle
-import java.time.temporal.ChronoField
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 fun Instant.toLocalDate(): String {
     val zoneId = ZoneId.systemDefault()
@@ -59,34 +58,21 @@ fun LocalDateTime.toMessageTimeString(): String {
 fun LocalDate.toLocalString(includeYear: Boolean): String {
     val locale = Locale.getDefault()
     val formatter = if (includeYear) {
-        DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)
+        cachedFormatter(locale, "date-medium") { DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(it) }
     } else {
-        if (isMonthFirstLocale(locale)) {
-            // Month-day format (e.g., "Sep 20" for US English)
-            DateTimeFormatterBuilder()
-                .appendText(ChronoField.MONTH_OF_YEAR, TextStyle.SHORT)
-                .appendLiteral(' ')
-                .appendValue(ChronoField.DAY_OF_MONTH)
-                .toFormatter(locale)
-        } else {
-            // Day-month format (e.g., "20 sep" for Swedish)
-            DateTimeFormatterBuilder()
-                .appendValue(ChronoField.DAY_OF_MONTH)
-                .appendLiteral(' ')
-                .appendText(ChronoField.MONTH_OF_YEAR, TextStyle.SHORT)
-                .toFormatter(locale)
+        // The locale's own month-day pattern: 10月31日, Oct 31, 31 окт., 10월 31일.
+        cachedFormatter(locale, "MMMd") {
+            DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(it, "MMMd"), it)
         }
     }
-
     return formatter.format(this)
 }
 
-private fun isMonthFirstLocale(locale: Locale): Boolean {
-    val monthFirstCountries = setOf(
-        "US", // 美国
-        "PH", // 菲律宾
-        "CA", // 加拿大(虽然魁北克可能使用日-月格式)
-        "CN", // 中国
-    )
-    return monthFirstCountries.contains(locale.country)
-}
+/** The locale's short time of day (14:30, 2:30 PM), for list rows that format many times per frame. */
+fun shortTimeFormatter(locale: Locale = Locale.getDefault()): DateTimeFormatter =
+    cachedFormatter(locale, "time-short") { DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(it) }
+
+private val formatters = ConcurrentHashMap<Pair<Locale, String>, DateTimeFormatter>()
+
+private fun cachedFormatter(locale: Locale, key: String, build: (Locale) -> DateTimeFormatter): DateTimeFormatter =
+    formatters.getOrPut(locale to key) { build(locale) }

@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import me.ayuilos.miffan.ui.im.RunningLight
+import me.ayuilos.miffan.ui.im.imProblemOf
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalConfiguration
@@ -152,12 +153,15 @@ internal fun ThreadMessageBubble(
     val handed = remember(parts) { if (user) emptyList() else handedFiles(parts) }
     val published = remember(parts) { !user && parts.any { it is UIMessagePart.Tool && it.workspaceArtifacts().isNotEmpty() } }
     // Edited files are listed once the reply finishes, so they do not count as content while it streams.
-    val visible = (published && !item.streaming) || parts.any { part ->
-        when (part) {
-            is UIMessagePart.Text -> part.text.isNotBlank()
-            is UIMessagePart.Image, is UIMessagePart.Document -> true
-            is UIMessagePart.Tool -> part.isThreadPrompt() || part.showsInThread(item.streaming) || part.addedCalendarEvent() != null
-            else -> false
+    // Remembered: the calendar check parses tool output, and every visible bubble recomposes while a reply streams.
+    val visible = remember(parts, item.streaming, published) {
+        (published && !item.streaming) || parts.any { part ->
+            when (part) {
+                is UIMessagePart.Text -> part.text.isNotBlank()
+                is UIMessagePart.Image, is UIMessagePart.Document -> true
+                is UIMessagePart.Tool -> part.isThreadPrompt() || part.showsInThread(item.streaming) || part.addedCalendarEvent() != null
+                else -> false
+            }
         }
     }
     // A reply made only of light process (thinking, a lookup or two) has nothing to show in easy mode;
@@ -205,8 +209,8 @@ internal fun ThreadMessageBubble(
                             else if (user && hasPartnerMention(part.text, partners)) Text(
                                 mentionText(part.text, partners, SpanStyle(fontWeight = FontWeight.SemiBold)),
                                 style = MaterialTheme.typography.bodyLarge, inlineContent = mentionAvatars(partners))
-                            else MarkdownBlock(part.text.withWorkspaceFiles(imageContext),
-                                style = MaterialTheme.typography.bodyLarge)
+                            else CompositionLocalProvider(me.ayuilos.miffan.ui.components.richtext.LocalCompactMarkdownHeadings provides true) { MarkdownBlock(part.text.withWorkspaceFiles(imageContext),
+                                style = MaterialTheme.typography.bodyLarge) }
                             is UIMessagePart.Image -> ZoomableAsyncImage(part.url, stringResource(R.string.im_thread_photo), Modifier.heightIn(max = 200.dp))
                             is UIMessagePart.Document -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Icon(HugeIcons.File01, null, Modifier.size(18.dp))
@@ -225,10 +229,10 @@ internal fun ThreadMessageBubble(
                     handed.forEach { file -> key(file.toolCallId) { ThreadHandedFileCard(file, threadAssistantName(assistant)) } }
                 }
             }
-            val text = item.message.previewText()
+            val hasText = parts.any { it is UIMessagePart.Text && it.text.isNotBlank() }
             ImPressMenu(menu) {
                 ImPressMenuItem(HugeIcons.Reply, stringResource(R.string.im_thread_reply)) { menu.close(); onReply() }
-                if (text.isNotBlank()) ImPressMenuItem(HugeIcons.Copy01, stringResource(R.string.im_thread_copy)) {
+                if (hasText) ImPressMenuItem(HugeIcons.Copy01, stringResource(R.string.im_thread_copy)) {
                     menu.close()
                     scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("", item.message.toText()))) }
                 }
@@ -236,11 +240,11 @@ internal fun ThreadMessageBubble(
                 if (onFavorite != null && !item.streaming) ImPressMenuItem(HugeIcons.Star, stringResource(if (favorited) R.string.im_thread_unfavorite else R.string.im_thread_favorite)) {
                     menu.close(); onFavorite()
                 }
-                if (canSpeak && !user && text.isNotBlank()) {
+                if (canSpeak && !user && hasText) {
                     ImPressMenuItem(if (speaking) HugeIcons.VolumeOff else HugeIcons.VolumeHigh,
                         stringResource(if (speaking) R.string.im_thread_stop_reading else R.string.im_thread_read_aloud)) {
                         menu.close()
-                        if (speaking) tts.stop() else tts.speak(text)
+                        if (speaking) tts.stop() else tts.speak(item.message.previewText())
                     }
                 }
                 ImPressMenuItem(HugeIcons.Filter, stringResource(R.string.im_thread_filter)) { menu.close(); onFilter() }
@@ -259,22 +263,14 @@ internal fun ThreadTyping(assistant: Assistant?, segmentIds: Set<Uuid>, connecti
 @Composable
 internal fun ThreadErrorBubble(error: ChatError, canRetry: Boolean, onRetry: () -> Unit, onDismiss: () -> Unit) {
     val menu = rememberPressMenu()
-    val detail = error.error.message.orEmpty().lowercase(Locale.ROOT)
     // The reply still arrives without tools, so this is a notice rather than a failed reply.
     val toolsOff = error.solution == ChatErrorSolution.EnableModelTools
-    val text = when {
-        toolsOff -> R.string.im_thread_error_tools_off
-        listOf("401", "403", "api key", "unauthorized", "authentication").any { it in detail } -> R.string.im_thread_error_connection
-        // Checked before "busy": an empty balance also answers 429 ("insufficient_quota").
-        listOf("402", "insufficient", "balance", "余额", "欠费").any { it in detail } -> R.string.im_thread_error_balance
-        listOf("429", "rate limit", "quota").any { it in detail } -> R.string.im_thread_error_busy
-        error.error is java.io.IOException -> R.string.im_thread_error_network
-        else -> R.string.im_thread_error_reply
-    }
+    val problem = imProblemOf(error.error)
+    val text = if (toolsOff) R.string.im_thread_error_tools_off else problem.textOr(R.string.im_thread_error_reply)
     val retry = canRetry && !toolsOff
     // Problems only the service's settings can fix lead there.
     val nav = LocalNavController.current
-    val toService = text == R.string.im_thread_error_connection || text == R.string.im_thread_error_balance
+    val toService = !toolsOff && problem.opensService
     Row(Modifier.fillMaxWidth().padding(top = 16.dp)) {
         Box(Modifier.widthIn(max = threadBubbleMaxWidth())) {
             Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainer,

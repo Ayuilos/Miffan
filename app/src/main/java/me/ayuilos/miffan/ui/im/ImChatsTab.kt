@@ -1,5 +1,8 @@
 package me.ayuilos.miffan.ui.im
 
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.activity.compose.ReportDrawn
+import androidx.compose.ui.platform.testTag
 import me.ayuilos.miffan.ui.pages.update.UpdateWhatsNewCard
 import android.content.Context
 import androidx.core.content.edit
@@ -60,6 +63,7 @@ import me.ayuilos.miffan.data.model.ChatGroup
 import me.ayuilos.miffan.data.thread.PreviewKind
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.context.LocalNavController
+import me.ayuilos.miffan.utils.shortTimeFormatter
 import me.ayuilos.miffan.utils.toLocalString
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
@@ -76,13 +80,12 @@ import me.rerere.hugeicons.stroke.ViewOff
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 
 @Composable
 internal fun ImChatsTab(
     vm: ImHomeVM,
     innerPadding: PaddingValues,
+    listState: LazyListState,
     onFindPartner: () -> Unit,
     searchOpen: Boolean,
     onSearch: () -> Unit,
@@ -103,18 +106,26 @@ internal fun ImChatsTab(
     var renaming by remember { mutableStateOf<ChatGroup?>(null) }
     var deleting by remember { mutableStateOf<ChatGroup?>(null) }
     val open: (ImChatItem) -> Unit = {
+        // Only a partner thread ends this trace (AgentThreadPage); a partner chat would leave it open.
+        if (!it.isPartnerChat) me.ayuilos.miffan.utils.ThreadOpenTrace.begin()
         navController.navigate(if (it.isPartnerChat) Screen.PartnerChat(it.chatId.toString()) else Screen.Thread(it.chatId.toString()))
     }
-    val actions = ImChatActions(
-        open = open,
-        setPinned = { chat, pinned -> vm.setPinned(chat.chatId, pinned) },
-        move = { moving = it },
-        hide = { vm.hide(it.chatId) },
-    )
+    // One instance for the page: a new one per recomposition made every row recompose when any chat changed.
+    val actions = remember(vm, navController) {
+        ImChatActions(
+            open = open,
+            setPinned = { chat, pinned -> vm.setPinned(chat.chatId, pinned) },
+            move = { moving = it },
+            hide = { vm.hide(it.chatId) },
+        )
+    }
 
     val current = sections
+    // The list has its data (not only its frame): report the first full display for startup benchmarks.
+    if (current != null) ReportDrawn()
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().testTag("im_chat_list"),
+        state = listState,
         contentPadding = innerPadding,
     ) {
         item("title") {
@@ -148,7 +159,7 @@ internal fun ImChatsTab(
         }
         if (current != null) {
             if (current.pinned.isNotEmpty()) item("pinned") { ImPinnedChats(current.pinned, actions) }
-            items(current.ungrouped, key = { it.chatId.toString() }) { chat -> ImChatRow(chat, actions) }
+            items(current.ungrouped, key = { it.chatId.toString() }, contentType = { "chat" }) { chat -> ImChatRow(chat, actions) }
             val order = current.allGroups.map { it.id }
             current.groups.forEach { section ->
                 val position = order.indexOf(section.group.id)
@@ -163,7 +174,7 @@ internal fun ImChatsTab(
                         onDelete = { deleting = section.group },
                     )
                 }
-                if (!section.collapsed) items(section.chats, key = { it.chatId.toString() }) { chat -> ImChatRow(chat, actions) }
+                if (!section.collapsed) items(section.chats, key = { it.chatId.toString() }, contentType = { "chat" }) { chat -> ImChatRow(chat, actions) }
             }
         }
         if (showHint) item("hint") {
@@ -233,6 +244,7 @@ private fun ImPinnedChat(chat: ImChatItem, avatarSize: Dp, width: Dp, nameStyle:
         Column(
             modifier = Modifier
                 .width(width)
+                .testTag("im_chat_row_${chat.chatId}")
                 .clip(RoundedCornerShape(20.dp))
                 .imLongPress(menu::open)
                 .clickable { actions.open(chat) }
@@ -307,6 +319,7 @@ private fun ImChatRow(chat: ImChatItem, actions: ImChatActions) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .testTag("im_chat_row_${chat.chatId}")
                 .imLongPress(menu::open)
                 .clickable { actions.open(chat) }
                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -394,7 +407,7 @@ internal fun imChatTime(instant: Instant): String {
     val today = LocalDate.now()
     val locale = LocalConfiguration.current.locales[0]
     return when (date.toLocalDate()) {
-        today -> DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale).format(date)
+        today -> shortTimeFormatter(locale).format(date)
         today.minusDays(1) -> stringResource(R.string.im_time_yesterday)
         else -> date.toLocalDate().toLocalString(includeYear = date.year != today.year)
     }

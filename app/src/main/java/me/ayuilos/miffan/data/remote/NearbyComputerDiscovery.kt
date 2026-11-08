@@ -33,6 +33,8 @@ import javax.net.SocketFactory
 class NearbyComputerDiscovery internal constructor(
     private val context: Context,
     private val hostKeyProbe: suspend (String, Int, SocketFactory, Int) -> String? = ::probeNearbyHostKey,
+    /** Reverse DNS on real threads; tests replace it, since its results would arrive off the test scheduler. */
+    private val nameLookup: suspend (String, List<String>, java.util.concurrent.ExecutorService, NearbyNetwork) -> String? = ::lookupNearbyName,
     private val probe: suspend (String, Int, SocketFactory, Int) -> String?,
 ) {
     constructor(context: Context) : this(context, probe = { host, port, factory, timeout -> probeNearbySsh(host, port, factory, timeout) })
@@ -190,7 +192,7 @@ class NearbyComputerDiscovery internal constructor(
                             val hasMdnsName = target.network == NearbyNetwork.LOCAL && advertisements.values.any { it.host == target.host }
                             if (event.sweep && !hasMdnsName && namesRequested.add(machine)) launch {
                                 val domains = networks.firstOrNull { it.kind == target.network }?.info?.domains.orEmpty()
-                                val name = lookupNearbyName(target.host, domains, dnsExecutor, target.network)
+                                val name = nameLookup(target.host, domains, dnsExecutor, target.network)
                                 events.trySend(DiscoveryEvent.Named(machine, name))
                             }
                         }

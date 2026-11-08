@@ -4358,4 +4358,16 @@
   <string name="workspace_screen_window_gnome_check_again">Проверить снова</string>
   <string name="workspace_screen_window_input_dropped">Не удалось вывести окно на передний план, поэтому ввод не отправлен. Попробуйте ещё раз.</string>
   <string name="workspace_screen_window_authorize_failed">Не удалось выдать разрешение на компьютере. Попробуйте ещё раз или откройте весь экран.</string>
+  <string name="im_error_content_rule">Запрос нарушил правила сервиса. Попробуйте сформулировать иначе</string>
+  <string name="im_translate_failed">Не удалось перевести. Попробуйте ещё раз</string>
+  <string name="im_draw_failed">Не удалось нарисовать. Попробуйте ещё раз</string>
+  <string name="im_backup_export_failed">Не удалось сохранить резервную копию. Проверьте свободное место и попробуйте ещё раз</string>
+  <string name="im_backup_import_failed">Этот файл не удаётся восстановить. Возможно, это не та резервная копия или файл повреждён</string>
+  <string name="im_search_recent">Недавние</string>
+  <string name="im_search_hint">Ищите по имени партнёра или по словам из переписки</string>
+  <string name="im_memory_empty_desc">Когда вы рассказываете о своих привычках и предпочтениях, партнёры записывают это сюда, чтобы не спрашивать дважды.</string>
+  <string name="im_draw_save_failed">Не удалось сохранить в галерею. Попробуйте ещё раз</string>
+  <string name="im_nickname_title">Как к вам обращаются партнёры</string>
+  <string name="im_nickname_hint">Новое имя партнёры начнут использовать со следующего ответа</string>
+  <string name="im_sheet_done">Готово</string>
 </resources>

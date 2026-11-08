@@ -35,12 +35,14 @@ fun ZoomableAsyncImage(
     val context = LocalContext.current
     val placeholder = if(LocalDarkMode.current) R.drawable.placeholder_dark else R.drawable.placeholder
     val export = LocalExportContext.current
-    val coilModel = ImageRequest.Builder(context)
-        .data(model)
-        .placeholder(placeholder)
-        .crossfade(false)
-        .allowHardware(!export)
-        .build()
+    val coilModel = remember(context, model, placeholder, export) {
+        ImageRequest.Builder(context)
+            .data(model)
+            .placeholder(placeholder)
+            .crossfade(false)
+            .allowHardware(!export)
+            .build()
+    }
     var loading by remember { mutableStateOf(false) }
     AsyncImage(
         model = coilModel,

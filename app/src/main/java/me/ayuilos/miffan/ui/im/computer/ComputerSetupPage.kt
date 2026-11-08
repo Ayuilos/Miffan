@@ -55,9 +55,13 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
     val self = Screen.ComputerSetup(forPartner?.toString(), args.hostId, args.edit, args.screen, args.status, args.space, args.away)
     val statusPage = args.status && state.step == ComputerSetupStep.READY
     val update by vm.cuaUpdate.collectAsStateWithLifecycle()
+    // Setup steps hold the owner while they change the computer. The status page only looks, so a check that is
+    // slow or cannot reach the computer never traps them; only a running cua-driver update does.
+    val updating = update is CuaUpdateState.Running || update is CuaUpdateState.Waiting
+    val canLeave = !state.busy || (statusPage && !updating)
     fun back() {
-        if (state.busy) return
-        if (!vm.back()) nav.popBackStack()
+        if (!canLeave) return
+        if (statusPage || !vm.back()) nav.popBackStack()
     }
     BackHandler { back() }
     Scaffold(topBar = {
@@ -76,7 +80,7 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                 }
             },
             navigationIcon = {
-                if (state.step.canGoBack) IconButton(onClick = ::back, enabled = !state.busy) {
+                if (state.step.canGoBack) IconButton(onClick = ::back, enabled = canLeave) {
                     Icon(HugeIcons.ArrowLeft01, stringResource(R.string.back))
                 }
             },

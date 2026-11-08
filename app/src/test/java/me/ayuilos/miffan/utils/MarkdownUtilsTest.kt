@@ -32,4 +32,10 @@ class MarkdownUtilsTest {
         assertEquals("foobarbaz foobarbaz", "foo*bar*baz foo**bar**baz".stripMarkdown())
         assertEquals("P4_MEMBER_OK\nsnake_case\nP4_MEMBER_OK", "# **P4_MEMBER_OK**\n- [snake_case](https://example.com)\n> **P4_MEMBER_OK**".stripMarkdown())
     }
+
+    @org.junit.Test
+    fun `inline code keeps its text and code blocks go`() {
+        assertEquals("名叫 note.txt 的文件", "名叫 `note.txt` 的文件".stripMarkdown())
+        assertEquals("看代码：", "看代码：```kotlin\nfun a() {}\n```".stripMarkdown())
+    }
 }

@@ -92,7 +92,7 @@ internal fun Conversation.topicLabel(): String {
         visible.lastOrNull { it.role == MessageRole.ASSISTANT },
     ).joinToString(" / ") { message ->
         val speaker = if (message.role == MessageRole.USER) "User" else "You"
-        "$speaker: ${message.previewText().take(120)}"
+        "$speaker: ${message.previewText(400).take(120)}"
     }
     return listOf(title.take(120), exchange).filter { it.isNotBlank() }.joinToString(" — ")
 }

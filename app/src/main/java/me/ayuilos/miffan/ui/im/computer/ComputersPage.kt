@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import me.ayuilos.miffan.ui.im.ImScrolledTitleBar
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -304,8 +306,14 @@ fun ComputerDetailPage(hostId: String) {
     }
     val current = computer
     RetainComputerConnection(workspaceList.firstOrNull { it.isRemote && !it.isSpace && it.remoteHostId == hostId }?.id)
-    // The name heads the page itself.
-    Scaffold(topBar = { ImPageBar("") }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+    // The name heads the page itself; once it scrolls away the bar names the computer.
+    val detailList = rememberLazyListState()
+    val headerGone by remember { derivedStateOf { detailList.firstVisibleItemIndex > 0 } }
+    Scaffold(topBar = {
+        ImScrolledTitleBar(headerGone && current != null, current?.name.orEmpty()) {
+            current?.let { ComputerBadge(it.platform, 32.dp) }
+        }
+    }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         if (current == null) return@Scaffold
         val partners = current.partnerIds.mapNotNull { id -> assistants.find { it.id == id } }
         // Partners with their own mini box here work in that, not on this computer's desktop.
@@ -320,7 +328,7 @@ fun ComputerDetailPage(hostId: String) {
                 else -> stringResource(R.string.im_computer_replaces_phone)
             }
         }
-        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 0.dp, bottom = 24.dp),
+        LazyColumn(Modifier.fillMaxSize().padding(padding), state = detailList, contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 0.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item("identity") {
                 Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally,
@@ -737,43 +745,24 @@ private fun PartnerPickerDialog(
     onPick: (Assistant) -> Unit,
     extra: Pair<String, () -> Unit>? = null,
 ) {
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = {
-        Column(Modifier.heightIn(max = 420.dp)) {
-            LazyColumn(Modifier.weight(1f, fill = false)) {
-                items(partners, key = { it.id.toString() }) { partner ->
-                    Surface(onClick = { onPick(partner) }, color = Color.Transparent, shape = MaterialTheme.shapes.medium) {
-                        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            AssistantAvatar(partner.name, partner.avatar, Modifier.size(36.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(threadAssistantName(partner), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                supporting(partner)?.let {
-                                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
+    me.ayuilos.miffan.ui.im.ImPartnerPickSheet(title = title, partners = partners, onDismiss = onDismiss, onPick = onPick,
+        supporting = supporting, footer = if (extra == null && footer == null) null else { {
+            extra?.let { (label, onClick) ->
+                Surface(onClick = onClick, color = Color.Transparent, shape = MaterialTheme.shapes.large) {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                            Icon(HugeIcons.ComputerScreenShare, null, tint = MaterialTheme.colorScheme.primary)
                         }
-                    }
-                }
-                extra?.let { (label, onClick) ->
-                    item("extra") {
-                        Surface(onClick = onClick, color = Color.Transparent, shape = MaterialTheme.shapes.medium) {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
-                                    Icon(HugeIcons.ComputerScreenShare, null, tint = MaterialTheme.colorScheme.primary)
-                                }
-                                Text(label)
-                            }
-                        }
+                        Text(label)
                     }
                 }
             }
             footer?.let {
-                Text(it, Modifier.padding(top = 12.dp), style = MaterialTheme.typography.bodySmall,
+                Text(it, Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-        }
-    }, confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } })
+        } })
 }
 
 /** A computer's screen opened from "my computers" with no partner: the same screen page, without the partner strip. */

@@ -24,6 +24,8 @@ internal const val SLOW_CONNECTION_MILLIS = 15_000L
  * Where pending replies stand on the way to the model: [connected] segments have been answered by the provider,
  * and [online] is whether the phone reaches the internet at all.
  */
+/** Immutable: compared by value, so every bubble that takes it can skip while a reply streams. */
+@androidx.compose.runtime.Immutable
 internal data class ThreadConnection(val connected: Set<Uuid> = emptySet(), val online: Boolean = true)
 
 /** The status of a reply that has not written anything yet. */

@@ -1,5 +1,9 @@
 package me.ayuilos.miffan.ui.im
 
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.testTag
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.animation.animateColorAsState
@@ -36,6 +40,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -86,6 +91,13 @@ private val TabBarBottomMargin = 12.dp
 @Composable
 fun ImHomePage(vm: ImHomeVM = koinViewModel()) {
     var tab by rememberSaveable { mutableStateOf(ImTab.CHATS) }
+    val tabStates = rememberSaveableStateHolder()
+    // Held here so tapping the tab you're on brings its list back to the top, as messengers do.
+    val chatsList = rememberLazyListState()
+    val partnersList = rememberLazyListState()
+    val discoverList = rememberLazyListState()
+    val meList = rememberLazyListState()
+    val tabScope = rememberCoroutineScope()
     val hazeState = rememberHazeState()
     val layoutDirection = LocalLayoutDirection.current
     val isPlayStore = rememberIsPlayStoreVersion()
@@ -117,25 +129,35 @@ fun ImHomePage(vm: ImHomeVM = koinViewModel()) {
                     .background(MaterialTheme.colorScheme.background)
                     .hazeSource(hazeState)
             ) {
-                when (tab) {
+                // Each tab keeps its scroll position, search and folded groups while another tab is shown.
+                tabStates.SaveableStateProvider(tab) { when (tab) {
                     ImTab.CHATS -> ImChatsTab(
-                        vm, contentPadding,
+                        vm, contentPadding, chatsList,
                         onFindPartner = { tab = ImTab.PARTNERS },
                         searchOpen = searchShown,
                         onSearch = { searching = true },
                         onSearchFieldMoved = { searchFieldTop = it },
                     )
-                    ImTab.PARTNERS -> ImPartnersTab(vm, contentPadding)
-                    ImTab.DISCOVER -> ImDiscoverTab(contentPadding)
-                    ImTab.ME -> ImMeTab(vm, contentPadding)
-                }
+                    ImTab.PARTNERS -> ImPartnersTab(vm, contentPadding, partnersList)
+                    ImTab.DISCOVER -> ImDiscoverTab(contentPadding, discoverList)
+                    ImTab.ME -> ImMeTab(vm, contentPadding, meList)
+                } }
             }
             // Lists scroll under the transparent status bar; the fade stays inside the titles' top padding.
             EdgeBlurScrim(hazeState, EdgeScrimPosition.Top, innerPadding.calculateTopPadding() + 8.dp,
                 Modifier.align(Alignment.TopCenter))
             ImFloatingTabBar(
                 selected = tab,
-                onSelect = { tab = it },
+                onSelect = { selected ->
+                    if (selected == tab) tabScope.launch {
+                        when (selected) {
+                            ImTab.CHATS -> chatsList
+                            ImTab.PARTNERS -> partnersList
+                            ImTab.DISCOVER -> discoverList
+                            ImTab.ME -> meList
+                        }.animateScrollToItem(0)
+                    } else tab = selected
+                },
                 hazeState = hazeState,
                 notices = mapOf(ImTab.ME to updateNotice),
                 modifier = Modifier
@@ -228,6 +250,7 @@ private fun ImFloatingTabItem(tab: ImTab, selected: Boolean, notice: String?, on
     Column(
         modifier = Modifier
             .size(TabItemWidth, TabItemHeight)
+            .testTag("im_tab_${tab.name.lowercase()}")
             .clip(RoundedCornerShape(50))
             .selectable(
                 selected = selected,

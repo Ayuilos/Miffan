@@ -69,7 +69,10 @@ fun RemoteTaskDetailPage(hostId: String, taskId: String) {
         scope.launch {
             try { block() } catch (error: Throwable) {
                 if (error is kotlinx.coroutines.CancellationException) throw error
-                snackbar.showSnackbar(error.message ?: resources.getString(R.string.remote_task_action_failed))
+                android.util.Log.w("RemoteTaskDetailPage", "Task action failed", error)
+                // Connection problems in plain words; anything else as a general failure, not the raw message.
+                snackbar.showSnackbar(me.ayuilos.miffan.ui.pages.extensions.workspace.screen.remoteSshError(resources, error)
+                    ?: resources.getString(R.string.remote_task_action_failed))
             } finally { busy = false }
         }
     }
@@ -185,28 +188,28 @@ fun RemoteTaskDetailPage(hostId: String, taskId: String) {
                 }
             }
         }
-        if (choosingNotify && meta != null) AlertDialog(onDismissRequest = { choosingNotify = false },
-            title = { Text(stringResource(R.string.remote_task_field_result)) },
-            text = {
-                Column {
-                    TaskNotify.entries.forEach { option ->
-                        Surface(onClick = {
-                            choosingNotify = false
-                            if (option != meta.notify) perform {
-                                val draft = requireNotNull(repository.draftOf(current)) { resources.getString(R.string.remote_task_action_failed) }
-                                repository.save(hostId, draft.copy(notify = option))
-                            }
-                        }, color = androidx.compose.ui.graphics.Color.Transparent, shape = MaterialTheme.shapes.medium) {
-                            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                                RadioButton(selected = option == meta.notify, onClick = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(notifyLabel(option, partner?.let { partnerName(it) }))
-                            }
+        if (choosingNotify && meta != null) androidx.compose.material3.ModalBottomSheet(onDismissRequest = { choosingNotify = false },
+            sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(R.string.remote_task_field_result), Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.titleMedium)
+                TaskNotify.entries.forEach { option ->
+                    Surface(onClick = {
+                        choosingNotify = false
+                        if (option != meta.notify) perform {
+                            val draft = requireNotNull(repository.draftOf(current)) { resources.getString(R.string.remote_task_action_failed) }
+                            repository.save(hostId, draft.copy(notify = option))
+                        }
+                    }, color = androidx.compose.ui.graphics.Color.Transparent, shape = MaterialTheme.shapes.large) {
+                        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = option == meta.notify, onClick = null)
+                            Spacer(Modifier.width(12.dp))
+                            Text(notifyLabel(option, partner?.let { partnerName(it) }), style = MaterialTheme.typography.bodyLarge)
                         }
                     }
                 }
-            },
-            confirmButton = { TextButton(onClick = { choosingNotify = false }) { Text(stringResource(R.string.common_cancel)) } })
+            }
+        }
         if (deleting) AlertDialog(onDismissRequest = { deleting = false },
             title = { Text(stringResource(R.string.remote_task_delete_title, meta?.name.orEmpty())) },
             text = { Text(stringResource(R.string.remote_task_delete_body)) },

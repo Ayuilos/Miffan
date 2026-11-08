@@ -14,9 +14,9 @@
 
 <table>
   <tr>
-    <td align="center" valign="top"><img src="docs/img/v4/zh/01-chats-light.webp" alt="伙伴消息列表，带未读数和正在输入状态" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/v4/zh/03-parallel-light.webp" alt="同时问三件事，每条回复都引用对应的问题" width="260" /></td>
-    <td align="center" valign="top"><img src="docs/img/v4/zh/05-self-config-light.webp" alt="伙伴按你的要求调整偏好，并提供撤销" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/zh/01-chats-light.webp" alt="伙伴消息列表，带未读数和正在输入状态" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/zh/03-parallel-light.webp" alt="同时问三件事，每条回复都引用对应的问题" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/zh/05-approval-light.webp" alt="伙伴加日程前先在聊天里问你" width="260" /></td>
   </tr>
 </table>
 
@@ -34,6 +34,19 @@
 - **看看 AI 记住了你什么。** 每条记忆都能看到来源，随时可以删除。
 - **想要图就说。** 选好一个画图模型，所有伙伴都能帮你画图；说一句“把它改成……”，就在上一张图上接着改。
 - **重要的话收起来。** 长按一条消息就能收藏。“发现”页汇集收藏的消息和最近的画作，不找伙伴也能直接画图、翻译。
+
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="docs/img/v5/zh/02-thread-light.webp" alt="带表格的长回复，前一天的聊天点一下就能接上" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/zh/10-memory-light.webp" alt="每条记忆都标明是哪个伙伴、哪天记下的" width="260" /></td>
+    <td align="center" valign="top"><img src="docs/img/v5/zh/09-discover-light.webp" alt="画图、翻译、收藏和最近的画作" width="260" /></td>
+  </tr>
+  <tr>
+    <td align="center">长聊天还是一条时间线</td>
+    <td align="center">看看它记住了什么</td>
+    <td align="center">「发现」页</td>
+  </tr>
+</table>
 
 ## 伙伴之间协作
 
@@ -130,6 +143,7 @@ Miffan 最初是开源 Android LLM 客户端 [RikkaHub](https://github.com/rikka
 | 2026 年 10 月 | 4.6 | 和 Miffan 聊着完成的首次设置、可调的伙伴思考时长，以及电脑状态页。 |
 | 2026 年 10 月 | 4.7 | 伙伴自己的小电脑，以及重新设计的查看屏幕。 |
 | 2026 年 11 月 | 4.8 | 出门在外经 Miffan 中转使用电脑，不用 Tailscale。 |
+| 2026 年 11 月 | 4.9 | 轻松聊天更流畅：长回复跟着看、切换标签不丢位置、出错说人话。 |
 
 Miffan 仍会选择性吸收 RikkaHub 的改进，每一项都经过审查，并在发布说明中单独列出（见[上游同步策略](docs/upstream-sync.md)）。项目依照许可证保留上游的版权与署名信息。Miffan 不是 RikkaHub 的官方版本。
 

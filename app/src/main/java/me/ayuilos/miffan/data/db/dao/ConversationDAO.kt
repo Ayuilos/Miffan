@@ -69,6 +69,20 @@ interface ConversationDAO {
     @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, MAX(update_at) as updateAt, folder_id as folderId, chat_id as chatId FROM conversationentity WHERE chat_id IS NULL GROUP BY assistant_id ORDER BY updateAt DESC")
     fun observeLatestConversationOfEachAssistant(): Flow<List<LightConversationEntity>>
 
+    /**
+     * [observeLatestConversationOfEachAssistant] plus a change stamp per conversation. Reading message_node
+     * makes Room re-emit on node-only saves; equal stamps mean the messages are unchanged.
+     */
+    @Query(
+        "SELECT l.id AS id, l.assistant_id AS assistantId, l.title AS title, l.is_pinned AS isPinned, " +
+            "l.create_at AS createAt, l.update_at AS updateAt, l.folder_id AS folderId, l.chat_id AS chatId, " +
+            "(SELECT COUNT(*) FROM message_node n WHERE n.conversation_id = l.id) AS nodeCount, " +
+            "(SELECT COALESCE(SUM(n.revision), 0) FROM message_node n WHERE n.conversation_id = l.id) AS revisionSum " +
+            "FROM (SELECT id, assistant_id, title, is_pinned, create_at, MAX(update_at) AS update_at, folder_id, chat_id " +
+            "FROM conversationentity WHERE chat_id IS NULL GROUP BY assistant_id) l ORDER BY l.update_at DESC"
+    )
+    fun observeLatestConversationStamps(): Flow<List<LatestConversationRow>>
+
     @Query("SELECT * FROM conversationentity WHERE chat_id IS NULL AND title LIKE '%' || :searchText || '%' ORDER BY is_pinned DESC, update_at DESC")
     fun searchConversations(searchText: String): Flow<List<ConversationEntity>>
 
@@ -149,6 +163,13 @@ interface ConversationDAO {
     )
     suspend fun getConversationCountPerDay(startMillis: Long): List<ConversationDayCount>
 }
+
+/** The newest conversation of an assistant with the counts that change whenever its messages do. */
+data class LatestConversationRow(
+    @androidx.room.Embedded val conversation: LightConversationEntity,
+    val nodeCount: Int,
+    val revisionSum: Long,
+)
 
 data class ConversationDayCount(val day: String, val count: Int)
 

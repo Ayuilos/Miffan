@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im
 
+import androidx.compose.foundation.lazy.LazyListState
 import me.ayuilos.miffan.ui.components.ui.permission.LocalNetworkPermissionCard
 import me.ayuilos.miffan.ui.components.ui.permission.rememberLocalNetworkPermissionState
 import android.content.Intent
@@ -82,7 +83,7 @@ import kotlin.uuid.Uuid
  * plain words, and the professional settings folded away under "advanced".
  */
 @Composable
-internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues) {
+internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, listState: LazyListState) {
     val navController = LocalNavController.current
     val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -110,6 +111,7 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
+        state = listState,
         contentPadding = innerPadding,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -214,7 +216,7 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues) {
                         ImCardDivider()
                         ImListRow(HugeIcons.Earth, stringResource(R.string.im_me_language), {
                             context.startActivity(Intent(AndroidSettings.ACTION_APP_LOCALE_SETTINGS).setData("package:${context.packageName}".toUri()))
-                        }, trailing = { ImRowValue(locale.getDisplayName(locale)) })
+                        }, trailing = { ImRowValue(languageName(locale)) })
                     }
                 }
             }
@@ -256,24 +258,22 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues) {
     }
 
     nicknameEditState.EditStateContent { value, onUpdate ->
-        AlertDialog(
-            onDismissRequest = { nicknameEditState.dismiss() },
-            title = { Text(stringResource(R.string.chat_page_edit_nickname)) },
-            text = {
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = onUpdate,
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    placeholder = { Text(stringResource(R.string.chat_page_nickname_placeholder)) },
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { nicknameEditState.confirm() }) { Text(stringResource(R.string.chat_page_save)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { nicknameEditState.dismiss() }) { Text(stringResource(R.string.chat_page_cancel)) }
-            },
+        ImTextInputSheet(
+            title = stringResource(R.string.im_nickname_title),
+            subtitle = stringResource(R.string.im_nickname_hint),
+            initial = value,
+            placeholder = stringResource(R.string.chat_page_nickname_placeholder),
+            confirmLabel = stringResource(R.string.im_sheet_done),
+            allowBlank = true,
+            onDismiss = { nicknameEditState.dismiss() },
+            onConfirm = { onUpdate(it); nicknameEditState.confirm() },
         )
     }
+}
+
+/** The language as its speakers name it, without the region: 简体中文, 繁體中文, English, 日本語. */
+private fun languageName(locale: java.util.Locale): String = when {
+    locale.language == "zh" && (locale.script == "Hant" || locale.country in setOf("TW", "HK", "MO")) -> "繁體中文"
+    locale.language == "zh" -> "简体中文"
+    else -> locale.getDisplayLanguage(locale).replaceFirstChar { it.titlecase(locale) }
 }

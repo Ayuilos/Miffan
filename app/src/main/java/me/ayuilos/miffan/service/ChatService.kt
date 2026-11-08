@@ -2344,10 +2344,15 @@ class ChatService(
     }
 
     /** Deleting a conversation also discards its unsent messages and stops its turn chain. */
-    suspend fun deleteConversation(conversation: Conversation) {
+    suspend fun deleteConversation(conversation: Conversation, keepFavorites: Boolean = false) {
         workspaceRepository.closeConversationTerminal(conversation.id.toString())
         discardSession(conversation.id)
-        conversationRepo.deleteConversation(conversation)
+        conversationRepo.deleteConversation(conversation, keepFavorites)
+    }
+
+    /** Drops the favorites a delete with `keepFavorites = true` left behind, after the undo window closes. */
+    suspend fun deleteNodeFavorites(conversationId: Uuid) {
+        conversationRepo.deleteNodeFavorites(conversationId)
     }
 
     suspend fun deleteConversationsOfAssistant(assistantId: Uuid) {

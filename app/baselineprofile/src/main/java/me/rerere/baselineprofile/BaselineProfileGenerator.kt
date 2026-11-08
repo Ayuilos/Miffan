@@ -3,7 +3,6 @@ package me.rerere.baselineprofile
 import androidx.benchmark.macro.junit4.BaselineProfileRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
-import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Until
 import org.junit.Rule
@@ -11,26 +10,21 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * This test class generates a basic startup baseline profile for the target package.
+ * Generates the baseline and startup profiles from the journeys of the IM (easy) shell, which is the default
+ * UI: cold start into 消息, open the main partner's long thread and scroll through it, the 伙伴 tab and one
+ * profile page, 发现, 我, and back. Replying (the streaming path) is included when the fake model answers.
  *
- * We recommend you start with this but add important user flows to the profile to improve their performance.
- * Refer to the [baseline profile documentation](https://d.android.com/topic/performance/baselineprofiles)
- * for more information.
- *
- * You can run the generator with the "Generate Baseline Profile" run configuration in Android Studio or
- * the equivalent `generateBaselineProfile` gradle task:
+ * It needs the debug-signed `nonMinifiedRelease` build, which carries the performance fixture, and it loads
+ * the fixture itself so the lists have realistic content. Run on a connected device or emulator:
  * ```
  * ./gradlew :app:generateReleaseBaselineProfile
  * ```
- * The run configuration runs the Gradle task and applies filtering to run only the generators.
+ * and, for the streaming part, start `scripts/perf/fake_llm.py` on the host first (on a phone also
+ * `adb reverse tcp:18799 tcp:18799`).
  *
- * Check [documentation](https://d.android.com/topic/performance/benchmarking/macrobenchmark-instrumentation-args)
- * for more information about available instrumentation arguments.
- *
- * After you run the generator, you can verify the improvements running the [StartupBenchmarks] benchmark.
+ * Check the effect with [StartupBenchmarks] and `scripts/perf/run_bench.sh`.
  *
  * When using this class to generate a baseline profile, only API 33+ or rooted API 28+ are supported.
- *
  * The minimum required version of androidx.benchmark to generate a baseline profile is 1.2.0.
  **/
 @RunWith(AndroidJUnit4::class)
@@ -40,54 +34,79 @@ class BaselineProfileGenerator {
     @get:Rule
     val rule = BaselineProfileRule()
 
+    /** The journey that opens the app: cold start into the 消息 tab. This one also feeds the startup profile. */
     @Test
-    fun generate() {
-        // The application id for the running build variant is read from the instrumentation arguments.
+    fun startup() {
+        loadFixtureOnce()
         rule.collect(
-            packageName = InstrumentationRegistry.getArguments().getString("targetAppId")
-                ?: throw Exception("targetAppId not passed as instrumentation runner arg"),
-
-            // See: https://d.android.com/topic/performance/baselineprofiles/dex-layout-optimizations
-            includeInStartupProfile = true
+            packageName = Perf.targetPackage,
+            // Dex layout optimization for what runs until the first screen.
+            includeInStartupProfile = true,
         ) {
-            // This block defines the app's critical user journey. Here we are interested in
-            // optimizing for app startup. But you can also navigate and scroll through your most important UI.
-
-            // Start default activity for your app
             pressHome()
             startActivityAndWait()
-
-            // 等待聊天输入框出现（testTag 通过 testTagsAsResourceId 暴露为 resource-id）
-            device.wait(Until.hasObject(By.res("chat_input")), 5_000)
-
-            // 点击输入框并输入一条 Markdown 文本（覆盖 Markdown / 代码块渲染路径）
-            val input = device.findObject(By.res("chat_input"))
-            if (input != null) {
-                input.click()
-                input.text = """
-                    # Hello Miffan
-
-                    这是一段 **Markdown** 文本，包含 *斜体*、`行内代码` 和列表：
-
-                    - 第一项
-                    - 第二项
-                    - [链接](https://github.com)
-
-                    > 引用块示例
-
-                    ```kotlin
-                    fun main() {
-                        println("Hello, world!")
-                    }
-                    ```
-                """.trimIndent()
-                device.waitForIdle()
-
-                // 等待发送按钮并点击
-                device.wait(Until.hasObject(By.res("chat_send_button")), 3_000)
-                device.findObject(By.res("chat_send_button"))?.click()
-                device.waitForIdle()
-            }
+            waitForChats()
         }
+    }
+
+    /** The IM journeys after start-up: thread, partners, discover, me, and back. Baseline profile only. */
+    @Test
+    fun journeys() {
+        loadFixtureOnce()
+        rule.collect(
+            packageName = Perf.targetPackage,
+            includeInStartupProfile = false,
+        ) {
+            pressHome()
+            startActivityAndWait()
+            waitForChats()
+            flingList("im_chat_list", rounds = 1)
+
+            // The main partner's thread: open, show the history, scroll back through it, reply.
+            openMainThread()
+            showHistoryIfWelcome()
+            flingThreadHistory(times = 4)
+            reply("帮我整理一下这周的安排")
+            device.pressBack()
+            device.wait(Until.hasObject(By.res("im_chat_list")), 5_000)
+
+            // 伙伴 tab and one profile page.
+            device.findObject(By.res("im_tab_partners")).click()
+            device.wait(Until.hasObject(By.res("im_partner_list")), 5_000)
+            flingList("im_partner_list", rounds = 1)
+            device.findObject(By.res("im_partner_row_${Perf.SECOND_PARTNER_ID}"))?.let {
+                it.click()
+                device.waitForIdle()
+                Thread.sleep(1_000)
+                device.pressBack()
+                device.wait(Until.hasObject(By.res("im_partner_list")), 5_000)
+            }
+
+            // 发现, 我, and back to 消息.
+            visitAllTabs(settleMillis = 800)
+        }
+    }
+
+    private fun loadFixtureOnce() {
+        Perf.bypassHttpProxy()
+        if (!fixtureLoaded) {
+            Perf.loadFixture()
+            fixtureLoaded = true
+        }
+    }
+
+    /** Sends [text] in the open thread and waits for the (fake) streamed answer, if it arrives. */
+    private fun androidx.benchmark.macro.MacrobenchmarkScope.reply(text: String) {
+        val input = device.wait(Until.findObject(By.res("thread_input")), 5_000) ?: return
+        input.text = text
+        device.wait(Until.findObject(By.res("thread_send")), 3_000)?.click() ?: return
+        if (device.wait(Until.hasObject(By.res("thread_stop")), 15_000)) {
+            device.wait(Until.gone(By.res("thread_stop")), 90_000)
+        }
+        device.waitForIdle()
+    }
+
+    private companion object {
+        var fixtureLoaded = false
     }
 }

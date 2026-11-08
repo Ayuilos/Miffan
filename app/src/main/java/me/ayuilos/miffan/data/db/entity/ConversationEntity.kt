@@ -2,9 +2,18 @@ package me.ayuilos.miffan.data.db.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity
+@Entity(
+    indices = [
+        // Home latest-per-assistant, thread stamps/catalog/segments and the per-assistant lists all
+        // filter `assistant_id = ? AND chat_id IS NULL` and order by update_at.
+        Index(value = ["assistant_id", "chat_id", "update_at"]),
+        // Folder lists and clearing a deleted folder.
+        Index(value = ["folder_id"]),
+    ]
+)
 data class ConversationEntity(
     @PrimaryKey
     val id: String,

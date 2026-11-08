@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im
 
+import androidx.compose.runtime.CompositionLocalProvider
 import me.ayuilos.miffan.utils.NetworkMonitor
 import org.koin.compose.koinInject
 import android.content.ClipData
@@ -264,7 +265,7 @@ private fun PartnerChatBubble(message: PartnerChatMessage, sender: Assistant?, g
                     modifier = Modifier.imLongPress(menu::open)
                         .then(if (menu.at != null) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp)) else Modifier)) {
                     Box(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                        MarkdownBlock(message.text, style = MaterialTheme.typography.bodyLarge)
+                        CompositionLocalProvider(me.ayuilos.miffan.ui.components.richtext.LocalCompactMarkdownHeadings provides true) { MarkdownBlock(message.text, style = MaterialTheme.typography.bodyLarge) }
                     }
                 }
                 ImPressMenu(menu) {

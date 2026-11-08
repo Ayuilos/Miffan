@@ -157,6 +157,9 @@ private fun escapeHtml(text: CharSequence): String =
 
 // ---- Main composable ----
 
+// Settled messages scrolling back into view reuse their HTML instead of converting again.
+private val htmlCache = android.util.LruCache<String, String>(48)
+
 @Composable
 fun MarkdownNew(
     content: String,
@@ -166,7 +169,7 @@ fun MarkdownNew(
 ) {
     var html by remember {
         mutableStateOf(
-            value = generateMarkdownHtml(content),
+            value = htmlCache.get(content) ?: generateMarkdownHtml(content).also { htmlCache.put(content, it) },
         )
     }
 
@@ -174,7 +177,7 @@ fun MarkdownNew(
     LaunchedEffect(Unit) {
         snapshotFlow { updatedContent }
             .distinctUntilChanged()
-            .mapLatest { generateMarkdownHtml(it) }
+            .mapLatest { htmlCache.get(it) ?: generateMarkdownHtml(it) }
             .catch { it.printStackTrace() }
             .flowOn(Dispatchers.Default)
             .collect { html = it }
@@ -426,11 +429,13 @@ private fun HtmlParagraphContent(
 @Composable
 private fun HtmlHeading(element: Element, onClickCitation: (String) -> Unit) {
     val level = element.tagName().removePrefix("h").toIntOrNull() ?: 1
+    val compact = LocalCompactMarkdownHeadings.current
     val headingStyle = HeaderStyle.fromLevel(
         level = level,
         fontSizeRatio = LocalSettings.current.displaySetting.fontSizeRatio,
+        compact = compact,
     )
-    val verticalPadding = HeaderStyle.verticalPadding(level)
+    val verticalPadding = HeaderStyle.verticalPadding(level, compact)
     ProvideTextStyle(LocalTextStyle.current.merge(headingStyle)) {
         Box(modifier = Modifier.padding(vertical = verticalPadding)) {
             HtmlParagraph(element = element, onClickCitation = onClickCitation)

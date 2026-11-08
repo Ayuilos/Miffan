@@ -4287,4 +4287,16 @@
   <string name="workspace_screen_window_gnome_check_again">再查一次</string>
   <string name="workspace_screen_window_input_dropped">沒能把視窗切到前面，剛才的操作沒有送出，請再試一次。</string>
   <string name="workspace_screen_window_authorize_failed">沒能在電腦上完成授權。可以再試一次，或改看整個螢幕。</string>
+  <string name="im_error_content_rule">碰到了這個服務的內容限制，換個說法試試</string>
+  <string name="im_translate_failed">沒翻譯出來，再試一次吧</string>
+  <string name="im_draw_failed">沒畫出來，再試一次吧</string>
+  <string name="im_backup_export_failed">備份沒存下來，看看手機空間夠不夠，再試一次</string>
+  <string name="im_backup_import_failed">這個檔案恢復不了：可能不是對應的備份檔案，或者已經損壞</string>
+  <string name="im_search_recent">最近聊過</string>
+  <string name="im_search_hint">可以搜夥伴的名字，或聊天裡說過的話</string>
+  <string name="im_memory_empty_desc">聊天時說起的喜好和習慣，夥伴會記在這裡，下次就不用再說一遍。</string>
+  <string name="im_draw_save_failed">沒存到相簿，再試一次吧</string>
+  <string name="im_nickname_title">夥伴們怎麼稱呼你</string>
+  <string name="im_nickname_hint">改了之後，下一句就會用新的稱呼</string>
+  <string name="im_sheet_done">好了</string>
 </resources>

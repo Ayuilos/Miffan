@@ -84,7 +84,10 @@ fun ImBackupPage(vm: BackupVM = koinViewModel()) {
                 } finally { file.delete() }
                 toaster.show(resources.getString(R.string.backup_page_backup_success), type = ToastType.Success)
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { toaster.show(resources.getString(R.string.backup_page_restore_failed, e.message.orEmpty()), type = ToastType.Error) }
+            catch (e: Exception) {
+                android.util.Log.w("ImBackupPage", "Backup export failed", e)
+                toaster.show(resources.getString(R.string.im_backup_export_failed), type = ToastType.Error)
+            }
             finally { busy = false }
         }
     }
@@ -103,7 +106,10 @@ fun ImBackupPage(vm: BackupVM = koinViewModel()) {
                 toaster.show(resources.getString(R.string.backup_page_restore_success), type = ToastType.Success)
                 restarting = true
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { toaster.show(resources.getString(R.string.backup_page_restore_failed, e.message.orEmpty()), type = ToastType.Error) }
+            catch (e: Exception) {
+                android.util.Log.w("ImBackupPage", "Import from $source failed", e)
+                toaster.show(resources.getString(R.string.im_backup_import_failed), type = ToastType.Error)
+            }
             finally { temp.delete(); busy = false }
         }
     }

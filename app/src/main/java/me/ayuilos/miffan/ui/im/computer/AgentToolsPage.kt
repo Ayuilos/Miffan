@@ -124,23 +124,8 @@ fun AgentToolsPage() {
             }
         }
     }
-    if (picking) AlertDialog(onDismissRequest = { picking = false },
-        title = { Text(stringResource(R.string.agent_tools_pick_partner)) },
-        text = {
-            Column {
-                partners.forEach { partner ->
-                    Surface(onClick = { picking = false; ask(partner) }, color = androidx.compose.ui.graphics.Color.Transparent,
-                        shape = MaterialTheme.shapes.medium) {
-                        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            AssistantAvatar(partner.name, partner.avatar, Modifier.size(36.dp))
-                            Text(partnerName(partner))
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = { picking = false }) { Text(stringResource(R.string.common_cancel)) } })
+    if (picking) me.ayuilos.miffan.ui.im.ImPartnerPickSheet(title = stringResource(R.string.agent_tools_pick_partner),
+        partners = partners, onDismiss = { picking = false }, onPick = { partner -> picking = false; ask(partner) })
 }
 
 @Composable

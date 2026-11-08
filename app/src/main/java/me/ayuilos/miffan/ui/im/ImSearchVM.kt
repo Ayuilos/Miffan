@@ -18,6 +18,14 @@ internal data class ImSearchResults(val query: String = "", val partners: List<A
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class ImSearchVM(settingsStore: SettingsStore, private val conversations: ConversationRepository) : ViewModel() {
     val query = MutableStateFlow("")
+
+    /** Partners by latest chat, for the empty search page: most people search for someone they just talked to. */
+    internal val recentPartners: StateFlow<List<Assistant>> = combine(
+        conversations.observeLatestConversationOfEachAssistant(), settingsStore.settingsFlow,
+    ) { latest, settings ->
+        val byId = settings.assistants.associateBy { it.id }
+        latest.mapNotNull { byId[it.assistantId] }.take(RECENT_PARTNERS)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     internal val results = combine(query.debounce(250), settingsStore.settingsFlow) { query, settings -> query.trim() to settings.assistants }
         .mapLatest { (query, assistants) ->
             if (query.isBlank()) return@mapLatest ImSearchResults()
@@ -34,3 +42,5 @@ class ImSearchVM(settingsStore: SettingsStore, private val conversations: Conver
             catch (_: Exception) { ImSearchResults(query, partners, failed = true) }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ImSearchResults())
 }
+
+private const val RECENT_PARTNERS = 8

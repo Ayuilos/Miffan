@@ -4289,4 +4289,16 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_screen_window_gnome_check_again">もう一度確認</string>
   <string name="workspace_screen_window_input_dropped">ウィンドウを前面に出せなかったため、今の操作は送信していません。もう一度お試しください。</string>
   <string name="workspace_screen_window_authorize_failed">コンピュータで許可を設定できませんでした。もう一度試すか、画面全体を表示してください。</string>
+  <string name="im_error_content_rule">サービスのコンテンツ制限に触れました。言い方を変えて試してください</string>
+  <string name="im_translate_failed">翻訳できませんでした。もう一度試してください</string>
+  <string name="im_draw_failed">描けませんでした。もう一度試してください</string>
+  <string name="im_backup_export_failed">バックアップを保存できませんでした。空き容量を確認してもう一度試してください</string>
+  <string name="im_backup_import_failed">このファイルは復元できません。対応するバックアップではないか、壊れている可能性があります</string>
+  <string name="im_search_recent">最近のやりとり</string>
+  <string name="im_search_hint">パートナーの名前や、チャットで話した内容を検索できます</string>
+  <string name="im_memory_empty_desc">チャットで話した好みや習慣はパートナーがここに記録するので、同じことを二度言う必要はありません。</string>
+  <string name="im_draw_save_failed">ギャラリーに保存できませんでした。もう一度試してください</string>
+  <string name="im_nickname_title">パートナーからの呼び名</string>
+  <string name="im_nickname_hint">変更すると、次の返事から新しい呼び名になります</string>
+  <string name="im_sheet_done">完了</string>
 </resources>

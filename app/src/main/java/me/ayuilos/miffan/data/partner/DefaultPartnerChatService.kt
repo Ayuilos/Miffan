@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -75,18 +76,29 @@ internal class DefaultPartnerChatService(
     private val managementLocks = ConcurrentHashMap<Uuid, Mutex>()
     private val replies = ConcurrentHashMap<Uuid, MutableSet<Deferred<PartnerChatMessage>>>()
 
-    override fun observeSummaries(): Flow<List<PartnerChatSummary>> = combine(store.observeSnapshot(), typing, listPrefs) { snapshot, running, prefs ->
-        snapshot.chats.map { chat ->
-            val last = snapshot.messages.lastOrNull { it.message.chatId == chat.id }?.message
-            PartnerChatSummary(chat, last, running[chat.id].orEmpty(), last?.createdAt ?: chat.createdAt,
-                if (chat.kind == PartnerChatKind.GROUP) snapshot.messages.count {
-                    it.message.chatId == chat.id && it.message.senderId != OWNER_PARTICIPANT_ID &&
-                        it.message.createdAt.toEpochMilli() > (prefs.readAt[chat.id.toString()] ?: 0L)
-                } else 0)
-        }.sortedByDescending { it.lastActivity }
+    /**
+     * Summaries without the typing state. Group unread counts are recounted here, with a SQL count per
+     * group, only when a chat's newest message or a read time changes; typing changes don't recount.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val storedSummaries: Flow<List<PartnerChatSummary>> =
+        combine(store.observeChats(), store.observeLastMessages(), listPrefs) { chats, lasts, prefs ->
+            Triple(chats, lasts, prefs)
+        }.mapLatest { (chats, lasts, prefs) ->
+            chats.map { chat ->
+                val last = lasts[chat.id]
+                val unread = if (chat.kind == PartnerChatKind.GROUP && last != null) {
+                    store.countMessagesAfter(chat.id, OWNER_PARTICIPANT_ID, prefs.readAt[chat.id.toString()] ?: 0L)
+                } else 0
+                PartnerChatSummary(chat, last, emptySet(), last?.createdAt ?: chat.createdAt, unread)
+            }
+        }.distinctUntilChanged()
+
+    override fun observeSummaries(): Flow<List<PartnerChatSummary>> = combine(storedSummaries, typing) { summaries, running ->
+        summaries.map { it.copy(typing = running[it.chat.id].orEmpty()) }.sortedByDescending { it.lastActivity }
     }.distinctUntilChanged()
-    override fun observeChat(chatId: Uuid): Flow<PartnerChat?> = store.observeSnapshot()
-        .map { it.chats.find { c -> c.id == chatId } }.distinctUntilChanged()
+    override fun observeChat(chatId: Uuid): Flow<PartnerChat?> = store.observeChats()
+        .map { it.find { c -> c.id == chatId } }.distinctUntilChanged()
     override fun observeMessages(chatId: Uuid): Flow<List<PartnerChatMessage>> =
         store.observeMessages(chatId).map { messages -> messages.map { it.message } }.distinctUntilChanged()
     override fun observeTyping(chatId: Uuid): Flow<Set<Uuid>> = typing.map { it[chatId].orEmpty() }.distinctUntilChanged()
@@ -338,9 +350,12 @@ internal class DefaultPartnerChatService(
         job.start()
     }
 
+    private fun memberSegments(): Flow<List<ChatMember>> = store.observeMembers()
+        .map { members -> members.filter { it.segmentId != null } }.distinctUntilChanged()
+
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    override fun observeApprovals(chatId: Uuid): Flow<List<PartnerChatApproval>> = store.observeSnapshot()
-        .map { snapshot -> snapshot.members.filter { it.chatId == chatId && it.segmentId != null } }
+    override fun observeApprovals(chatId: Uuid): Flow<List<PartnerChatApproval>> = memberSegments()
+        .map { members -> members.filter { it.chatId == chatId } }
         .distinctUntilChanged().flatMapLatest { members ->
             if (members.isEmpty()) flowOf(emptyList()) else combine(members.map { runtime.observeSegment(requireNotNull(it.segmentId)) }) { segments ->
                 segments.filterNotNull().flatMap { segment ->
@@ -351,6 +366,19 @@ internal class DefaultPartnerChatService(
                 }.sortedBy { it.first }.map { it.second }
             }
         }.distinctUntilChanged()
+
+    // One subscription per member segment for every chat together, instead of one fan-out per chat.
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    override fun observeApprovalMembers(): Flow<Map<Uuid, Set<Uuid>>> = memberSegments().flatMapLatest { members ->
+        if (members.isEmpty()) flowOf(emptyMap()) else combine(members.map { member ->
+            runtime.observeSegment(requireNotNull(member.segmentId)).map { segment ->
+                member.chatId to segment?.takeIf { s -> s.currentMessages.any { m -> m.parts.any { it is UIMessagePart.Tool && it.isPending } } }?.assistantId
+            }
+        }) { waiting ->
+            waiting.mapNotNull { (chatId, memberId) -> memberId?.let { chatId to it } }
+                .groupBy({ it.first }, { it.second }).mapValues { it.value.toSet() }
+        }
+    }.distinctUntilChanged()
 
     override suspend fun answerApproval(chatId: Uuid, memberId: Uuid, toolCallId: String, approved: Boolean) {
         val chat = requireNotNull(store.chat(chatId))

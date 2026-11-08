@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im.thread
 
+import androidx.compose.ui.platform.testTag
 import me.ayuilos.miffan.utils.NetworkMonitor
 import org.koin.compose.koinInject
 import androidx.compose.runtime.CompositionLocalProvider
@@ -32,6 +33,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.conflate
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.ui.context.LocalSettings
 import me.rerere.ai.ui.UIMessagePart
@@ -115,6 +117,7 @@ fun AgentThreadPage(
     val deliveries by delivery.summaries.collectAsStateWithLifecycle()
     val taskDelivery = deliveries[assistantId]
     val listState = rememberLazyListState()
+    LaunchedEffect(loaded) { if (loaded) me.ayuilos.miffan.utils.ThreadOpenTrace.end() }
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val missingMessage = stringResource(R.string.im_thread_missing_message)
@@ -142,7 +145,8 @@ fun AgentThreadPage(
     val topicLabel = filter?.let { topics[it]?.title?.takeIf(String::isNotBlank) ?: labels[it] ?: fallbackTopic }
     val connectedSegments by vm.connectedSegmentIds.collectAsStateWithLifecycle()
     val online by koinInject<NetworkMonitor>().online.collectAsStateWithLifecycle()
-    val connection = ThreadConnection(connectedSegments, online)
+    // One instance per change: a new one on every streamed chunk made every visible bubble recompose.
+    val connection = remember(connectedSegments, online) { ThreadConnection(connectedSegments, online) }
     val status = threadHeaderStatus(timeline, generating, connection)
     val thinkHarder by vm.thinkHarder.collectAsStateWithLifecycle()
     val deepMessageIds by vm.deepMessageIds.collectAsStateWithLifecycle()
@@ -194,6 +198,15 @@ fun AgentThreadPage(
     suspend fun scrollToLatest(animate: Boolean = false) {
         val lastIndex = rowOf(timeline.size, timeline) + (if (newTopicPending) 1 else 0) + visibleErrors.size - 1
         if (lastIndex < 0) return
+        // Already on screen, as a streaming reply is while it grows: scroll by what it grew. Scrolling to the item
+        // first would show its start for a frame on every chunk, so the reply would flicker back to its top.
+        if (!animate) listState.layoutInfo.let { layout ->
+            layout.visibleItemsInfo.firstOrNull { it.index == lastIndex }?.let { last ->
+                val remaining = last.offset + last.size + layout.afterContentPadding - layout.viewportEndOffset
+                if (remaining > 0) listState.scrollBy(remaining.toFloat())
+                return
+            }
+        }
         if (animate) listState.animateScrollToItem(lastIndex) else listState.scrollToItem(lastIndex)
         withFrameNanos { }
         // A message can be taller than the viewport; reaching its start is not reaching the end.
@@ -215,9 +228,13 @@ fun AgentThreadPage(
         if (status != null) partnerLeft = true else if (partnerLeft) welcomeSettled = true
     }
     LaunchedEffect(timeline, topics) {
-        timeline.filterIsInstance<TimelineItem.Message>().forEach { message ->
+        // Runs on every streamed chunk: only messages of topics without a label yet build a preview.
+        timeline.forEach { item ->
+            val message = item as? TimelineItem.Message ?: return@forEach
             message.quote?.let { quote -> labels.putIfAbsent(quote.ref.conversationId, quote.preview) }
-            message.message.previewText().takeIf { it.isNotBlank() }?.let { labels.putIfAbsent(message.segmentId, it) }
+            if (message.segmentId !in labels) {
+                message.message.previewText(300).takeIf { it.isNotBlank() }?.let { labels[message.segmentId] = it }
+            }
         }
     }
     LaunchedEffect(dragging, atBottom, highlighted, jumping) {
@@ -231,12 +248,23 @@ fun AgentThreadPage(
                 (welcomeCutoff == null || historyShown)) listState.layoutInfo.visibleItemsInfo.firstOrNull()?.key else null
         }.distinctUntilChanged().collect { if (it != null && !jumping) vm.loadMore() }
     }
-    LaunchedEffect(timeline, visibleErrors, loaded, newTopicPending) {
-        val count = timeline.size + visibleErrors.size
-        if (loaded && followLatest && !jumping && count > 0) {
-            withFrameNanos { }
-            if (followLatest && !jumping) scrollToLatest()
-        }
+    // Follow new content with one long-lived collector, taking the newest state after each scroll. An effect keyed
+    // on the timeline restarted on every streamed chunk and was cancelled while waiting for its frame, so a long
+    // reply stayed at its start while it streamed and jumped to its end only when it finished.
+    val latestTimeline by rememberUpdatedState(timeline)
+    val latestErrorCount by rememberUpdatedState(visibleErrors.size)
+    val latestLoaded by rememberUpdatedState(loaded)
+    val latestNewTopic by rememberUpdatedState(newTopicPending)
+    val followScroll by rememberUpdatedState<suspend () -> Unit> { scrollToLatest() }
+    LaunchedEffect(listState) {
+        snapshotFlow { latestTimeline; latestErrorCount; latestNewTopic; latestLoaded; Any() }
+            .conflate()
+            .collect {
+                if (latestLoaded && followLatest && !jumping && latestTimeline.size + latestErrorCount > 0) {
+                    withFrameNanos { }
+                    if (followLatest && !jumping) followScroll()
+                }
+            }
     }
     LaunchedEffect(highlighted) {
         if (highlighted != null) { delay(1800); highlighted = null }
@@ -371,17 +399,17 @@ fun AgentThreadPage(
         handOff = welcome != null && welcomeDecided && (status != null || partnerLeft))) {
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         assistant?.let { AssistantBackground(it, Modifier.fillMaxSize().hazeSource(hazeState, zIndex = -1f)) }
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().hazeSource(hazeState),
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().hazeSource(hazeState).testTag("thread_list"),
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = topChrome + 4.dp, bottom = bottomChrome + 8.dp)) {
             if (welcomeDecided) {
                 if (welcome == null) {
-                    items(timeline, key = { it.key }) { TimelineRow(it) }
+                    items(timeline, key = { it.key }, contentType = ::timelineContentType) { TimelineRow(it) }
                 } else {
                     // The list content is re-read lazily against the newest timeline, so split that same
                     // snapshot here: a split computed in an earlier composition can exceed a shrunk timeline.
                     val items = timeline
                     val history = historySize(items).coerceIn(0, items.size)
-                    if (historyShown) items(items.subList(0, history), key = { it.key }) { TimelineRow(it) }
+                    if (historyShown) items(items.subList(0, history), key = { it.key }, contentType = ::timelineContentType) { TimelineRow(it) }
                     item(key = "welcome") {
                         val fill = !historyShown && history == items.size && visibleErrors.isEmpty()
                         ThreadWelcomeHero(assistant, welcome, headerPhase, historyHidden = !historyShown, fill = fill,
@@ -390,7 +418,7 @@ fun AgentThreadPage(
                             modifier = if (fill) Modifier.fillParentMaxHeight() else Modifier,
                             onContinue = welcomeTopic()?.let { topic -> { startMerge(topic) } })
                     }
-                    items(items.subList(history, items.size), key = { it.key }) { TimelineRow(it) }
+                    items(items.subList(history, items.size), key = { it.key }, contentType = ::timelineContentType) { TimelineRow(it) }
                 }
             }
             if (newTopicPending) item(key = "new-topic") {
@@ -483,7 +511,7 @@ fun AgentThreadPage(
                 GlassSurface(hazeState, RoundedCornerShape(20.dp), Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(HugeIcons.Reply, null, Modifier.padding(start = 16.dp).size(18.dp), tint = color)
-                        Text(target.message.previewText(), Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 12.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(target.message.previewText(300), Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 12.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
                         IconButton(onClick = { vm.setReplyTarget(null) }) { Icon(HugeIcons.Cancel01, stringResource(R.string.im_thread_dismiss), Modifier.size(18.dp)) }
                     }
                 }
@@ -521,3 +549,6 @@ fun AgentThreadPage(
     }
     }
 }
+
+/** Rows of one kind reuse each other's compositions while scrolling; a message bubble never becomes a date line. */
+private fun timelineContentType(item: TimelineItem): Any = item::class

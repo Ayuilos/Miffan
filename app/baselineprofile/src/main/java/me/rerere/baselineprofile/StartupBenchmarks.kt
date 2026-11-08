@@ -8,12 +8,13 @@ import androidx.benchmark.macro.junit4.MacrobenchmarkRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.BeforeClass
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * This test class benchmarks the speed of app startup.
+ * This test class benchmarks the speed of app startup into the IM shell with the performance fixture loaded.
  * Run this benchmark to verify how effective a Baseline Profile is.
  * It does this by comparing [CompilationMode.None], which represents the app with no Baseline
  * Profiles optimizations, and [CompilationMode.Partial], which uses Baseline Profiles.
@@ -39,6 +40,16 @@ class StartupBenchmarks {
     @get:Rule
     val rule = MacrobenchmarkRule()
 
+    companion object {
+        @JvmStatic
+        @BeforeClass
+        fun prepare() {
+            Perf.bypassHttpProxy()
+            Perf.grantRuntimePermissions()
+            Perf.loadFixture()
+        }
+    }
+
     @Test
     fun startupCompilationNone() =
         benchmark(CompilationMode.None())
@@ -48,6 +59,7 @@ class StartupBenchmarks {
         benchmark(CompilationMode.Partial(BaselineProfileMode.Require))
 
     private fun benchmark(compilationMode: CompilationMode) {
+        Perf.bypassHttpProxy()
         // The application id for the running build variant is read from the instrumentation arguments.
         rule.measureRepeated(
             packageName = InstrumentationRegistry.getArguments().getString("targetAppId")
@@ -55,21 +67,15 @@ class StartupBenchmarks {
             metrics = listOf(StartupTimingMetric()),
             compilationMode = compilationMode,
             startupMode = StartupMode.COLD,
-            iterations = 10,
+            iterations = Perf.iterations(10),
             setupBlock = {
                 pressHome()
             },
             measureBlock = {
                 startActivityAndWait()
-
-                // TODO Add interactions to wait for when your app is fully drawn.
-                // The app is fully drawn when Activity.reportFullyDrawn is called.
-                // For Jetpack Compose, you can use ReportDrawn, ReportDrawnWhen and ReportDrawnAfter
-                // from the AndroidX Activity library.
-
-                // Check the UiAutomator documentation for more information on how to
-                // interact with the app.
-                // https://d.android.com/training/testing/other-components/ui-automator
+                // The app reports fully drawn once the 消息 list has its data (needs the performance fixture),
+                // so the result includes time to full display next to time to initial display.
+                waitForChats()
             }
         )
     }
