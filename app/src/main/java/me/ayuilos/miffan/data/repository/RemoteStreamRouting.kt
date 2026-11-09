@@ -64,6 +64,13 @@ internal fun orderStreamCandidates(cached: String?, reported: List<String>, ssh:
     val skipped = ordered.any { local(it) && !network.localAllowed }
     return StreamCandidates(ordered.distinct().filter { network.localAllowed || !local(it) }, skipped)
 }
+/** Discovery, DNS, the pending-session wait and every candidate share this; the firewall check is outside it. */
+internal const val STREAM_OPEN_BUDGET_MILLIS = 30_000L
+/** A passed Windows firewall check is trusted this long before the stream path inspects it again. */
+internal const val FIREWALL_RECHECK_MILLIS = 48L * 60 * 60 * 1000
+/** A clock that moved backwards makes the stored pass unusable rather than valid for longer. */
+internal fun firewallCheckDue(passedAt: Long?, now: Long): Boolean =
+    passedAt == null || now - passedAt !in 0 until FIREWALL_RECHECK_MILLIS
 internal fun streamNetworkKey(parts: List<String>): String = parts.sorted().joinToString("|")
 internal fun streamRouteCacheKey(hostId: String, revision: String, network: String): String =
     MessageDigest.getInstance("SHA-256").digest(listOf(hostId, revision, network).joinToString("\u0000").toByteArray())
@@ -107,6 +114,19 @@ class RemoteStreamRoutes(context: Context) {
     @Synchronized internal fun success(hostId: String, revision: String, network: String, address: String) {
         invalidateRevision(hostId, revision)
         preferences.edit().putString("$hostId:${streamRouteCacheKey(hostId, revision, network)}", address).apply()
+    }
+    // Wall-clock time so the 48-hour period survives restarts; a new connection revision drops it.
+    @Synchronized internal fun firewallCheckDue(hostId: String, revision: String, now: Long = System.currentTimeMillis()): Boolean {
+        invalidateRevision(hostId, revision)
+        return firewallCheckDue(preferences.getLong("$hostId:firewall-passed", -1).takeIf { it >= 0 }, now)
+    }
+    @Synchronized internal fun firewallPassed(hostId: String, revision: String, now: Long = System.currentTimeMillis()) {
+        invalidateRevision(hostId, revision)
+        preferences.edit().putLong("$hostId:firewall-passed", now).apply()
+    }
+    @Synchronized internal fun firewallFailed(hostId: String, revision: String) {
+        invalidateRevision(hostId, revision)
+        preferences.edit().remove("$hostId:firewall-passed").apply()
     }
     @Synchronized fun forget(hostId: String) {
         val edit = preferences.edit()
