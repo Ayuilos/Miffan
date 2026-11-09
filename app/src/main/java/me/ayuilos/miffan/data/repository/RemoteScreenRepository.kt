@@ -580,7 +580,11 @@ class RemoteScreenRepository(
             ensureRevision(hostId, expectedRevision)
             require(ssh.platform == me.rerere.workspace.RemotePlatform.WINDOWS) { "Windows firewall only" }
             ensureHelper(ssh)
-            firewallCheck(ssh)
+            firewallCheck(ssh).also { check ->
+                // The setup page's result also counts as the periodic check.
+                if (check.success && check.firewallModelOk) streamRoutes.firewallPassed(hostId, expectedRevision)
+                else streamRoutes.firewallFailed(hostId, expectedRevision)
+            }
         }
 
     /** Executes exactly the plan the user approved. Never synthesizes/retries a replacement plan. */
@@ -750,12 +754,18 @@ class RemoteScreenRepository(
                         fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER, "Sunshine requires Linux, macOS or Windows"))
                     try {
                         ensureHelper(ssh)
-                        val deadline = System.nanoTime() + 20_000_000_000L
+                        var deadline = System.nanoTime() + STREAM_OPEN_BUDGET_MILLIS * 1_000_000
                         val initial = sunshineProbe(ssh)
                         if (windows) {
-                            val firewall = firewallCheck(ssh)
                             if (!initial.installed) throw windowsStreamUnavailable(RemoteStreamFallback(RemoteStreamFallbackReason.SUNSHINE_MISSING))
-                            requireSunshineFirewall(firewall)
+                            // Inspecting every Windows firewall rule takes seconds; it runs every 48 hours, outside the budget.
+                            if (streamRoutes.firewallCheckDue(host.id, host.connectionRevision)) {
+                                val started = System.nanoTime()
+                                val firewall = firewallCheck(ssh)
+                                deadline += System.nanoTime() - started
+                                requireSunshineFirewall(firewall)
+                                streamRoutes.firewallPassed(host.id, host.connectionRevision)
+                            }
                         }
                         streams.verifyCertificate(host.streamCertificateSha256, initial)
                         val platform = requireNotNull(detected)

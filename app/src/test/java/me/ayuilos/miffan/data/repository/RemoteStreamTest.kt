@@ -178,4 +178,12 @@ class RemoteStreamTest {
         assertEquals(RemoteStreamFallbackReason.HOST_REJECTED, streamFailureFallback(StreamFailureReason.HOST_REJECTED))
         assertEquals(RemoteStreamFallbackReason.UDP_UNREACHABLE, streamFailureFallback(StreamFailureReason.UDP_UNREACHABLE))
     }
+    @Test fun firewallCheckRunsAgainAfter48HoursOrWhenTheClockMovesBack() {
+        val hour = 60L * 60 * 1000
+        assertTrue(firewallCheckDue(null, 1_000))
+        assertFalse(firewallCheckDue(1_000, 1_000))
+        assertFalse(firewallCheckDue(0, 48 * hour - 1))
+        assertTrue(firewallCheckDue(0, 48 * hour))
+        assertTrue(firewallCheckDue(10 * hour, 9 * hour))
+    }
 }

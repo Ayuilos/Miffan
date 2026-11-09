@@ -88,7 +88,7 @@ internal class RemoteStreamEngine(private val identities: RemoteStreamIdentitySt
     }
 
     suspend fun open(ssh: RemoteWorkspaceSession, row: RemoteHostEntity, probe: SunshineProbe,
-        writeClipboard: (String) -> Unit, budgetMillis: Long = 20_000, config: StreamConfig = RemoteScreenQuality.BALANCED.streamConfig(),
+        writeClipboard: (String) -> Unit, budgetMillis: Long = STREAM_OPEN_BUDGET_MILLIS, config: StreamConfig = RemoteScreenQuality.BALANCED.streamConfig(),
         platform: RemoteScreenPlatform = RemoteScreenPlatform.LINUX): StreamOpenResult {
         verifyCertificate(row.streamCertificateSha256, probe)
         streamPreflightFallback(probe)?.let { return StreamOpenResult(fallback = RemoteStreamFallback(it)) }
