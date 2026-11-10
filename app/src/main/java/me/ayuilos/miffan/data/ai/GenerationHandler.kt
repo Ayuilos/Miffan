@@ -13,6 +13,7 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.produceIn
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.Serializable
@@ -74,6 +76,9 @@ private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
 private val TOOLS_WITHOUT_OUTPUT_TRUNCATION = setOf("search_web")
 private const val MAX_PROVIDER_NETWORK_RETRIES = 3
 private const val INITIAL_PROVIDER_RETRY_DELAY_MS = 1_000L
+
+/** A streamed reply reaches the screen at most once per frame of a 60 Hz display. */
+private const val STREAM_UPDATE_INTERVAL_MS = 16L
 
 private class StreamChunkHandlingException(cause: Throwable) : RuntimeException(cause)
 
@@ -132,7 +137,6 @@ class GenerationHandler(
             Log.i(TAG, "streamText: start step #$stepIndex (${model.id})")
 
             val toolsInternal = buildList {
-                Log.i(TAG, "generateInternal: build tools($assistant)")
                 if (access.ownerInitiated && assistant.enableMemory) {
                     val memoryAssistantId = access.memoryOwnerId
                     buildMemoryTools(
@@ -523,26 +527,42 @@ class GenerationHandler(
                     val streamChunkHandler = StreamChunkHandler(model)
                     var attemptMessages = responseBaseMessages
                     try {
-                        providerImpl.streamText(
-                            providerSetting = provider,
-                            messages = internalMessages,
-                            params = params
-                        ).collect { chunk ->
-                            if (chunk is StreamChunk.Connected) {
-                                connected.value = true
-                                return@collect
-                            }
-                            try {
-                                if (retryCount > 0) {
-                                    processingStatus.value = null
+                        coroutineScope {
+                            // A fast model sends several chunks per frame. Everything downstream of one update
+                            // (transformers, the conversation, the timeline, the screen) works on the whole reply,
+                            // so chunks that have already arrived are merged first and shown together, and the
+                            // next update waits a frame for more. Nothing is dropped and nothing waits longer.
+                            val chunks = providerImpl.streamText(
+                                providerSetting = provider,
+                                messages = internalMessages,
+                                params = params
+                            ).produceIn(this)
+                            for (first in chunks) {
+                                var chunk: StreamChunk? = first
+                                var changed = false
+                                try {
+                                    while (chunk != null) {
+                                        if (chunk is StreamChunk.Connected) {
+                                            connected.value = true
+                                        } else {
+                                            attemptMessages = targetBinder.bind(streamChunkHandler.handle(attemptMessages, chunk))
+                                            changed = true
+                                        }
+                                        chunk = chunks.tryReceive().getOrNull()
+                                    }
+                                    if (changed) {
+                                        if (retryCount > 0) {
+                                            processingStatus.value = null
+                                        }
+                                        onUpdateMessages(attemptMessages)
+                                    }
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (error: Throwable) {
+                                    // 下游消息转换或 UI 更新失败不属于网络故障，不能重放模型请求。
+                                    throw StreamChunkHandlingException(error)
                                 }
-                                attemptMessages = targetBinder.bind(streamChunkHandler.handle(attemptMessages, chunk))
-                                onUpdateMessages(attemptMessages)
-                            } catch (error: CancellationException) {
-                                throw error
-                            } catch (error: Throwable) {
-                                // 下游消息转换或 UI 更新失败不属于网络故障，不能重放模型请求。
-                                throw StreamChunkHandlingException(error)
+                                if (changed) delay(STREAM_UPDATE_INTERVAL_MS)
                             }
                         }
                         messages = attemptMessages
