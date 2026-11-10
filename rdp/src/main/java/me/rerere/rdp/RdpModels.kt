@@ -12,7 +12,7 @@ data class RdpOptions(
     val width: Int = 1920,
     val height: Int = 1080,
     val certificateSha256: String? = null,
-    /** AUTO offers NLA and TLS; use TLS for krdp installations with no NLA SAM account. */
+    /** AUTO offers NLA and TLS and the server picks one (krdp 6.7 TLS only, krdp 6.8 NLA only). */
     val security: RdpSecurity = RdpSecurity.AUTO,
     /** Diagnostic A/B switch; production connections should keep low latency enabled. */
     val lowLatency: Boolean = true,

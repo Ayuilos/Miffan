@@ -46,6 +46,9 @@ internal fun normalizeRdpFingerprint(value: String): String = value.replace(":",
     require(it.length == 64 && it.all { c -> c in '0'..'9' || c in 'a'..'f' }) { "Invalid RDP SHA-256 fingerprint" }
 }
 
-/** KRDP 6.7 explicitly disables NLA for both configured users and PAM; no retry downgrade. */
+/**
+ * KRDP 6.7 hard-disables NLA (TLS only) while KRDP 6.8 accepts NLA only (SAM built from the
+ * configured users), so krdp offers both and lets the server pick; no client-side downgrade.
+ */
 internal fun rdpSecurityForServer(server: String?) =
-    if (server == "krdp") RdpSecurity.TLS else RdpSecurity.NLA
+    if (server == "krdp") RdpSecurity.AUTO else RdpSecurity.NLA

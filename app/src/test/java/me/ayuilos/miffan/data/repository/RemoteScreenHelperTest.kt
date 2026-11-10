@@ -54,7 +54,7 @@ class RemoteScreenHelperTest {
     }
     @Test fun gnomeRequiresNlaAndKrdpUsesItsExplicitTlsProtocol() {
         assertEquals(me.rerere.rdp.RdpSecurity.NLA, rdpSecurityForServer("gnome-remote-desktop"))
-        assertEquals(me.rerere.rdp.RdpSecurity.TLS, rdpSecurityForServer("krdp"))
+        assertEquals(me.rerere.rdp.RdpSecurity.AUTO, rdpSecurityForServer("krdp"))
     }
     @Test fun kdeCredentialFailureRejectsEndpointAndPreservesDesktopWithoutLeakingDiagnostics() {
         for (code in listOf("keyring_locked", "credential_setup_unavailable")) {

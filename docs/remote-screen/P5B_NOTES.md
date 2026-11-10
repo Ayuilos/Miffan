@@ -30,7 +30,9 @@ GNOME 使用 user/headless 模式，按 gnome-shell --headless 判断；随机 2
 
 KDE 使用独立 `XDG_CONFIG_HOME=~/.miffan/rdp/krdp-config` 的 krdpserverrc，General/Users 指定脚本用户名，SystemUserEnabled=false；QtKeychain `ReadPasswordJob("KRDP")` 使用 KWallet folder=KRDP、entry=username、Password 类型。`kwallet-query -w username -f KRDP wallet` 只通过 stdin 接密码，预先确认已有 wallet 已解锁，不创建无密码钱包。缺少 qdbus6、kwallet-query/kwallet6-query、timeout 或可用钱包时明确报错。
 
-krdp 只通过命名 transient unit `miffan-rdp-kde.service` 启动，参数 `--address 127.0.0.1 --plasma`；无 -u/-p。拒绝覆盖已有 krdp 进程/用户配置，仅停止自己 unit 的旧实例。krdp 6.7.5 的 `RdpConnection::initialize` 明确设置 NlaSecurity=false；配置用户和 PAM 都没有改变这一点，因此 KDE 连接明确选 TLS（包含证书校验），GNOME 明确选 NLA，不做失败后降级。
+krdp 只通过命名 transient unit `miffan-rdp-kde.service` 启动，参数 `--address 127.0.0.1 --plasma`；无 -u/-p。拒绝覆盖已有 krdp 进程/用户配置，仅停止自己 unit 的旧实例。krdp 6.7.5 的 `RdpConnection::initialize` 明确设置 NlaSecurity=false；配置用户和 PAM 都没有改变这一点，因此当时 KDE 连接明确选 TLS（包含证书校验），GNOME 明确选 NLA，不做失败后降级。
+
+2026-11-11 更新：krdp 6.8.1（CachyOS，Plasma 6.8.1）反过来只接受 NLA（服务端日志 `server supports only NLA Security`），用配置用户生成 SAM（`rdp-sam-*`）做认证；只给 TLS 的客户端得到 `ERRCONNECT_HYBRID_REQUIRED_BY_SERVER` (0x2001E)。现在 KDE 连接改用 AUTO（同时提供 NLA/TLS，由服务端选择）：6.7 选 TLS，6.8 选 NLA，仍不做客户端失败后降级。已用 xfreerdp3 `/auth-only` 在 6.8.1 上验证：TLS 复现 0x2001E，NLA 与 AUTO 用 helper 配置的用户和 keyring 密码认证成功，错误密码返回 LOGON_FAILURE；手机端普通模式连接已验证。
 
 依据：[krdp 用户配置入口](https://github.com/KDE/krdp/blob/v6.7.5/server/main.cpp)、[krdp TLS/NLA 设置](https://github.com/KDE/krdp/blob/v6.7.5/src/RdpConnection.cpp#L333)、[QtKeychain KWallet 映射](https://github.com/frankosterfeld/qtkeychain/blob/0.16.0/qtkeychain/keychain_unix.cpp)、[kwallet-query stdin 写入](https://github.com/KDE/kwallet/blob/master/src/runtime/kwallet-query/src/querydriver.cpp)、[grdctl stdin prompt](https://github.com/GNOME/gnome-remote-desktop/blob/master/src/grd-ctl.c)、[script echo/transcript 选项](https://github.com/util-linux/util-linux/blob/master/term-utils/script.1.adoc)。
 
