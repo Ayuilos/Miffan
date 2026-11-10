@@ -123,6 +123,29 @@ Instrumentation arguments (via `-Pandroid.testInstrumentationRunnerArguments.<na
 drops its own HTTP proxy properties (the emulator's global proxy would answer the on-device trace processor at
 `localhost:9001` with 502); the device setting is never touched, and the app under test keeps the proxy.
 
+## Sampling where the time goes
+
+The macrobenchmarks say how many frames were late; `scripts/perf/sample.py` says which code ran. It drives the
+installed `.bench` app through one scenario by the same resource ids, records `simpleperf` samples with call stacks
+(2000 Hz), and reports them per thread or per function:
+
+```bash
+./gradlew :app:assembleBenchmarkRelease
+adb -s emulator-5560 install -r app/build/outputs/apk/benchmarkRelease/app-arm64-v8a-benchmarkRelease.apk
+python3 scripts/perf/fake_llm.py --rate 150 --tokens 3000 &          # a fast model, for the stream scenario
+scripts/perf/sample.py emulator-5560 fixture --recent                # --recent: threads open without the welcome
+scripts/perf/sample.py emulator-5560 stream /tmp/stream.txt          # also: open, tabs, cold
+scripts/perf/sample.py report /tmp/stream.txt                        # samples per thread
+scripts/perf/sample.py report /tmp/stream.txt miffan.app.bench 'me\.ayuilos|me\.rerere'   # the main thread's functions
+```
+
+CPU per thread and a function's share of it compare well between two builds on the same device, on the emulator
+too (unlike its frame times). One run varies by about a tenth, so run a scenario two or three times. The symbols
+are what R8 left: a merged lambda often carries the name of an unrelated class, and the callers above it tell what
+it is. `adb install` does not apply the baseline profile, so most code runs interpreted or JIT-compiled; that
+shifts absolute numbers, not what is hot. Round two of the polish plan (`docs/IM_4_POLISH_PLAN.md` §6) was
+measured this way.
+
 ## Baseline profile
 
 `BaselineProfileGenerator` has two tests: `startup` (cold start into 消息, also feeds the startup profile) and
