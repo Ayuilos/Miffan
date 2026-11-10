@@ -45,7 +45,17 @@ internal class HighlightEngine(languages: List<Language>) {
      * The modes left open where a piece of text ended, including those of embedded languages, so that the text
      * after it can be highlighted on its own and read as if both had been highlighted together.
      */
-    class Continuation internal constructor(internal val top: Frame, internal val subLanguages: Map<String, Frame>)
+    class Continuation internal constructor(
+        internal val top: Frame,
+        internal val subLanguages: Map<String, Frame>,
+        internal val detected: Detected?,
+    )
+
+    /**
+     * An embedded language that was detected from a list of candidates (the script or style of an HTML page) and
+     * was still open where the piece ended: which mode holds it, what it turned out to be, and where it stopped.
+     */
+    internal class Detected(val mode: Mode, val language: Language, val top: Frame)
 
     class Piece internal constructor(val tokens: List<HighlightToken>, val continuation: Continuation)
 
@@ -56,9 +66,9 @@ internal class HighlightEngine(languages: List<Language>) {
      */
     fun highlightPiece(code: String, language: String, continuation: Continuation?): Piece? {
         val definition = languagesByAlias[language.trim().lowercase()] ?: return null
-        val run = Run(definition, continuation?.subLanguages.orEmpty())
+        val run = Run(definition, continuation?.subLanguages.orEmpty(), continuation?.detected)
         val result = run.highlight(code, ignoreIllegals = true, continuation = continuation?.top)
-        return Piece(result.tokens, Continuation(result.top, run.subLanguageContinuations()))
+        return Piece(result.tokens, Continuation(result.top, run.subLanguageContinuations(), run.openDetected()))
     }
 
     private fun compiledRootOf(language: Language): Mode = synchronized(compiledRoots) {
@@ -66,23 +76,40 @@ internal class HighlightEngine(languages: List<Language>) {
     }
 
     /** A mode on the highlighting stack, replacing the prototype-linked objects used upstream. */
-    internal class Frame(val mode: Mode, val parent: Frame?)
+    /**
+     * [data] is what the mode's begin callback noted for its end callback (the word a heredoc must end with).
+     * Callbacks keep it on the compiled mode, which every text of the language shares, so each frame holds its own
+     * copy: the next heredoc, or another text, must not change what this one ends with.
+     */
+    internal class Frame(val mode: Mode, val parent: Frame?, val data: Map<String, Any?> = emptyMap())
 
     private class Result(
         val tokens: List<HighlightToken>,
         val relevance: Double,
         val top: Frame,
+        /** The language a detection settled on; null for a plain run or plain text. */
+        val language: Language? = null,
     )
 
     private class IllegalLexemeException(message: String) : Exception(message)
 
     /** One highlighting pass over one string; holds the mutable parser state. */
-    private inner class Run(private val language: Language, subLanguages: Map<String, Frame> = emptyMap()) {
+    private inner class Run(
+        private val language: Language,
+        subLanguages: Map<String, Frame> = emptyMap(),
+        /** The detected language this text starts inside of, until its mode ends. */
+        private var detected: Detected? = null,
+    ) {
         private val emitter = TokenEmitter()
         private val keywordHits = HashMap<String, Int>()
         private val continuations = HashMap(subLanguages)
 
         fun subLanguageContinuations(): Map<String, Frame> = HashMap(continuations)
+
+        /** Set by the buffer flush that ends the text, when it leaves a detected language open. */
+        private var leftOpen: Detected? = null
+
+        fun openDetected(): Detected? = leftOpen
 
         private lateinit var code: String
         private lateinit var root: Mode
@@ -95,6 +122,7 @@ internal class HighlightEngine(languages: List<Language>) {
         private var iterations = 0
         private var resumeScanAtSamePosition = false
         private var lastMatch: MultiMatch? = null
+        private var endingText = false
 
         fun highlight(code: String, ignoreIllegals: Boolean, continuation: Frame?): Result {
             this.code = code
@@ -224,9 +252,18 @@ internal class HighlightEngine(languages: List<Language>) {
                 )
                 continuations[name] = result.top
             } else {
-                // A list of candidates carries no continuation upstream either: every chunk is
-                // detected on its own.
-                result = highlightAuto(buffer, top.mode.subLanguageList!!)
+                // A list of candidates carries no continuation upstream: every chunk is detected on
+                // its own. A text that goes on from an earlier piece is the exception: the rest of a
+                // script is the language its start was, from where that start stopped.
+                val open = detected?.takeIf { it.mode === top.mode }
+                detected = null
+                result = if (open != null) {
+                    Run(open.language).highlight(buffer, ignoreIllegals = true, continuation = open.top)
+                        .let { Result(it.tokens, it.relevance, it.top, open.language) }
+                } else {
+                    highlightAuto(buffer, top.mode.subLanguageList!!)
+                }
+                leftOpen = if (endingText) result.language?.let { Detected(top.mode, it, result.top) } else null
             }
 
             // Zeroing the relevance of the containing mode is how a grammar opts out of counting
@@ -245,7 +282,10 @@ internal class HighlightEngine(languages: List<Language>) {
         private fun highlightAuto(code: String, subset: List<String>): Result {
             val best = subset
                 .mapNotNull { languagesByAlias[it.lowercase()] }
-                .map { Run(it).highlight(code, ignoreIllegals = false, continuation = null) }
+                .map { candidate ->
+                    Run(candidate).highlight(code, ignoreIllegals = false, continuation = null)
+                        .let { Result(it.tokens, it.relevance, it.top, candidate) }
+                }
                 .maxByOrNull { it.relevance }
 
             return if (best != null && best.relevance > 0.0) {
@@ -293,7 +333,7 @@ internal class HighlightEngine(languages: List<Language>) {
                 modeBuffer = StringBuilder()
             }
 
-            top = Frame(mode, top)
+            top = Frame(mode, top, if (mode.data.isEmpty()) emptyMap() else HashMap(mode.data))
         }
 
         /** Which mode, if any, is ended by this match? */
@@ -302,6 +342,8 @@ internal class HighlightEngine(languages: List<Language>) {
 
             if (matched) {
                 frame.mode.onEnd?.let { callback ->
+                    // What this frame's begin noted, not what a later begin of the same mode left behind.
+                    if (frame.data.isNotEmpty()) frame.mode.data.putAll(frame.data)
                     val response = CallbackResponse(frame.mode)
                     callback(match, response)
                     if (response.isMatchIgnored) matched = false
@@ -405,6 +447,7 @@ internal class HighlightEngine(languages: List<Language>) {
             modeBuffer.append(textBeforeMatch)
 
             if (match == null) {
+                endingText = true
                 processBuffer()
                 return 0
             }

@@ -33,7 +33,10 @@ class HighlightedLines internal constructor(
     val tokens: List<HighlightToken>,
     /** Not highlighted yet: [tokens] is the plain text. */
     val pending: Boolean,
+    /** Where the lines stopped, for the piece after them; null at the start state. */
     internal val end: HighlightEngine.Continuation?,
+    /** The piece after these lines can go on from [end]; false for a piece of a one-pass result. */
+    internal val continues: Boolean = true,
 )
 
 /**
@@ -65,15 +68,19 @@ class CodeHighlighter {
      *
      * A piece cannot see the lines after it. The few rules that need to (a Ruby heredoc or a Markdown setext
      * heading is one match over several lines; a C macro or a Dockerfile RUN goes on after a backslash) lose their
-     * color where such a construct crosses from one piece into the next. [highlightWholeInLines] has no such
-     * limit and is the one to use for a text that is complete and short enough.
+     * color where such a construct crosses from one piece into the next. An embedded language that is detected
+     * rather than named (the script and style of an HTML page) is detected from the part in the first piece it
+     * appears in. [highlightWholeInLines] has neither limit and is the one to use for a text that is complete
+     * and short enough.
      */
     fun highlightLines(
         code: String,
         language: String,
         previous: List<HighlightedLines> = emptyList(),
         budget: Int = Int.MAX_VALUE,
-    ): List<HighlightedLines> = highlightLines(code, language, previous, budget, LINES_PER_PIECE)
+        /** Asked before each piece; once false, the remaining pieces come back pending. */
+        keepGoing: () -> Boolean = { true },
+    ): List<HighlightedLines> = highlightLines(code, language, previous, budget, LINES_PER_PIECE, keepGoing)
 
     internal fun highlightLines(
         code: String,
@@ -81,6 +88,7 @@ class CodeHighlighter {
         previous: List<HighlightedLines>,
         budget: Int,
         linesPerPiece: Int,
+        keepGoing: () -> Boolean = { true },
     ): List<HighlightedLines> {
         if (code.isEmpty()) return emptyList()
         val supported = supports(language)
@@ -93,8 +101,7 @@ class CodeHighlighter {
         while (start < code.length) {
             val end = endOfLines(code, start, linesPerPiece)
             val old = previous.getOrNull(pieces.size)
-            // A piece of a one-pass result has no end state to go on from, unless nothing is highlighted anyway.
-            if (reusing && old != null && !old.pending && (old.end != null || !supported) &&
+            if (reusing && old != null && !old.pending && old.continues &&
                 old.text.length == end - start && code.regionMatches(start, old.text, 0, old.text.length)
             ) {
                 pieces += old
@@ -107,7 +114,7 @@ class CodeHighlighter {
                     !supported -> pieces += HighlightedLines(text, plain, pending = false, end = null)
                     // A single line this long is minified code or data; scanning it is slow and tells little.
                     text.length > MAX_PIECE_CHARS -> pieces += HighlightedLines(text, plain, pending = false, end = continuation)
-                    postponed || (spent > 0 && spent + text.length > budget) -> {
+                    postponed || (spent > 0 && spent + text.length > budget) || !keepGoing() -> {
                         // Without the pieces before it, a piece has no context to be highlighted in.
                         postponed = true
                         pieces += HighlightedLines(text, plain, pending = true, end = null)
@@ -155,7 +162,7 @@ class CodeHighlighter {
                     need = 0
                 }
             }
-            pieces += HighlightedLines(code.substring(start, end), piece, pending = false, end = null)
+            pieces += HighlightedLines(code.substring(start, end), piece, pending = false, end = null, continues = false)
             start = end
         }
         return pieces

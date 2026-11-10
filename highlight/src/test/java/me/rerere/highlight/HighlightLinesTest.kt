@@ -189,6 +189,61 @@ class HighlightLinesTest {
         assertTrue(pieces.none { it.pending })
     }
 
+    /** The word a heredoc ends with belongs to that heredoc, not to the grammar every text shares. */
+    @Test
+    fun `a heredoc that crosses pieces still ends at its own word after another one began`() {
+        val body = (1..20).joinToString("") { "line $it of the first\n" }
+        val code = "cat <<EOF\n${body}EOF\necho between\ncat <<END\nsecond\nEND\necho done\n"
+        val first = highlighter.highlightLines(code, "bash")
+        assertTrue(first.size > 1)
+        // A streamed block highlights its last piece again with every change, from where the piece before stopped.
+        val again = highlighter.highlightLines(code + "echo more\n", "bash", first.take(1))
+        assertSame(first[0], again[0])
+        assertEquals(
+            scopes(code + "echo more\n", highlighter.highlight(code + "echo more\n", "bash")),
+            scopes(code + "echo more\n", again.flatMap { it.tokens }),
+        )
+        // Another text of the same language in between must not change it either.
+        highlighter.highlight("cat <<OTHER\nx\nOTHER\ncat <<UNFINISHED\n", "bash")
+        val afterOther = highlighter.highlightLines(code, "bash", first.take(1))
+        assertEquals(scopes(code, highlighter.highlight(code, "bash")), scopes(code, afterOther.flatMap { it.tokens }))
+    }
+
+    @Test
+    fun `an embedded script goes on in the next piece as the language it was detected as`() {
+        val script = (1..40).joinToString("") { "  const value$it = compute($it); // step $it\n" }
+        val style = (1..40).joinToString("") { "  .item-$it { color: #33$it; margin: ${it}px; }\n" }
+        val code = "<html>\n<head>\n<style>\n$style</style>\n</head>\n<body>\n<script>\n$script</script>\n</body>\n</html>\n"
+        val whole = scopes(code, highlighter.highlight(code, "html"))
+        val pieces = highlighter.highlightLines(code, "html")
+        assertTrue(pieces.size > 4)
+        assertEquals(whole, scopes(code, pieces.flatMap { it.tokens }))
+        // Something in the script and in the style is colored at all, in the later pieces too.
+        assertTrue(pieces.drop(1).all { piece -> piece.tokens.any { it is HighlightToken.Styled } })
+    }
+
+    @Test
+    fun `pieces after an endless first line are still reused`() {
+        val start = "var a=1;".repeat(2000) + "\n" + (1..40).joinToString("") { "let x$it = $it\n" }
+        val before = highlighter.highlightLines(start, "javascript")
+        val after = highlighter.highlightLines(start + "let more = 1\n", "javascript", before)
+        assertTrue(before.size > 2)
+        before.dropLast(1).forEachIndexed { index, piece -> assertSame(piece, after[index]) }
+    }
+
+    @Test
+    fun `highlighting that is told to stop leaves the rest for later`() {
+        val (language, file) = fixtures.first { it.first == "kotlin" }
+        val code = file.readText().repeat(6)
+        var asked = 0
+        val stopped = highlighter.highlightLines(code, language, keepGoing = { asked++ < 2 })
+        assertEquals(2, stopped.count { !it.pending })
+        assertTrue(stopped.drop(2).all { it.pending })
+        val finished = highlighter.highlightLines(code, language, stopped)
+        assertSame(stopped[0], finished[0])
+        assertEquals(scopes(code, highlighter.highlight(code, language)), scopes(code, finished.flatMap { it.tokens }))
+    }
+
     @Test
     fun `pieces can be highlighted from two threads at once`() {
         val (language, file) = fixtures.first { it.first == "kotlin" }

@@ -23,7 +23,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEachIndexed
+import android.util.LruCache
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
@@ -32,6 +34,16 @@ private const val WHOLE_PASS_CHARS = 4096
 
 /** What one composition may highlight on the main thread; the rest follows from a background thread. */
 private const val MAIN_THREAD_CHARS = 4096
+
+/** Finished results of long blocks, so that scrolling one back into view does not highlight it again. */
+private const val REMEMBERED_MIN_CHARS = WHOLE_PASS_CHARS + 1
+private const val REMEMBERED_CHARS = 200_000
+
+private data class Key(val language: String, val code: String)
+
+private val finishedLines = object : LruCache<Key, List<HighlightedLines>>(REMEMBERED_CHARS) {
+    override fun sizeOf(key: Key, value: List<HighlightedLines>): Int = key.code.length
+}
 
 /**
  * The pieces of one code text as it changes. A streamed code block grows a little many times a second: each time
@@ -45,14 +57,21 @@ private class HighlightLinesState(private val highlighter: CodeHighlighter, priv
     fun update(code: String, complete: Boolean): List<HighlightedLines> {
         val whole = complete && code.length <= WHOLE_PASS_CHARS
         if (code == this.code && whole == this.whole) return pieces
+        // A long block that was highlighted before (it scrolled away and back) costs nothing again.
+        if (complete) finishedLines.get(Key(language, code))?.let { return it.also { keep(code, whole, it) } }
         // Rules that read across lines (a heredoc, a macro continued after a backslash) only see the whole text.
         val result = if (whole) highlighter.highlightWholeInLines(code, language)
         else highlighter.highlightLines(code, language, pieces, budget = MAIN_THREAD_CHARS)
         return result.also { keep(code, whole, it) }
     }
 
-    fun finish(code: String, started: List<HighlightedLines>): List<HighlightedLines> =
-        highlighter.highlightLines(code, language, started)
+    /** Run off the main thread; stops between pieces once [keepGoing] is false, leaving the rest pending. */
+    fun finish(code: String, started: List<HighlightedLines>, keepGoing: () -> Boolean): List<HighlightedLines> =
+        highlighter.highlightLines(code, language, started, keepGoing = keepGoing)
+
+    fun remember(code: String, pieces: List<HighlightedLines>) {
+        if (code.length >= REMEMBERED_MIN_CHARS && pieces.none { it.pending }) finishedLines.put(Key(language, code), pieces)
+    }
 
     fun keep(code: String, whole: Boolean, pieces: List<HighlightedLines>) {
         this.code = code
@@ -87,8 +106,14 @@ fun CodeHighlightLines(
     val started = remember(code, complete, state) { state.update(code, complete) }
     var finished by remember(code, complete, state) { mutableStateOf<List<HighlightedLines>?>(null) }
     if (started.any { it.pending }) LaunchedEffect(code, complete, state) {
-        val all = withContext(Dispatchers.Default) { state.finish(code, started) }
+        // A block that is still growing starts this over with every change: the run for the old text must stop
+        // rather than finish for nothing while it holds up the main thread's own pieces.
+        val all = withContext(Dispatchers.Default) {
+            val job = coroutineContext[Job]
+            state.finish(code, started) { job?.isActive != false }
+        }
         if (state.isFor(code)) state.keep(code, whole = false, all)
+        if (complete) state.remember(code, all)
         finished = all
     }
     val pieces = finished ?: started
