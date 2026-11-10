@@ -5,7 +5,6 @@ import me.ayuilos.miffan.utils.NetworkMonitor
 import org.koin.compose.koinInject
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
@@ -71,6 +70,8 @@ import me.ayuilos.miffan.ui.im.ThinkTime
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.data.revision.RestoreResult
 import me.ayuilos.miffan.data.thread.TimelineItem
+import me.ayuilos.miffan.data.thread.ThreadTimeline
+import me.ayuilos.miffan.ui.context.SharedElementScope
 import me.ayuilos.miffan.data.thread.ThreadNotice
 import me.ayuilos.miffan.data.thread.previewText
 import org.koin.androidx.compose.koinViewModel
@@ -145,12 +146,14 @@ fun AgentThreadPage(
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val dragging by listState.interactionSource.collectIsDraggedAsState()
     val visibleErrors = errors.filter { filter == null || it.conversationId == filter }
-    // A topic without a title is called by its first words.
+    // A topic without a title is called by its first words; kept per message, the timeline changes with every chunk.
+    val topicPreviews = remember { ThreadTimeline.QuotePreviews() }
     val topicPreview by remember {
         derivedStateOf {
             filter?.let { id ->
                 timeline.firstNotNullOfOrNull { item ->
-                    (item as? TimelineItem.Message)?.takeIf { it.segmentId == id }?.message?.previewText(300)?.takeIf(String::isNotBlank)
+                    (item as? TimelineItem.Message)?.takeIf { it.segmentId == id }?.message
+                        ?.let(topicPreviews::of)?.takeIf(String::isNotBlank)
                 }
             }
         }
@@ -447,9 +450,7 @@ fun AgentThreadPage(
     }
     // The welcome's partner flies into the status row as a shared element, which needs a lookahead scope, and
     // inside one everything is measured twice. So the scope holds only the list, and only from a welcome until
-    // the partner has landed; moving the list in and out keeps its rows as they are.
-    val latestTimelineList by rememberUpdatedState(timelineList)
-    val movableTimelineList = remember { movableContentOf { latestTimelineList() } }
+    // the partner has landed; the list keeps its rows as they are when it moves in and out.
     var partnerLanded by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(welcomeSettled) {
         // Until the welcome's place for the partner has closed, it still belongs to the flight.
@@ -457,13 +458,14 @@ fun AgentThreadPage(
     }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         assistant?.let { AssistantBackground(it, Modifier.fillMaxSize().hazeSource(hazeState, zIndex = -1f)) }
-        if (welcomeCutoff != null && !partnerLanded) SharedTransitionLayout(Modifier.fillMaxSize()) {
+        SharedElementScope(enabled = welcomeCutoff != null && !partnerLanded, Modifier.fillMaxSize()) { flight ->
             // During a welcome the big partner moves into the live status row when the partner starts working.
-            CompositionLocalProvider(LocalThreadPartnerTransition provides ThreadPartnerTransition(this,
-                handOff = welcome != null && welcomeDecided && (status != null || partnerLeft))) {
-                movableTimelineList()
+            CompositionLocalProvider(LocalThreadPartnerTransition provides flight?.let {
+                ThreadPartnerTransition(it, handOff = welcome != null && welcomeDecided && (status != null || partnerLeft))
+            }) {
+                timelineList()
             }
-        } else movableTimelineList()
+        }
         if (!loaded) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(stringResource(R.string.im_thread_loading), color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else if (filter == null && !hasItems && visibleErrors.isEmpty()) {

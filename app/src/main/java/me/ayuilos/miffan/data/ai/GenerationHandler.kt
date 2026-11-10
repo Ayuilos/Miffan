@@ -20,7 +20,9 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.produceIn
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -81,6 +83,9 @@ private const val INITIAL_PROVIDER_RETRY_DELAY_MS = 1_000L
 private const val STREAM_UPDATE_INTERVAL_MS = 16L
 
 private class StreamChunkHandlingException(cause: Throwable) : RuntimeException(cause)
+
+/** How a provider's stream ended when it did not end well; travels behind the chunks that came before it. */
+private class StreamFailure(val cause: Throwable)
 
 @Serializable
 sealed interface GenerationChunk {
@@ -532,23 +537,28 @@ class GenerationHandler(
                             // (transformers, the conversation, the timeline, the screen) works on the whole reply,
                             // so chunks that have already arrived are merged first and shown together, and the
                             // next update waits a frame for more. Nothing is dropped and nothing waits longer.
+                            // A failing stream arrives as its last element instead of failing the scope: the
+                            // chunks that came before it are still waiting here and must be shown first.
                             val chunks = providerImpl.streamText(
                                 providerSetting = provider,
                                 messages = internalMessages,
                                 params = params
-                            ).produceIn(this)
+                            ).map<StreamChunk, Any> { it }.catch { emit(StreamFailure(it)) }.produceIn(this)
                             for (first in chunks) {
-                                var chunk: StreamChunk? = first
+                                var next: Any? = first
                                 var changed = false
+                                var failure: Throwable? = null
                                 try {
-                                    while (chunk != null) {
-                                        if (chunk is StreamChunk.Connected) {
-                                            connected.value = true
-                                        } else {
-                                            attemptMessages = targetBinder.bind(streamChunkHandler.handle(attemptMessages, chunk))
-                                            changed = true
+                                    while (next != null) {
+                                        when (val chunk = next) {
+                                            is StreamFailure -> failure = chunk.cause
+                                            is StreamChunk.Connected -> connected.value = true
+                                            is StreamChunk -> {
+                                                attemptMessages = targetBinder.bind(streamChunkHandler.handle(attemptMessages, chunk))
+                                                changed = true
+                                            }
                                         }
-                                        chunk = chunks.tryReceive().getOrNull()
+                                        next = if (failure == null) chunks.tryReceive().getOrNull() else null
                                     }
                                     if (changed) {
                                         if (retryCount > 0) {
@@ -562,6 +572,7 @@ class GenerationHandler(
                                     // 下游消息转换或 UI 更新失败不属于网络故障，不能重放模型请求。
                                     throw StreamChunkHandlingException(error)
                                 }
+                                failure?.let { throw it }
                                 if (changed) delay(STREAM_UPDATE_INTERVAL_MS)
                             }
                         }

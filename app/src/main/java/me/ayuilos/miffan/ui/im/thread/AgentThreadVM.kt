@@ -330,9 +330,13 @@ class AgentThreadVM(
         // Everything shown while the thread is on screen counts as read. A reply counts from when it finishes, so
         // marking when a row comes or goes, or a reply starts or finishes, is enough: marking on every streamed
         // chunk wrote the read time to disk and had the Chats list work itself out again many times a second.
+        // A reply that takes several steps finishes once per step, each with a later time: that counts too, or a
+        // reply watched up to its second step would be unread on the Chats list.
         viewModelScope.launch {
             val arrivals = timeline.map { items ->
-                Triple(items.size, items.lastOrNull()?.key, items.count { it is TimelineItem.Message && it.streaming })
+                val newest = items.lastOrNull { it is TimelineItem.Message } as TimelineItem.Message?
+                listOf(items.size, items.lastOrNull()?.key, items.count { it is TimelineItem.Message && it.streaming },
+                    newest?.message?.finishedAt)
             }.distinctUntilChanged()
             combine(visible, arrivals) { shown, _ -> shown }.collect { shown ->
                 if (shown) listState.markRead(assistantId)

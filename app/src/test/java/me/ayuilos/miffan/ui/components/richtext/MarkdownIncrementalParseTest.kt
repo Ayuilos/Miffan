@@ -289,6 +289,21 @@ class MarkdownIncrementalParseTest {
 
         final **bold
         """.trimIndent(),
+        // Link reference definitions inside a quote and a list item, after the text that uses them.
+        """
+        See [the guide] and [another][ref] and [third].
+
+        More text here.
+
+        > [the guide]: https://example.com/guide
+        > quoted text
+
+        - item
+          [ref]: https://example.com/ref "Ref"
+        - [third]: https://example.com/third
+
+        And [the guide] again.
+        """.trimIndent(),
         // Windows line endings and trailing blank lines.
         "line one\r\nline two\r\n\r\n- a\r\n- b\r\n\r\n```\r\ncode\r\n```\r\n\r\nend\r\n\r\n\r\n",
     )

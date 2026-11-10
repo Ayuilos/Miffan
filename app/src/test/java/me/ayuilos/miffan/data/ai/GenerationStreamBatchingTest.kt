@@ -10,7 +10,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import me.ayuilos.miffan.data.datastore.NetworkSetting
 import me.ayuilos.miffan.data.datastore.Settings
@@ -33,6 +32,10 @@ import java.io.IOException
 class GenerationStreamBatchingTest {
     private fun stream(
         retry: Boolean = false,
+        /** Updates are added here as they come, so a test can see what was shown before a failure. */
+        seen: MutableList<List<UIMessage>> = mutableListOf(),
+        /** A provider that emits straight from a flow (Claude) instead of through a channel (OpenAI, Gemini). */
+        plainFlow: Boolean = false,
         chunks: suspend kotlinx.coroutines.flow.FlowCollector<StreamChunk>.(attempt: Int) -> Unit,
     ): List<List<UIMessage>> {
         mockkStatic(Log::class)
@@ -49,7 +52,7 @@ class GenerationStreamBatchingTest {
             var attempts = 0
             coEvery { provider.streamText(setting, any(), any()) } answers {
                 val attempt = attempts++
-                flow { chunks(attempt) }.buffer(Channel.UNLIMITED)
+                flow { chunks(attempt) }.let { if (plainFlow) it else it.buffer(Channel.UNLIMITED) }
             }
             return runBlocking {
                 // Relaxed: a retry asks the context for its status line.
@@ -57,7 +60,8 @@ class GenerationStreamBatchingTest {
                     Settings(providers = listOf(setting), networkSetting = NetworkSetting(enableAutoRetry = retry)),
                     model, listOf(UIMessage.user("hello")),
                     assistant = assistant, maxSteps = 1, access = AgentAccess.forAssistant(assistant, true),
-                ).toList().map { (it as GenerationChunk.Messages).messages }
+                ).collect { seen += (it as GenerationChunk.Messages).messages }
+                seen
             }
         } finally { unmockkStatic(Log::class) }
     }
@@ -106,6 +110,22 @@ class GenerationStreamBatchingTest {
             }
         }.exceptionOrNull()
         assertTrue("$failure", failure is IllegalStateException && failure.message == "boom")
+    }
+
+    /** Claude's stream is a plain flow that throws; the reply so far must not lose its last chunks to that. */
+    @Test
+    fun whatArrivedBeforeAFailureIsShownBeforeTheFailure() {
+        val pieces = (1..200).map { "片段$it " }
+        val seen = mutableListOf<List<UIMessage>>()
+        val failure = runCatching {
+            stream(seen = seen, plainFlow = true) {
+                emit(StreamChunk.TextStart("t"))
+                pieces.forEach { emit(StreamChunk.TextDelta("t", it)) }
+                throw IOException("connection reset")
+            }
+        }.exceptionOrNull()
+        assertTrue("$failure", failure is IOException)
+        assertEquals(pieces.joinToString(""), seen.last().replyText())
     }
 
     @Test
