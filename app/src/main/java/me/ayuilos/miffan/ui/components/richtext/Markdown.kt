@@ -55,6 +55,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
@@ -202,6 +203,16 @@ fun MarkdownBlock(
     modifier: Modifier = Modifier,
     style: TextStyle = LocalTextStyle.current,
     onClickCitation: (String) -> Unit = {}
+) = MarkdownBlock(content, modifier, style, onClickCitation, layered = true)
+
+/** [layered] is off for the cells of a table: the table is one block with one layer, and has many cells. */
+@Composable
+private fun MarkdownBlock(
+    content: String,
+    modifier: Modifier,
+    style: TextStyle,
+    onClickCitation: (String) -> Unit,
+    layered: Boolean,
 ) {
     val state = remember { MarkdownParseState(content) }
     val scope = rememberCoroutineScope()
@@ -222,11 +233,19 @@ fun MarkdownBlock(
                 modifier = modifier.padding(horizontal = 4.dp)
             ) {
                 // A block keeps its node and text for as long as it does not change, so only the block
-                // being written recomposes while a reply streams.
+                // being written recomposes while a reply streams. Each block draws into a layer of its own, so
+                // the others are not drawn again either: recording the text of a long reply on every frame
+                // took more of the main thread than composing it.
                 data.blocks.fastForEach { block ->
-                    MarkdownNode(
-                        node = block.node, content = block.content, onClickCitation = onClickCitation
-                    )
+                    if (block.blank || !layered) {
+                        MarkdownNode(
+                            node = block.node, content = block.content, onClickCitation = onClickCitation
+                        )
+                    } else Column(Modifier.graphicsLayer()) {
+                        MarkdownNode(
+                            node = block.node, content = block.content, onClickCitation = onClickCitation
+                        )
+                    }
                 }
             }
         }
@@ -838,6 +857,7 @@ private fun TableNode(node: ASTNode, content: String, modifier: Modifier = Modif
         @Composable {
             MarkdownBlock(
                 content = if (columnIndex < headerCells.size) headerCells[columnIndex] else "",
+                modifier = Modifier, style = LocalTextStyle.current, onClickCitation = {}, layered = false,
             )
         }
     }
@@ -848,6 +868,7 @@ private fun TableNode(node: ASTNode, content: String, modifier: Modifier = Modif
             @Composable {
                 MarkdownBlock(
                     content = if (columnIndex < rowData.size) rowData[columnIndex] else "",
+                    modifier = Modifier, style = LocalTextStyle.current, onClickCitation = {}, layered = false,
                 )
             }
         }

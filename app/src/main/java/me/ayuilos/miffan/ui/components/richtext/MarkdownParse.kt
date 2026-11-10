@@ -69,6 +69,9 @@ private fun preProcess(rawContent: String): String {
  */
 internal class MarkdownTopBlock(val node: ASTNode, val content: String) {
     val hasHtml: Boolean = node.containsHtml()
+
+    /** A line break or white space between blocks: nothing to show. */
+    val blank: Boolean = node.type == MarkdownTokenTypes.EOL || node.type == MarkdownTokenTypes.WHITE_SPACE
     val text: String get() = content.substring(node.startOffset, node.endOffset)
 }
 
