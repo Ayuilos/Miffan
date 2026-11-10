@@ -40,14 +40,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -84,12 +83,10 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
 import androidx.core.net.toUri
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import me.rerere.hugeicons.HugeIcons
@@ -108,66 +105,11 @@ import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.LeafASTNode
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
-import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
-import org.intellij.markdown.parser.MarkdownParser
 import kotlin.time.Clock
 
-private val flavour by lazy {
-    GFMFlavourDescriptor(
-        makeHttpsAutoLinks = true, useSafeLinks = true
-    )
-}
-
-private val parser by lazy {
-    MarkdownParser(flavour)
-}
-
-// 前面紧跟反斜杠时是 \\ 换行，不是定界符，比如 \\[4pt] 里的 \[ 不是块级公式的开头
-private val INLINE_LATEX_REGEX = Regex("(?<!\\\\)\\\\\\((.+?)\\\\\\)")
-private val BLOCK_LATEX_REGEX = Regex("(?<!\\\\)\\\\\\[(.+?)\\\\\\]", RegexOption.DOT_MATCHES_ALL)
 val THINKING_REGEX = Regex("<think>([\\s\\S]*?)(?:</think>|$)", RegexOption.DOT_MATCHES_ALL)
-private val CODE_BLOCK_REGEX = Regex("```[\\s\\S]*?```|`[^`\n]*`", RegexOption.DOT_MATCHES_ALL)
 private val BREAK_LINE_REGEX = Regex("(?i)<br\\s*/?>")
-private val LATEX_BLOCK_LINE_BREAK_REGEX = Regex("""[ \t]*\r?\n[ \t]*""")
-
-// 预处理markdown内容
-private fun preProcess(rawContent: String): String {
-    val content = linkifyBareUrls(normalizeMarkdownLineEndings(rawContent))
-    // 先找出所有代码块的位置
-    val codeBlocks = mutableListOf<IntRange>()
-    CODE_BLOCK_REGEX.findAll(content).forEach { match ->
-        codeBlocks.add(match.range)
-    }
-
-    // 检查位置是否在代码块内
-    fun isInCodeBlock(position: Int): Boolean {
-        return codeBlocks.any { range -> position in range }
-    }
-
-    // 替换行内公式 \( ... \) 到 $ ... $，但跳过代码块内的内容
-    var result = INLINE_LATEX_REGEX.replace(content) { matchResult ->
-        if (isInCodeBlock(matchResult.range.first)) {
-            matchResult.value // 保持原样
-        } else {
-            "$" + matchResult.groupValues[1] + "$"
-        }
-    }
-
-    // 替换块级公式 \[ ... \] 到 $$ ... $$，但跳过代码块内的内容
-    result = BLOCK_LATEX_REGEX.replace(result) { matchResult ->
-        if (isInCodeBlock(matchResult.range.first)) {
-            matchResult.value // 保持原样
-        } else {
-            val formula = matchResult.groupValues[1]
-                .trim()
-                .replace(LATEX_BLOCK_LINE_BREAK_REGEX, " ")
-            "$$" + formula + "$$"
-        }
-    }
-
-    return result
-}
 
 @Preview(showBackground = true)
 @Composable
@@ -218,29 +160,41 @@ private fun MarkdownPreview() {
     }
 }
 
-private data class MarkdownParseResult(
-    val preprocessed: String,
-    val astTree: ASTNode,
-    val hasHtml: Boolean,
-)
+/**
+ * Parses the text of one [MarkdownBlock] off the main thread as it changes. A streamed reply changes many times a
+ * second: the newest text waits while one parse runs, so a parse is never thrown away half done (which left a long
+ * reply showing old text for as long as chunks kept arriving faster than it parsed), and each parse continues the
+ * last one instead of starting over.
+ */
+private class MarkdownParseState(content: String) {
+    var data by mutableStateOf(parseMarkdownCached(content))
+        private set
+    private var pending: String? = null
+    private var running = false
 
-private fun ASTNode.containsHtml(): Boolean {
-    if (type == MarkdownElementTypes.HTML_BLOCK || type == MarkdownTokenTypes.HTML_TAG) return true
-    return children.any { it.containsHtml() }
+    // Called and resumed on the main thread only.
+    fun submit(content: String, scope: CoroutineScope) {
+        pending = content
+        if (running) return
+        running = true
+        scope.launch {
+            try {
+                while (true) {
+                    val next = pending ?: break
+                    pending = null
+                    val previous = data
+                    if (next == previous.source) continue
+                    data = withContext(Dispatchers.Default) {
+                        runCatching { cachedMarkdown(next) ?: previous.continuedBy(next) }
+                            .getOrElse { it.printStackTrace(); previous }
+                    }
+                }
+            } finally {
+                running = false
+            }
+        }
+    }
 }
-
-private fun parseMarkdown(content: String): MarkdownParseResult {
-    val preprocessed = preProcess(content)
-    val astTree = parser.buildMarkdownTreeFromString(preprocessed)
-    return MarkdownParseResult(preprocessed, astTree, astTree.containsHtml())
-}
-
-// Rows of a long chat leave and re-enter composition while scrolling; parsing a message again each
-// time it scrolls back into view costs frames. Only settled text is cached, not every streamed prefix.
-private val parseCache = android.util.LruCache<String, MarkdownParseResult>(48)
-
-private fun parseMarkdownCached(content: String): MarkdownParseResult =
-    parseCache.get(content) ?: parseMarkdown(content).also { parseCache.put(content, it) }
 
 @Composable
 fun MarkdownBlock(
@@ -249,20 +203,11 @@ fun MarkdownBlock(
     style: TextStyle = LocalTextStyle.current,
     onClickCitation: (String) -> Unit = {}
 ) {
-    var (data, setData) = remember { mutableStateOf(parseMarkdownCached(content)) }
-
-    // 监听内容变化，重新解析AST树
-    // 这里在后台线程解析AST树, 防止频繁更新的时候掉帧
-    val updatedContent by rememberUpdatedState(content)
-    LaunchedEffect(Unit) {
-        snapshotFlow { updatedContent }
-            .distinctUntilChanged()
-            // The first value is the text just parsed above; later ones are streamed and stay uncached.
-            .mapLatest { parseCache.get(it) ?: parseMarkdown(it) }
-            .catch { exception -> exception.printStackTrace() }
-            .flowOn(Dispatchers.Default)
-            .collect { setData(it) }
-    }
+    val state = remember { MarkdownParseState(content) }
+    val scope = rememberCoroutineScope()
+    val data = state.data
+    // Settled text never gets here: its first parse is the one remembered above.
+    if (data.source != content) SideEffect { state.submit(content, scope) }
 
     if (data.hasHtml) CompositionLocalProvider(LocalUriHandler provides rememberMarkdownUriHandler()) {
         MarkdownNew(
@@ -276,9 +221,11 @@ fun MarkdownBlock(
             Column(
                 modifier = modifier.padding(horizontal = 4.dp)
             ) {
-                data.astTree.children.fastForEach { child ->
+                // A block keeps its node and text for as long as it does not change, so only the block
+                // being written recomposes while a reply streams.
+                data.blocks.fastForEach { block ->
                     MarkdownNode(
-                        node = child, content = data.preprocessed, onClickCitation = onClickCitation
+                        node = block.node, content = block.content, onClickCitation = onClickCitation
                     )
                 }
             }
@@ -833,7 +780,7 @@ private fun Paragraph(
             else Modifier
         )
     ) {
-        val annotatedString = remember(content, enableLatexRendering, latexColorArgb) {
+        val annotatedString = remember(node, content, enableLatexRendering, latexColorArgb) {
             buildAnnotatedString {
                 node.children.fastForEach { child ->
                     appendMarkdownNodeContent(
