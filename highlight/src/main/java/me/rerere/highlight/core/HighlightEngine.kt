@@ -41,12 +41,32 @@ internal class HighlightEngine(languages: List<Language>) {
         return Run(definition).highlight(code, ignoreIllegals = true, continuation = null).tokens
     }
 
+    /**
+     * The modes left open where a piece of text ended, including those of embedded languages, so that the text
+     * after it can be highlighted on its own and read as if both had been highlighted together.
+     */
+    class Continuation internal constructor(internal val top: Frame, internal val subLanguages: Map<String, Frame>)
+
+    class Piece internal constructor(val tokens: List<HighlightToken>, val continuation: Continuation)
+
+    /**
+     * Highlights [code] as the text that follows what [continuation] came from (the start of the text when null).
+     * Pieces should end at line ends: a rule that looks across a line break cannot see into the next piece.
+     * Returns `null` when [language] is not registered.
+     */
+    fun highlightPiece(code: String, language: String, continuation: Continuation?): Piece? {
+        val definition = languagesByAlias[language.trim().lowercase()] ?: return null
+        val run = Run(definition, continuation?.subLanguages.orEmpty())
+        val result = run.highlight(code, ignoreIllegals = true, continuation = continuation?.top)
+        return Piece(result.tokens, Continuation(result.top, run.subLanguageContinuations()))
+    }
+
     private fun compiledRootOf(language: Language): Mode = synchronized(compiledRoots) {
         compiledRoots.getOrPut(language.name) { ModeCompiler(language).compile() }
     }
 
     /** A mode on the highlighting stack, replacing the prototype-linked objects used upstream. */
-    private class Frame(val mode: Mode, val parent: Frame?)
+    internal class Frame(val mode: Mode, val parent: Frame?)
 
     private class Result(
         val tokens: List<HighlightToken>,
@@ -57,10 +77,12 @@ internal class HighlightEngine(languages: List<Language>) {
     private class IllegalLexemeException(message: String) : Exception(message)
 
     /** One highlighting pass over one string; holds the mutable parser state. */
-    private inner class Run(private val language: Language) {
+    private inner class Run(private val language: Language, subLanguages: Map<String, Frame> = emptyMap()) {
         private val emitter = TokenEmitter()
         private val keywordHits = HashMap<String, Int>()
-        private val continuations = HashMap<String, Frame>()
+        private val continuations = HashMap(subLanguages)
+
+        fun subLanguageContinuations(): Map<String, Frame> = HashMap(continuations)
 
         private lateinit var code: String
         private lateinit var root: Mode
