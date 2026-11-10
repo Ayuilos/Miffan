@@ -412,12 +412,7 @@ fun AgentThreadPage(
         }
     }
     val welcome = welcomeAt()
-    SharedTransitionLayout {
-    // During a welcome the big partner moves into the live status row when the partner starts working.
-    CompositionLocalProvider(LocalThreadPartnerTransition provides ThreadPartnerTransition(this,
-        handOff = welcome != null && welcomeDecided && (status != null || partnerLeft))) {
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        assistant?.let { AssistantBackground(it, Modifier.fillMaxSize().hazeSource(hazeState, zIndex = -1f)) }
+    val timelineList: @Composable () -> Unit = {
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().hazeSource(hazeState).testTag("thread_list"),
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = topChrome + 4.dp, bottom = bottomChrome + 8.dp)) {
             if (welcomeDecided) {
@@ -449,6 +444,26 @@ fun AgentThreadPage(
                     onRetry = { segmentId?.let(vm::retry); vm.dismissError(error) }, onDismiss = { vm.dismissError(error) })
             }
         }
+    }
+    // The welcome's partner flies into the status row as a shared element, which needs a lookahead scope, and
+    // inside one everything is measured twice. So the scope holds only the list, and only from a welcome until
+    // the partner has landed; moving the list in and out keeps its rows as they are.
+    val latestTimelineList by rememberUpdatedState(timelineList)
+    val movableTimelineList = remember { movableContentOf { latestTimelineList() } }
+    var partnerLanded by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(welcomeSettled) {
+        // Until the welcome's place for the partner has closed, it still belongs to the flight.
+        if (welcomeSettled && !partnerLanded) { delay(1_000); partnerLanded = true }
+    }
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        assistant?.let { AssistantBackground(it, Modifier.fillMaxSize().hazeSource(hazeState, zIndex = -1f)) }
+        if (welcomeCutoff != null && !partnerLanded) SharedTransitionLayout(Modifier.fillMaxSize()) {
+            // During a welcome the big partner moves into the live status row when the partner starts working.
+            CompositionLocalProvider(LocalThreadPartnerTransition provides ThreadPartnerTransition(this,
+                handOff = welcome != null && welcomeDecided && (status != null || partnerLeft))) {
+                movableTimelineList()
+            }
+        } else movableTimelineList()
         if (!loaded) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(stringResource(R.string.im_thread_loading), color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else if (filter == null && !hasItems && visibleErrors.isEmpty()) {
@@ -564,8 +579,6 @@ fun AgentThreadPage(
             onClick = { highlighted = null; followLatest = true; scope.launch { scrollToLatest(animate = true) } },
             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = bottomChrome + 8.dp))
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = bottomChrome))
-    }
-    }
     }
 }
 

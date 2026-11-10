@@ -9,7 +9,8 @@ import me.ayuilos.miffan.ui.context.LocalSharedTransitionScope
 fun Modifier.heroAnimation(
     key: Any,
 ): Modifier {
-    val sharedTransitionScope = LocalSharedTransitionScope.current
+    // Without a scope (the easy shell) the element simply appears with its page.
+    val sharedTransitionScope = LocalSharedTransitionScope.current ?: return this
     val animatedVisibilityScope = LocalNavAnimatedContentScope.current
     return with(sharedTransitionScope) {
         this@heroAnimation.sharedElement(
