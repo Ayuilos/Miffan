@@ -5,7 +5,6 @@ import me.ayuilos.miffan.utils.NetworkMonitor
 import org.koin.compose.koinInject
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
@@ -71,6 +70,8 @@ import me.ayuilos.miffan.ui.im.ThinkTime
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.data.revision.RestoreResult
 import me.ayuilos.miffan.data.thread.TimelineItem
+import me.ayuilos.miffan.data.thread.ThreadTimeline
+import me.ayuilos.miffan.ui.context.SharedElementScope
 import me.ayuilos.miffan.data.thread.ThreadNotice
 import me.ayuilos.miffan.data.thread.previewText
 import org.koin.androidx.compose.koinViewModel
@@ -97,8 +98,12 @@ fun AgentThreadPage(
     me.ayuilos.miffan.ui.im.computer.RetainComputerConnection(assistant?.workspaceId?.toString(), throughRelay = false)
     // One state, so the page never sees "loaded" before the items that came with it.
     val timelineState = vm.timelineState.collectAsStateWithLifecycle()
+    // The page itself must not read the timeline while composing: it changes with every streamed chunk, and the
+    // whole page (header, composer, every row's lambdas) would recompose each time. The list content, effects and
+    // the derived states below read it; only what they produce reaches the page.
     val timeline by remember { derivedStateOf { timelineState.value.items } }
     val loaded by remember { derivedStateOf { timelineState.value.loaded } }
+    val hasItems by remember { derivedStateOf { timelineState.value.items.isNotEmpty() } }
     val generating by vm.generatingSegmentIds.collectAsStateWithLifecycle()
     val errors by vm.errors.collectAsStateWithLifecycle()
     val filter by vm.topicFilter.collectAsStateWithLifecycle()
@@ -125,7 +130,6 @@ fun AgentThreadPage(
     val voiceSetup = stringResource(R.string.im_thread_voice_setup)
     val undoFailed = stringResource(R.string.im_thread_undo_failed)
     val fallbackTopic = stringResource(R.string.im_thread_topic)
-    val labels = remember(assistantId) { mutableStateMapOf<Uuid, String>() }
     var input by rememberSaveable(assistantId.toString()) { mutableStateOf(initialText.orEmpty()) }
     var viewingNotice by remember { mutableStateOf<ThreadNotice?>(null) }
     var highlighted by remember { mutableStateOf<String?>(null) }
@@ -142,12 +146,25 @@ fun AgentThreadPage(
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val dragging by listState.interactionSource.collectIsDraggedAsState()
     val visibleErrors = errors.filter { filter == null || it.conversationId == filter }
-    val topicLabel = filter?.let { topics[it]?.title?.takeIf(String::isNotBlank) ?: labels[it] ?: fallbackTopic }
+    // A topic without a title is called by its first words; kept per message, the timeline changes with every chunk.
+    val topicPreviews = remember { ThreadTimeline.QuotePreviews() }
+    val topicPreview by remember {
+        derivedStateOf {
+            filter?.let { id ->
+                timeline.firstNotNullOfOrNull { item ->
+                    (item as? TimelineItem.Message)?.takeIf { it.segmentId == id }?.message
+                        ?.let(topicPreviews::of)?.takeIf(String::isNotBlank)
+                }
+            }
+        }
+    }
+    val topicLabel = filter?.let { topics[it]?.title?.takeIf(String::isNotBlank) ?: topicPreview ?: fallbackTopic }
     val connectedSegments by vm.connectedSegmentIds.collectAsStateWithLifecycle()
     val online by koinInject<NetworkMonitor>().online.collectAsStateWithLifecycle()
     // One instance per change: a new one on every streamed chunk made every visible bubble recompose.
     val connection = remember(connectedSegments, online) { ThreadConnection(connectedSegments, online) }
-    val status = threadHeaderStatus(timeline, generating, connection)
+    val latestConnection by rememberUpdatedState(connection)
+    val status by remember { derivedStateOf { threadHeaderStatus(timeline, generating, latestConnection) } }
     val thinkHarder by vm.thinkHarder.collectAsStateWithLifecycle()
     val deepMessageIds by vm.deepMessageIds.collectAsStateWithLifecycle()
     val settings = LocalSettings.current
@@ -156,17 +173,23 @@ fun AgentThreadPage(
     val thinkTime = thinkingModel?.let { thinkTimeOf(partnerLevel, it) }
     val thinksDeeply = thinkingModel != null && thinkingModel.resolveReasoningLevel(partnerLevel) == ThinkTime.DEEP.levelFor(thinkingModel)
     // How hard the partner thinks about the newest owner message; the header counts the seconds for the long tiers.
-    val depth = remember(timeline, deepMessageIds, thinkTime) {
-        val lastOwner = timeline.lastOrNull { it is TimelineItem.Message && it.message.role == MessageRole.USER } as TimelineItem.Message?
-        if (lastOwner != null && lastOwner.message.id in deepMessageIds) ThinkTime.DEEP
-        else thinkTime?.takeIf { it == ThinkTime.MORE || it == ThinkTime.DEEP }
+    val latestThinkTime by rememberUpdatedState(thinkTime)
+    val depth by remember {
+        derivedStateOf {
+            val lastOwner = timeline.lastOrNull { it is TimelineItem.Message && it.message.role == MessageRole.USER } as TimelineItem.Message?
+            if (lastOwner != null && lastOwner.message.id in deepMessageIds) ThinkTime.DEEP
+            else latestThinkTime?.takeIf { it == ThinkTime.MORE || it == ThinkTime.DEEP }
+        }
     }
     var busySince by remember { mutableStateOf<Long?>(null) }
     LaunchedEffect(status != null) { busySince = if (status != null) System.currentTimeMillis() else null }
 
     // The welcome hero stands in for the hidden history, so list rows and timeline indices differ.
     fun welcomeAt(): Instant? = welcomeCutoff?.takeIf { filter == null }?.let(Instant::ofEpochMilli)
-    fun historySize(items: List<TimelineItem>): Int = welcomeAt()?.let { ThreadWelcome.historySize(items, it) } ?: 0
+    // Worked out once per timeline; the list, following the newest message and the composer all ask for it.
+    val shownHistorySize by remember { derivedStateOf { welcomeAt()?.let { ThreadWelcome.historySize(timeline, it) } ?: 0 } }
+    fun historySize(items: List<TimelineItem>): Int =
+        if (items === timeline) shownHistorySize else welcomeAt()?.let { ThreadWelcome.historySize(items, it) } ?: 0
     fun rowOf(index: Int, items: List<TimelineItem>): Int {
         if (welcomeAt() == null) return index
         val history = historySize(items)
@@ -176,6 +199,7 @@ fun AgentThreadPage(
         .firstOrNull { it is TimelineItem.Message && it.message.role == MessageRole.USER } as TimelineItem.Message?
     // Back after a while without opening the history: the first message starts a topic of its own.
     fun freshStart(): Boolean = welcomeAt() != null && !historyShown && firstOwnerMessageSinceWelcome() == null
+    val startsFresh by remember { derivedStateOf { freshStart() } }
     // That topic, once started, until it is put back with an earlier one.
     fun welcomeTopic(): Uuid? {
         val segmentId = firstOwnerMessageSinceWelcome()?.segmentId ?: return null
@@ -217,8 +241,8 @@ fun AgentThreadPage(
         }
     }
 
-    LaunchedEffect(loaded, timeline) {
-        if (!welcomeDecided && loaded && timeline.isNotEmpty()) {
+    LaunchedEffect(loaded, hasItems) {
+        if (!welcomeDecided && loaded && hasItems) {
             welcomeDecided = true
             if (generating.isEmpty()) welcomeCutoff = ThreadWelcome.cutoff(timeline, Instant.now())?.toEpochMilli()
         }
@@ -226,16 +250,6 @@ fun AgentThreadPage(
     LaunchedEffect(status != null) {
         if (welcomeAt() == null) return@LaunchedEffect
         if (status != null) partnerLeft = true else if (partnerLeft) welcomeSettled = true
-    }
-    LaunchedEffect(timeline, topics) {
-        // Runs on every streamed chunk: only messages of topics without a label yet build a preview.
-        timeline.forEach { item ->
-            val message = item as? TimelineItem.Message ?: return@forEach
-            message.quote?.let { quote -> labels.putIfAbsent(quote.ref.conversationId, quote.preview) }
-            if (message.segmentId !in labels) {
-                message.message.previewText(300).takeIf { it.isNotBlank() }?.let { labels[message.segmentId] = it }
-            }
-        }
     }
     LaunchedEffect(dragging, atBottom, highlighted, jumping) {
         // Programmatic scrolling must not turn off following new messages.
@@ -251,16 +265,14 @@ fun AgentThreadPage(
     // Follow new content with one long-lived collector, taking the newest state after each scroll. An effect keyed
     // on the timeline restarted on every streamed chunk and was cancelled while waiting for its frame, so a long
     // reply stayed at its start while it streamed and jumped to its end only when it finished.
-    val latestTimeline by rememberUpdatedState(timeline)
     val latestErrorCount by rememberUpdatedState(visibleErrors.size)
-    val latestLoaded by rememberUpdatedState(loaded)
     val latestNewTopic by rememberUpdatedState(newTopicPending)
     val followScroll by rememberUpdatedState<suspend () -> Unit> { scrollToLatest() }
     LaunchedEffect(listState) {
-        snapshotFlow { latestTimeline; latestErrorCount; latestNewTopic; latestLoaded; Any() }
+        snapshotFlow { timeline; latestErrorCount; latestNewTopic; loaded; Any() }
             .conflate()
             .collect {
-                if (latestLoaded && followLatest && !jumping && latestTimeline.size + latestErrorCount > 0) {
+                if (loaded && followLatest && !jumping && timeline.size + latestErrorCount > 0) {
                     withFrameNanos { }
                     if (followLatest && !jumping) followScroll()
                 }
@@ -340,11 +352,19 @@ fun AgentThreadPage(
             },
         )
     }
-    val headerPhase = assistantGenerationPhase(
-        (timeline.lastOrNull { it is TimelineItem.Message && it.streaming && it.message.role == MessageRole.ASSISTANT } as TimelineItem.Message?)?.message,
-        // Follows the header status, so the avatar already thinks while a sent message is being routed.
-        loading = status != null,
-    )
+    val headerPhase by remember {
+        derivedStateOf {
+            assistantGenerationPhase(
+                (timeline.lastOrNull { it is TimelineItem.Message && it.streaming && it.message.role == MessageRole.ASSISTANT } as TimelineItem.Message?)?.message,
+                // Follows the header status, so the avatar already thinks while a sent message is being routed.
+                loading = status != null,
+            )
+        }
+    }
+    // A request of the partner's waits for the owner.
+    val waitingForOwner by remember {
+        derivedStateOf { timeline.any { it is TimelineItem.Message && it.message.parts.any { part -> part is UIMessagePart.Tool && part.isPending } } }
+    }
     val density = LocalDensity.current
     var topChrome by remember { mutableStateOf(0.dp) }
     var bottomChrome by remember { mutableStateOf(0.dp) }
@@ -353,7 +373,7 @@ fun AgentThreadPage(
         // The composer grows (keyboard, attachments); keep the newest message above it while following.
         if (loaded && followLatest && !jumping) scrollToLatest()
     }
-    val starter = remember(timeline) { threadStarter(timeline) }
+    val starter by remember { derivedStateOf { threadStarter(timeline) } }
     @Composable
     fun TimelineRow(item: TimelineItem) {
         when (item) {
@@ -372,9 +392,11 @@ fun AgentThreadPage(
                 onToolAnswer = { id, answer -> vm.answerToolQuestion(item, id, answer) },
                 computer = computer, onComputerScreen = { nav.navigate(Screen.PartnerScreen(assistantId.toString())) },
                 assistant = assistant, connection = connection)
-                if (starter?.greetingId == item.message.id) ThreadStarterQuiz(assistant, starter, enabled = generating.isEmpty()) {
-                    followLatest = true
-                    vm.sendText(it)
+                starter?.takeIf { it.greetingId == item.message.id }?.let { starter ->
+                    ThreadStarterQuiz(assistant, starter, enabled = generating.isEmpty()) {
+                        followLatest = true
+                        vm.sendText(it)
+                    }
                 }
             }
             is TimelineItem.Typing -> ThreadTyping(assistant, item.segmentIds, connection)
@@ -393,12 +415,7 @@ fun AgentThreadPage(
         }
     }
     val welcome = welcomeAt()
-    SharedTransitionLayout {
-    // During a welcome the big partner moves into the live status row when the partner starts working.
-    CompositionLocalProvider(LocalThreadPartnerTransition provides ThreadPartnerTransition(this,
-        handOff = welcome != null && welcomeDecided && (status != null || partnerLeft))) {
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        assistant?.let { AssistantBackground(it, Modifier.fillMaxSize().hazeSource(hazeState, zIndex = -1f)) }
+    val timelineList: @Composable () -> Unit = {
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().hazeSource(hazeState).testTag("thread_list"),
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = topChrome + 4.dp, bottom = bottomChrome + 8.dp)) {
             if (welcomeDecided) {
@@ -430,9 +447,28 @@ fun AgentThreadPage(
                     onRetry = { segmentId?.let(vm::retry); vm.dismissError(error) }, onDismiss = { vm.dismissError(error) })
             }
         }
+    }
+    // The welcome's partner flies into the status row as a shared element, which needs a lookahead scope, and
+    // inside one everything is measured twice. So the scope holds only the list, and only from a welcome until
+    // the partner has landed; the list keeps its rows as they are when it moves in and out.
+    var partnerLanded by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(welcomeSettled) {
+        // Until the welcome's place for the partner has closed, it still belongs to the flight.
+        if (welcomeSettled && !partnerLanded) { delay(1_000); partnerLanded = true }
+    }
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        assistant?.let { AssistantBackground(it, Modifier.fillMaxSize().hazeSource(hazeState, zIndex = -1f)) }
+        SharedElementScope(enabled = welcomeCutoff != null && !partnerLanded, Modifier.fillMaxSize()) { flight ->
+            // During a welcome the big partner moves into the live status row when the partner starts working.
+            CompositionLocalProvider(LocalThreadPartnerTransition provides flight?.let {
+                ThreadPartnerTransition(it, handOff = welcome != null && welcomeDecided && (status != null || partnerLeft))
+            }) {
+                timelineList()
+            }
+        }
         if (!loaded) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(stringResource(R.string.im_thread_loading), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else if (filter == null && timeline.isEmpty() && visibleErrors.isEmpty()) {
+        } else if (filter == null && !hasItems && visibleErrors.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(top = topChrome, bottom = bottomChrome)) {
                 ThreadEmptyState(assistant) { followLatest = true; vm.sendText(it) }
             }
@@ -454,7 +490,7 @@ fun AgentThreadPage(
                             // The reply's thinking and typing play here now that bubbles carry no avatar.
                             ThreadAvatar(assistant, headerPhase, error = generating.isEmpty() && visibleErrors.isNotEmpty(), modifier = Modifier.size(36.dp),
                                 running = status != null, runningRing = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                waiting = timeline.any { it is TimelineItem.Message && it.message.parts.any { part -> part is UIMessagePart.Tool && part.isPending } })
+                                waiting = waitingForOwner)
                             Column {
                                 Text(assistantName, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 // Fades between states and grows or shrinks the line as the status appears or clears.
@@ -530,7 +566,7 @@ fun AgentThreadPage(
                 },
                 hazeState = hazeState, mentionables = mentionables, initialFiles = initialFiles,
                 // Right after the welcome the next message starts fresh anyway.
-                onNewTopic = if (newTopicPending || freshStart()) null else { { followLatest = true; vm.requestNewTopic() } },
+                onNewTopic = if (newTopicPending || startsFresh) null else { { followLatest = true; vm.requestNewTopic() } },
                 freshTopic = newTopicPending,
                 onThinkHarder = if (thinkingModel != null) vm::setThinkHarder else null,
                 thinkHarder = thinkHarder, thinksDeeply = thinksDeeply)
@@ -545,8 +581,6 @@ fun AgentThreadPage(
             onClick = { highlighted = null; followLatest = true; scope.launch { scrollToLatest(animate = true) } },
             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = bottomChrome + 8.dp))
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = bottomChrome))
-    }
-    }
     }
 }
 

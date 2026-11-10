@@ -31,8 +31,12 @@ import me.rerere.hugeicons.stroke.Puzzle
 internal const val EXTENSIONS_APPLY = "extensions_apply_changes"
 private const val EXTENSIONS_PREVIEW = "extensions_preview_changes"
 
-/** The other parts of the reply a card sits in; a card may read an earlier step's result from them. */
-internal val LocalToolCardSiblings = staticCompositionLocalOf<List<UIMessagePart>> { emptyList() }
+/**
+ * The other parts of the reply a card sits in; a card may read an earlier step's result from them.
+ * Not a static local: the parts change with every streamed chunk, and a static one would recompose the whole
+ * reply (every finished paragraph, table and code block) each time instead of the one card that reads them.
+ */
+internal val LocalToolCardSiblings = compositionLocalOf<List<UIMessagePart>> { emptyList() }
 
 private val previewJson = Json { ignoreUnknownKeys = true }
 

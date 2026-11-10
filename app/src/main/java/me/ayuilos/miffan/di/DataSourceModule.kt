@@ -264,6 +264,12 @@ val dataSourceModule = module {
                 redactHeader("Authorization")
                 redactHeader("Proxy-Authorization")
                 redactHeader("X-Api-Key")
+                // The keys of Gemini, Azure-style endpoints, ElevenLabs and Brave: logcat must not hold them.
+                redactHeader("x-goog-api-key")
+                redactHeader("api-key")
+                redactHeader("xi-api-key")
+                redactHeader("X-Subscription-Token")
+                redactQueryParams("key", "api_key", "apikey", "api-key", "access_token", "token")
                 redactHeader("Cookie")
                 redactHeader("Set-Cookie")
                 redactHeader("ChatGPT-Account-Id")

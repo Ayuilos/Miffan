@@ -35,6 +35,7 @@ import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.ImageGenerationItem
 import me.rerere.ai.ui.StreamChunk
 import me.rerere.ai.ui.UIMessage
+import me.rerere.ai.util.debugLog
 import me.rerere.ai.util.KeyRoulette
 import me.rerere.ai.util.configureReferHeaders
 import me.rerere.ai.util.json
@@ -250,7 +251,7 @@ class OpenAIProvider(
                 .mergeCustomBody(params.customBody)
         )
 
-        Log.i(TAG, "generateImage: $requestBody")
+        debugLog(TAG) { "generateImage: $requestBody" }
 
         val requestBuilder = Request.Builder()
             .url("${providerSetting.baseUrl}/images/generations")

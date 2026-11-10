@@ -157,7 +157,8 @@ internal fun threadLastChatTime(at: Instant): String {
  * does not return. [handOff] stays true from then on, so the welcome's place for it stays empty.
  */
 @OptIn(ExperimentalSharedTransitionApi::class)
-internal class ThreadPartnerTransition(val scope: SharedTransitionScope, val handOff: Boolean)
+// A data class: provided through a static local, where a new unequal instance recomposes the whole page.
+internal data class ThreadPartnerTransition(val scope: SharedTransitionScope, val handOff: Boolean)
 
 internal val LocalThreadPartnerTransition = staticCompositionLocalOf<ThreadPartnerTransition?> { null }
 

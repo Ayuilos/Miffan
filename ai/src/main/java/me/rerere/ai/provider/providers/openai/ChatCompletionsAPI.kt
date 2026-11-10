@@ -47,6 +47,7 @@ import me.rerere.ai.ui.UIMessageAnnotation
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.metadataAs
 import me.rerere.ai.ui.toMetadata
+import me.rerere.ai.util.debugLog
 import me.rerere.ai.util.KeyRoulette
 import me.rerere.ai.util.configureReferHeaders
 import me.rerere.ai.util.encodeBase64
@@ -99,7 +100,7 @@ class ChatCompletionsAPI(
             .configureReferHeaders(providerSetting.baseUrl)
         val request = authenticator.authenticate(requestBuilder, providerSetting).build()
 
-        Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
+        debugLog(TAG) { "generateText: ${json.encodeToString(requestBody)}" }
 
         val response = client.newCall(request).await()
         if (!response.isSuccessful) {
@@ -150,7 +151,7 @@ class ChatCompletionsAPI(
             .configureReferHeaders(providerSetting.baseUrl)
         val request = authenticator.authenticate(requestBuilder, providerSetting).build()
 
-        Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
+        debugLog(TAG) { "streamText: ${json.encodeToString(requestBody)}" }
 
         // just for debugging response body
         // println(client.newCall(request).await().body?.string())
@@ -176,7 +177,7 @@ class ChatCompletionsAPI(
                 type: String?,
                 data: String
             ) {
-                Log.d(TAG, "onEvent: $data")
+                debugLog(TAG) { "onEvent: $data" }
                 try {
                     val result = decoder.accept(SseEvent(id = id, event = type, data = data))
                     sendChunks(result.chunks)

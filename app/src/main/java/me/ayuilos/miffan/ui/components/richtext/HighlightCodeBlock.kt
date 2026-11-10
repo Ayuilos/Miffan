@@ -57,6 +57,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import me.rerere.highlight.HighlightTextColorPalette
 import me.rerere.highlight.buildHighlightText
+import me.rerere.highlight.CodeHighlightLines
 import me.rerere.highlight.CodeHighlightText
 import me.rerere.highlight.CodeHighlighter
 import me.rerere.hugeicons.HugeIcons
@@ -206,6 +207,7 @@ fun HighlightCodeBlock(
                                 autoWrap = autoWrap,
                                 showLineNumbers = showLineNumbers,
                                 scrollState = scrollState,
+                                complete = completeCodeBlock,
                             )
                         }
                     }
@@ -305,6 +307,7 @@ private fun CodeBlockDefault(
     autoWrap: Boolean,
     showLineNumbers: Boolean,
     scrollState: ScrollState,
+    complete: Boolean,
 ) {
     Row(
         modifier = Modifier.then(
@@ -338,14 +341,15 @@ private fun CodeBlockDefault(
 
         // 代码列
         SelectionContainer {
-            CodeHighlightText(
+            // In pieces of lines: a block being written highlights and lays out only its newest lines.
+            CodeHighlightLines(
                 code = displayCode,
                 language = language,
                 modifier = Modifier.animateContentSize(),
+                complete = complete,
                 fontSize = textStyle.fontSize,
                 lineHeight = textStyle.lineHeight,
                 colors = colorPalette,
-                overflow = TextOverflow.Visible,
                 softWrap = autoWrap,
                 fontFamily = JetbrainsMono
             )

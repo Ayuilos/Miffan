@@ -80,6 +80,23 @@ data class Conversation(
             .collectAllParts()
             .mapNotNull { it.fileUri() }
 
+    /**
+     * Files of this conversation that [other] no longer refers to. Nodes that [other] kept as they are cannot have
+     * lost a file, so a streamed chunk (one changed node, usually without files) costs one pass over the node list
+     * instead of collecting every part of both conversations.
+     */
+    fun filesMissingFrom(other: Conversation): List<Uri> {
+        val kept = other.messageNodes
+        if (kept === messageNodes) return emptyList()
+        val candidates = ArrayList<Uri>()
+        messageNodes.forEachIndexed { index, node ->
+            if (kept.getOrNull(index) !== node) node.message.parts.collectAllParts().mapNotNullTo(candidates) { it.fileUri() }
+        }
+        if (candidates.isEmpty()) return emptyList()
+        val remaining = other.files.toHashSet()
+        return candidates.filter { it !in remaining }
+    }
+
     /** The selected root followed by each selected child. */
     val currentMessageNodes: List<MessageNode>
         get() {

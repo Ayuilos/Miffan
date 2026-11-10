@@ -9,7 +9,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -85,6 +84,7 @@ import me.ayuilos.miffan.ui.context.LocalASRState
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.context.LocalSharedTransitionScope
+import me.ayuilos.miffan.ui.context.SharedElementScope
 import me.ayuilos.miffan.ui.context.LocalTTSState
 import me.ayuilos.miffan.ui.context.LocalToaster
 import me.ayuilos.miffan.ui.context.Navigator
@@ -390,10 +390,10 @@ class RouteActivity : ComponentActivity() {
         // Like the workspace introduction, the shell choice reserves its launch for itself.
         val modeChoiceLaunch = rememberSaveable { settings.interfaceMode.choicePending }
 
-        SharedTransitionLayout {
+        SharedElementScope(enabled = !settings.isImMode) { sharedTransitionScope ->
             CompositionLocalProvider(
                 LocalNavController provides Navigator(backStack),
-                LocalSharedTransitionScope provides this,
+                LocalSharedTransitionScope provides sharedTransitionScope,
                 LocalSettings provides settings,
                 LocalToaster provides toastState,
                 LocalTTSState provides tts,
