@@ -119,6 +119,25 @@ object ThreadTimeline {
 
     private val visibleRoles = setOf(MessageRole.USER, MessageRole.ASSISTANT)
 
+    /**
+     * Quote bar texts by message, kept between builds of one thread's timeline. A streamed reply rebuilds the
+     * timeline many times a second, and stripping Markdown from every quoted message each time adds up. An entry
+     * is used as long as the message is still the same object; not safe to share between threads.
+     */
+    class QuotePreviews {
+        private val entries = HashMap<Uuid, Pair<UIMessage, String>>()
+
+        fun of(message: UIMessage): String {
+            entries[message.id]?.let { (cached, text) -> if (cached === message) return text }
+            return message.previewText(QUOTE_PREVIEW_CHARS).also { entries[message.id] = message to it }
+        }
+
+        /** Forgets messages that are no longer quoted. */
+        fun retain(quoted: Set<Uuid>) {
+            if (entries.size > quoted.size) entries.keys.retainAll(quoted)
+        }
+    }
+
     fun build(
         segments: List<Conversation>,
         notices: List<ThreadNotice> = emptyList(),
@@ -128,6 +147,7 @@ object ThreadTimeline {
         now: Instant = Instant.now(),
         topicIndices: Map<Uuid, Int> = emptyMap(),
         earlierSegmentIds: Map<Uuid, Set<Uuid>> = emptyMap(),
+        previews: QuotePreviews = QuotePreviews(),
     ): List<TimelineItem> {
         val topicIndex = segments.associate { segment ->
             segment.id to (topicIndices[segment.id] ?: (segment.id.hashCode() and Int.MAX_VALUE))
@@ -237,6 +257,7 @@ object ThreadTimeline {
         }
 
         val started = HashSet<Uuid>()
+        val quotedMessages = HashSet<Uuid>()
         for ((index, entry) in entries.withIndex()) {
             addLooseNoticesBefore(entry.at)
             val last = previous
@@ -270,13 +291,15 @@ object ThreadTimeline {
             val explicit = entry.node.replyTo?.let { ref ->
                 val target = byMessageId[ref.messageId] ?: return@let null
                 if (target.node.origin != null) return@let null
-                Quote(ref, target.node.message.previewText(QUOTE_PREVIEW_CHARS), topicIndex.getValue(target.segment.id), explicit = true)
+                quotedMessages += target.node.message.id
+                Quote(ref, previews.of(target.node.message), topicIndex.getValue(target.segment.id), explicit = true)
             }
             val automatic = if (quoted[index]) {
                 val trigger = entries[triggerIndex[index]]
+                quotedMessages += trigger.node.message.id
                 Quote(
                     MessageRef(trigger.segment.id, trigger.node.message.id),
-                    trigger.node.message.previewText(QUOTE_PREVIEW_CHARS),
+                    previews.of(trigger.node.message),
                     topicIndex.getValue(trigger.segment.id),
                     explicit = false,
                 )
@@ -303,6 +326,7 @@ object ThreadTimeline {
             }
         }
         addLooseNoticesBefore(null)
+        previews.retain(quotedMessages)
 
         // Once a reply message exists, its streaming bubble replaces the typing row.
         val waiting = generatingSegmentIds.filterTo(HashSet()) { segmentId ->

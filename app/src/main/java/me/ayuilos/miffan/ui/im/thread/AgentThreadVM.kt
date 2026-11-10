@@ -192,18 +192,35 @@ class AgentThreadVM(
     private val catalog: StateFlow<List<ThreadCatalogEntry>?> = threadRepository.observeCatalog(assistantId)
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    private val indexedSegments = combine(loadedSegments, catalog) { loaded, stored ->
-        val dates = stored.orEmpty().associate { Uuid.parse(it.id) to Instant.ofEpochMilli(it.createAt) } +
-            loaded.orEmpty().associate { it.id to it.createAt }
-        val sorted = dates.entries.sortedWith(compareBy<Map.Entry<Uuid, Instant>> { it.value }.thenBy { it.key.toString() })
-        IndexedThreadSegments(
-            loaded.takeIf { stored != null },
-            sorted.withIndex().associate { (index, entry) -> entry.key to index },
-            loaded.orEmpty().associate { source ->
-                source.id to dates.filter { (id, at) -> id != source.id && at < source.createAt }.keys
-            },
-        )
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, IndexedThreadSegments(null, emptyMap(), emptyMap()))
+    /** The order of the thread's topics; it only changes when a topic starts, goes or moves, not with a streamed chunk. */
+    private class SegmentOrder(
+        val catalog: List<ThreadCatalogEntry>?,
+        val loaded: List<Pair<Uuid, Instant>>,
+        val indices: Map<Uuid, Int>,
+        val earlier: Map<Uuid, Set<Uuid>>,
+    )
+
+    private val indexedSegments = run {
+        // Read and written by the one collector below.
+        var order: SegmentOrder? = null
+        combine(loadedSegments, catalog) { loaded, stored ->
+            val started = loaded.orEmpty().map { it.id to it.createAt }
+            val current = order?.takeIf { it.catalog === stored && it.loaded == started } ?: run {
+                val dates = stored.orEmpty().associate { Uuid.parse(it.id) to Instant.ofEpochMilli(it.createAt) } + started
+                val sorted = dates.entries.sortedWith(compareBy<Map.Entry<Uuid, Instant>> { it.value }.thenBy { it.key.toString() })
+                SegmentOrder(
+                    stored, started,
+                    sorted.withIndex().associate { (index, entry) -> entry.key to index },
+                    started.associate { (source, startedAt) ->
+                        source to dates.filter { (id, at) -> id != source && at < startedAt }.keys
+                    },
+                ).also { order = it }
+            }
+            IndexedThreadSegments(loaded.takeIf { stored != null }, current.indices, current.earlier)
+        }
+            .flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, IndexedThreadSegments(null, emptyMap(), emptyMap()))
+    }
 
     val newTopicPending: StateFlow<Boolean> = threadService.pendingNewTopic.map { assistantId in it }
         .stateIn(viewModelScope, SharingStarted.Eagerly, assistantId in threadService.pendingNewTopic.value)
@@ -211,6 +228,9 @@ class AgentThreadVM(
     private var undoWindowVersion = 0L
     private val _undoableMerge = MutableStateFlow<UndoableMerge?>(null)
     val undoableMerge: StateFlow<UndoableMerge?> = _undoableMerge.asStateFlow()
+
+    // Quote bars of settled messages keep their text between the timeline's rebuilds (one per streamed chunk).
+    private val quotePreviews = ThreadTimeline.QuotePreviews()
 
     val timelineState: StateFlow<ThreadTimelineState> = combine(
         indexedSegments,
@@ -221,7 +241,7 @@ class AgentThreadVM(
     ) { indexed, notices, generating, filter, pending ->
         val segments = indexed.segments
         val items = ThreadTimeline.build(segments.orEmpty(), notices, generating, filter,
-            topicIndices = indexed.indices, earlierSegmentIds = indexed.earlier)
+            topicIndices = indexed.indices, earlierSegmentIds = indexed.earlier, previews = quotePreviews)
         val shown = items.mapNotNullTo(HashSet()) { (it as? TimelineItem.Message)?.message?.id }
         val outgoing = pending.filter { it.id !in shown }
         ThreadTimelineState(if (outgoing.isEmpty()) items else items.withPending(outgoing), loaded = segments != null)
@@ -232,9 +252,14 @@ class AgentThreadVM(
     val timeline: StateFlow<List<TimelineItem>> = timelineState.map { it.items }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    /**
+     * Title and color index of each loaded topic. Without the preview line and its speaker: those follow the
+     * newest message, so they would change (and be worked out again) with every streamed chunk, and only the
+     * merge sheet shows them ([mergeTargets]).
+     */
     val topics: StateFlow<Map<Uuid, ThreadTopic>> = indexedSegments
         .map { indexed -> indexed.segments.orEmpty().associate { segment ->
-            segment.id to segment.asTopic(indexed.indices[segment.id] ?: 0)
+            segment.id to ThreadTopic(segment.id, segment.title.takeIf { it.isNotBlank() }, indexed.indices[segment.id] ?: 0)
         } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
@@ -302,15 +327,21 @@ class AgentThreadVM(
     }
 
     init {
-        // Everything shown while the thread is on screen counts as read.
+        // Everything shown while the thread is on screen counts as read. A reply counts from when it finishes, so
+        // marking when a row comes or goes, or a reply starts or finishes, is enough: marking on every streamed
+        // chunk wrote the read time to disk and had the Chats list work itself out again many times a second.
         viewModelScope.launch {
-            combine(visible, timeline) { shown, _ -> shown }.collect { shown ->
+            val arrivals = timeline.map { items ->
+                Triple(items.size, items.lastOrNull()?.key, items.count { it is TimelineItem.Message && it.streaming })
+            }.distinctUntilChanged()
+            combine(visible, arrivals) { shown, _ -> shown }.collect { shown ->
                 if (shown) listState.markRead(assistantId)
             }
         }
         // A pending message is released once its segment shows it, so it never flickers.
         viewModelScope.launch {
             segments.collect { list ->
+                if (pending.value.isEmpty()) return@collect
                 val recorded = list.flatMapTo(HashSet()) { segment -> segment.messageNodes.map { it.message.id } }
                 pending.update { outgoing -> outgoing.filter { it.id !in recorded } }
             }

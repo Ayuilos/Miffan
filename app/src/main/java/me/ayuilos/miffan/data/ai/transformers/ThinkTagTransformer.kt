@@ -61,7 +61,12 @@ internal fun List<UIMessage>.transformThinkTags(
     }
     val textPart = message.parts.getOrNull(textPartIndex) as? UIMessagePart.Text
         ?: return@map message
-    val match = THINKING_REGEX.find(textPart.text) ?: return@map message
+    // This runs on every streamed chunk. Without the tag there is nothing to find, and the regex would
+    // still try every position of a reply that keeps growing.
+    val text = textPart.text
+    val start = text.indexOfFirst { !it.isWhitespace() }
+    if (start < 0 || !text.startsWith("<think>", start)) return@map message
+    val match = THINKING_REGEX.find(text) ?: return@map message
     val hasClosingTag = match.groups[2]?.value == "</think>"
     val reasoning = UIMessagePart.Reasoning(
         reasoning = match.groupValues[1].trim(),
