@@ -42,6 +42,7 @@ class OpenAIImagesApiCompatibilityTest {
     @Before fun stubAndroidLog() {
         mockkStatic(Log::class)
         every { Log.i(any(), any()) } returns 0
+        every { Log.d(any(), any()) } returns 0
     }
     @After fun restoreAndroidLog() = unmockkStatic(Log::class)
 

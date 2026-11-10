@@ -8,6 +8,11 @@ plugins {
 android {
     namespace = "me.rerere.ai"
 
+    // BuildConfig.DEBUG gates the request and stream logging (me.rerere.ai.util.debugLog).
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
 //        externalNativeBuild {
 //            cmake {
