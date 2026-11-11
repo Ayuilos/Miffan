@@ -159,6 +159,10 @@ internal fun buildAppSettingsTools(
             their voice into text. Like connect_provider, the app shows the owner a secure card for the key; you never see
             it, and must never ask for it in the chat. Give service_id (from app_settings_catalog voice, for one with
             key_card true) or type (to add one). For tts the app reads a short sample with the key and the owner hears it.
+            For tts you may also give voice, and for openrouter model (any OpenRouter speech model id, such as
+            fish-audio/s2-pro); the sample is read with them, so a wrong one shows up right away. Voices belong to the
+            model: on a model other than the default Gemini one, give the voice id that model's provider uses (for Fish
+            Audio, the id of a voice from the owner's Fish Audio library), or none for the model's default voice.
             Connecting does not put the service in use: propose select_tts_service / select_asr_service with
             $CHANGE_APP_SETTINGS_TOOL for that.
         """.trimIndent().replace("\n", " "),
@@ -171,6 +175,8 @@ internal fun buildAppSettingsTools(
                         put("type", "string")
                         put("description", "tts: ${TtsKeyService.entries.joinToString { it.id }}; asr: ${AsrKeyService.entries.joinToString { it.id }}")
                     })
+                    put("model", buildJsonObject { put("type", "string"); put("description", "openrouter tts only: a speech model id") })
+                    put("voice", buildJsonObject { put("type", "string"); put("description", "tts only: a voice id of the service or model") })
                     put("reason", buildJsonObject { put("type", "string"); put("description", "Why, in the owner's language") })
                 },
                 required = listOf("kind"),
@@ -302,7 +308,9 @@ private fun appSettingsChangeSchema() = buildJsonObject {
         "($MIN_REPLY_LIMIT–$MAX_REPLY_LIMIT tokens or \"none\"), context_messages ($MIN_CONTEXT_MESSAGES–$MAX_CONTEXT_MESSAGES or \"all\"), " +
         "temperature (0–2 or \"default\"), memory, shared_memory; nothing else, permissions are the owner's; " +
         "select_tts_service = service_id (a read-aloud service from catalog voice.tts, with a key); " +
-        "set_tts_voice = service_id (default: the one in use), voice (an id from its voices), pitch (0.5–2, system only); " +
+        "set_tts_voice = service_id (default: the one in use), voice (an id from its voices, or for an OpenRouter model " +
+        "without a list the id its provider uses), pitch (0.5–2, system only), tts_model (OpenRouter only: a speech model id; " +
+        "give voice with it, as voices belong to the model); " +
         "set_read_aloud = any of auto_read (read each reply aloud while the chat is open), speed (0.5–2, 1 is normal), only_quoted, " +
         "skip_brackets; " +
         "select_asr_service = service_id (a voice input service from catalog voice.asr, with a key); " +
@@ -361,6 +369,7 @@ private fun appSettingsChangeSchema() = buildJsonObject {
         put("memory", buildJsonObject { put("type", "boolean") })
         put("shared_memory", buildJsonObject { put("type", "boolean") })
         put("voice", buildJsonObject { put("type", "string") })
+        put("tts_model", buildJsonObject { put("type", "string") })
         put("speed", buildJsonObject { put("type", "number") })
         put("pitch", buildJsonObject { put("type", "number") })
         put("only_quoted", buildJsonObject { put("type", "boolean") })

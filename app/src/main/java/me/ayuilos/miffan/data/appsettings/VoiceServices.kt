@@ -222,6 +222,31 @@ fun TTSProviderSetting.typeId(): String = when (this) {
 
 fun ASRProviderSetting.typeId(): String = AsrKeyService.entries.first { it.create()::class == this::class }.id
 
+/** The longest read-aloud model id taken from a partner. */
+const val MAX_TTS_MODEL_ID = 100
+
+private val OPENROUTER_MODEL_ID = Regex("^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._:-]*$")
+
+/** Whether [model] reads as an OpenRouter speech model id such as fish-audio/s2-pro. */
+fun validTtsModelId(model: String): Boolean = model.length <= MAX_TTS_MODEL_ID && OPENROUTER_MODEL_ID.matches(model)
+
+/** The model a read-aloud service can be switched between; only OpenRouter routes to many. */
+fun TTSProviderSetting.ttsModel(): String? = (this as? TTSProviderSetting.OpenRouter)?.model
+
+/**
+ * [setting] on [model]. The voice stays when the new model offers it; otherwise it is cleared, since voices belong to
+ * the model (a Gemini voice means nothing to Fish Audio) and a blank one lets the model use its own default.
+ */
+fun TTSProviderSetting.withTtsModel(model: String): TTSProviderSetting {
+    if (this !is TTSProviderSetting.OpenRouter || model == this.model) return this
+    val moved = copy(model = model)
+    return if (voicesFor(moved).any { it.first == voice }) moved else moved.copy(voice = "")
+}
+
+/** Whether [voice] is one [setting] offers; null when there is no list to check it against. */
+fun voiceListed(setting: TTSProviderSetting, voice: String): Boolean? =
+    voicesFor(setting).takeIf { it.isNotEmpty() }?.any { it.first == voice }
+
 /** The voices offered for [setting]'s type; empty when there is nothing to pick. */
 fun voicesFor(setting: TTSProviderSetting): List<Pair<String, String?>> = when {
     // OpenRouter's voices belong to the model; the list is the default Gemini model's, so another model gets none.

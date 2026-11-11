@@ -128,7 +128,13 @@ sealed interface AppSettingsLine {
 
     /** The voice a read-aloud service reads with; [type] tells whether the app knows the voice. */
     @Serializable @SerialName("tts_voice")
-    data class TtsVoice(val service: String, val type: String, val voice: String) : AppSettingsLine
+    data class TtsVoice(
+        val service: String,
+        val type: String,
+        val voice: String,
+        /** Not among the voices the service's model offers; null on lines from before this was worked out here. */
+        val unlisted: Boolean? = null,
+    ) : AppSettingsLine
 
     @Serializable @SerialName("search_selected")
     data class SearchSelected(val service: String) : AppSettingsLine
@@ -326,7 +332,7 @@ private fun applyOne(change: JsonObject, settings: Settings, catalog: ModelCatal
     }
 }
 
-private const val MAX_VOICE_ID = 100
+internal const val MAX_VOICE_ID = 100
 internal const val MAX_BACKUP_INTERVAL = 90
 
 /** A read-aloud service by service_id, or the one in use when none is given. */
@@ -343,20 +349,32 @@ private fun Settings.ttsService(change: JsonObject, defaultToSelected: Boolean =
 private fun setTtsVoice(change: JsonObject, settings: Settings): Step {
     val service = settings.ttsService(change, defaultToSelected = true)
     val voice = change.text("voice")?.trim()
+    val model = change.text("tts_model")?.trim()
+    if (model != null) {
+        if (service !is me.rerere.tts.provider.TTSProviderSetting.OpenRouter) fail("tts_model only applies to an OpenRouter read-aloud service.")
+        if (!validTtsModelId(model)) fail("tts_model must be an OpenRouter speech model id, like fish-audio/s2-pro.")
+    }
     val pitch = change["pitch"]?.let { value ->
         if (service !is me.rerere.tts.provider.TTSProviderSetting.SystemTTS) fail("pitch only applies to the phone's own voice (type system).")
         (value as? JsonPrimitive)?.takeUnless { it.isString }?.content?.toFloatOrNull()?.takeIf { it in 0.5f..2f }
             ?.let { kotlin.math.round(it * 100) / 100 } ?: fail("pitch must be a number from 0.5 to 2.")
     }
-    if (voice == null && pitch == null) fail("Give voice${if (service is me.rerere.tts.provider.TTSProviderSetting.SystemTTS) " or pitch" else ""}.")
+    if (voice == null && pitch == null && model == null) {
+        fail("Give voice${if (service is me.rerere.tts.provider.TTSProviderSetting.SystemTTS) " or pitch" else ""}" +
+            "${if (service is me.rerere.tts.provider.TTSProviderSetting.OpenRouter) " or tts_model" else ""}.")
+    }
     var updated = service
     val lines = mutableListOf<AppSettingsLine>()
+    if (model != null && model != service.ttsModel()) {
+        updated = updated.withTtsModel(model)
+        lines += AppSettingsLine.SettingChanged("tts_model", model)
+    }
     if (voice != null) {
         if (service.voice() == null) fail("${service.displayName()} has no voice to pick here; the speech settings page sets it up.")
         if (voice.length > MAX_VOICE_ID || voice.any { it.isISOControl() }) fail("voice must be a voice id from the catalog.")
-        if (voice != service.voice()) {
+        if (voice != updated.voice()) {
             updated = updated.withVoice(voice)
-            lines += AppSettingsLine.TtsVoice(service.displayName(), service.typeId(), voice)
+            lines += AppSettingsLine.TtsVoice(service.displayName(), service.typeId(), voice, unlisted = voiceListed(updated, voice) == false)
         }
     }
     if (pitch != null && updated is me.rerere.tts.provider.TTSProviderSetting.SystemTTS && pitch != updated.pitch) {

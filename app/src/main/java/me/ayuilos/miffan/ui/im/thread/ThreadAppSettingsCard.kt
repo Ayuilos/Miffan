@@ -116,9 +116,11 @@ private fun appSettingsLine(line: AppSettingsLine): ExtensionLine = when (line) 
         val known = me.ayuilos.miffan.data.appsettings.TtsKeyService.of(line.type)?.voices?.firstOrNull { it.first == line.voice }
         // Some services name voices by opaque ids; their description reads better there.
         val shown = known?.second?.takeIf { line.voice.length >= 16 && line.voice.all(Char::isLetterOrDigit) } ?: line.voice
-        ExtensionLine(R.string.im_settings_tag_voice, known == null,
+        // Lines made now say whether the model offers the voice; a model without a list (Fish Audio) is not warned about.
+        val unlisted = line.unlisted ?: (known == null)
+        ExtensionLine(R.string.im_settings_tag_voice, unlisted,
             stringResource(R.string.im_settings_arrow, stringResource(R.string.im_settings_tts_voice), shown),
-            if (known == null) stringResource(R.string.im_settings_voice_unknown, line.service) else stringResource(R.string.im_settings_from, line.service))
+            if (unlisted) stringResource(R.string.im_settings_voice_unknown, line.service) else stringResource(R.string.im_settings_from, line.service))
     }
     is AppSettingsLine.SearchSelected -> ExtensionLine(R.string.im_extension_tag_switch, false,
         stringResource(R.string.im_settings_search_in_use, line.service), null)
@@ -172,6 +174,7 @@ private fun settingLine(line: AppSettingsLine.SettingChanged): ExtensionLine {
             else -> R.string.im_think_auto
         }))
         "tts_service" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_tts_service), line.value)
+        "tts_model" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_tts_model), line.value)
         "asr_service" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_asr_service), line.value)
         "tts_speed" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_tts_speed),
             stringResource(R.string.im_settings_times, line.value))

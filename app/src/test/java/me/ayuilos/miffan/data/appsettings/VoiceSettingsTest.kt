@@ -77,6 +77,57 @@ class VoiceSettingsTest {
     }
 
     @Test
+    fun anOpenRouterServiceSwitchesModelAndTakesTheVoiceThatModelUses() {
+        val router = TTSProviderSetting.OpenRouter(name = "OpenRouter TTS", apiKey = "or-key")
+        val withRouter = settings().copy(ttsProviders = settings().ttsProviders + router)
+        val fish = ok(planAppSettingsChange(changes(
+            """{"type":"set_tts_voice","service_id":"${router.id}","tts_model":"fish-audio/s2-pro","voice":"8ef4a238714b45718ce04243307c57a7"}"""),
+            withRouter))
+        val moved = fish.settings.ttsProviders.single { it.id == router.id } as TTSProviderSetting.OpenRouter
+        assertEquals("fish-audio/s2-pro", moved.model)
+        assertEquals("8ef4a238714b45718ce04243307c57a7", moved.voice)
+        assertEquals("or-key", moved.apiKey)
+        // There is no list for Fish Audio voices, so the card does not call the owner's own voice unknown.
+        assertEquals(listOf(
+            AppSettingsLine.SettingChanged("tts_model", "fish-audio/s2-pro"),
+            AppSettingsLine.TtsVoice("OpenRouter TTS", "openrouter", "8ef4a238714b45718ce04243307c57a7", unlisted = false),
+        ), fish.lines)
+        // Without a voice, the Gemini voice is dropped for the model's own default.
+        val bare = ok(planAppSettingsChange(changes("""{"type":"set_tts_voice","service_id":"${router.id}","tts_model":"fish-audio/s2-pro"}"""), withRouter))
+        assertEquals("", bare.settings.ttsProviders.single { it.id == router.id }.voice())
+        // On the default Gemini model the list is known.
+        val odd = ok(planAppSettingsChange(changes("""{"type":"set_tts_voice","service_id":"${router.id}","voice":"alloy"}"""), withRouter))
+        assertEquals(true, (odd.lines.single() as AppSettingsLine.TtsVoice).unlisted)
+        assertTrue("OpenRouter" in invalid(planAppSettingsChange(changes(
+            """{"type":"set_tts_voice","service_id":"${eleven.id}","tts_model":"fish-audio/s2-pro"}"""), withRouter)))
+        assertTrue("speech model id" in invalid(planAppSettingsChange(changes(
+            """{"type":"set_tts_voice","service_id":"${router.id}","tts_model":"https://evil.example/x"}"""), withRouter)))
+    }
+
+    @Test
+    fun anOpenRouterKeyCardCanBringItsModelAndVoice() = runBlocking {
+        val card = target("""{"kind":"tts","type":"openrouter","model":"fish-audio/s2-pro","voice":"abc123"}""")!!
+        assertEquals("fish-audio/s2-pro", card.model)
+        assertEquals("abc123", card.voice)
+        assertTrue("only for openrouter" in refused("""{"kind":"tts","type":"elevenlabs","model":"fish-audio/s2-pro"}"""))
+        assertTrue("only for tts" in refused("""{"kind":"asr","type":"dashscope","voice":"x"}"""))
+        assertTrue("speech model id" in refused("""{"kind":"tts","type":"openrouter","model":"not a model"}"""))
+
+        // The sample is read with them, and they are what gets saved with the key.
+        val state = MutableStateFlow(settings())
+        val results = mutableListOf<String>()
+        val sampler = FakeSampler()
+        val (cards, scope) = cards(state, sampler, results)
+        cards.connect(Uuid.random(), "c1", card, "or-GOOD-KEY-0001")
+        scope.coroutineContext[Job]!!.children.toList().joinAll()
+        val heard = sampler.used as TTSProviderSetting.OpenRouter
+        assertEquals("fish-audio/s2-pro" to "abc123", heard.model to heard.voice)
+        val saved = state.value.ttsProviders.single { it is TTSProviderSetting.OpenRouter } as TTSProviderSetting.OpenRouter
+        assertEquals(Triple("or-GOOD-KEY-0001", "fish-audio/s2-pro", "abc123"), Triple(saved.apiKey, saved.model, saved.voice))
+        assertTrue("\"model\":\"fish-audio/s2-pro\"" in results.single() && "or-GOOD" !in results.single())
+    }
+
+    @Test
     fun keyCardsOnlyGoToServicesWithAFixedAddress() {
         val new = target("""{"kind":"tts","type":"gemini"}""")!!
         assertNull(new.serviceId)
@@ -143,7 +194,7 @@ class VoiceSettingsTest {
         assertEquals(dash.id, plan.settings.selectedASRProviderId)
         assertEquals(listOf(
             AppSettingsLine.SettingChanged("tts_service", "ElevenLabs"),
-            AppSettingsLine.TtsVoice("ElevenLabs", "elevenlabs", "21m00Tcm4TlvDq8ikWAM"),
+            AppSettingsLine.TtsVoice("ElevenLabs", "elevenlabs", "21m00Tcm4TlvDq8ikWAM", unlisted = false),
             AppSettingsLine.SettingChanged("tts_speed", "1.25"),
             AppSettingsLine.SettingChanged("read_quoted", "on"),
             AppSettingsLine.SettingChanged("asr_service", "DashScope ASR"),
@@ -254,8 +305,10 @@ class VoiceSettingsTest {
     private class FakeSampler(private val fail: Exception? = null) : VoiceSampler {
         var played = 0
         var usedKey: String? = null
+        var used: TTSProviderSetting? = null
         override suspend fun synthesize(setting: TTSProviderSetting): TTSResponse? {
             usedKey = setting.ttsApiKey()
+            used = setting
             fail?.let { throw it }
             return TTSResponse(byteArrayOf(1, 2, 3), AudioFormat.MP3)
         }

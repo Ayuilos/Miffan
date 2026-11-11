@@ -4449,6 +4449,9 @@
   <string name="im_settings_tts_service">Reads aloud with</string>
   <string name="im_settings_asr_service">Voice input with</string>
   <string name="im_settings_tts_voice">Voice</string>
+  <string name="im_settings_tts_model">Read-aloud model</string>
+  <string name="im_voice_setup_model">Model %1$s</string>
+  <string name="im_voice_setup_voice">Voice %1$s</string>
   <string name="im_settings_voice_unknown">Not a voice the app knows for %1$s; it may not read</string>
   <string name="im_settings_tts_speed">Reading speed</string>
   <string name="im_settings_times">%1$s×</string>

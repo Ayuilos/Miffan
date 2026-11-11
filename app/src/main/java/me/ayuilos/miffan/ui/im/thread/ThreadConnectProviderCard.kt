@@ -64,6 +64,7 @@ import me.ayuilos.miffan.data.appsettings.previewSaved
 import me.ayuilos.miffan.data.appsettings.ttsApiKey
 import me.rerere.hugeicons.stroke.Mic01
 import me.rerere.hugeicons.stroke.VolumeHigh
+import me.rerere.hugeicons.stroke.Settings03
 import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.appsettings.resolveSecretTarget
 import me.ayuilos.miffan.data.appsettings.searchApiKey
@@ -187,6 +188,12 @@ internal fun ThreadConnectProviderCard(
         })
         // The sample is how the owner knows the key works; say so before they paste it.
         if (target is VoiceTarget && target.kind == VoiceKind.TTS) {
+            // A model or voice set with the key is not a secret: show it, so the owner knows what the sample will use.
+            val setup = listOfNotNull(
+                target.model?.let { stringResource(R.string.im_voice_setup_model, it) },
+                target.voice?.let { stringResource(R.string.im_voice_setup_voice, it) },
+            )
+            if (setup.isNotEmpty()) CardNote(HugeIcons.Settings03, MaterialTheme.colorScheme.onSurfaceVariant, setup.joinToString(" · "))
             CardNote(HugeIcons.VolumeHigh, MaterialTheme.colorScheme.onSurfaceVariant, stringResource(R.string.im_voice_sample_note))
         }
         if (conversation == null) {

@@ -193,7 +193,7 @@ class ProviderConnectCards(
         val service = TtsKeyService.of(target.type) ?: return set(toolCallId, Phase.TargetChanged)
         val current = target.serviceId?.let { id -> settingsStore.settingsFlow.value.ttsProviders.firstOrNull { it.id == id } }
         if (target.serviceId != null && (current == null || TtsKeyService.of(current) != service)) return set(toolCallId, Phase.TargetChanged)
-        val setting = (current ?: service.create()).transformTtsSecret { key }
+        val setting = (current ?: service.create()).transformTtsSecret { key }.configuredFor(target)
         val sample = try {
             sampler.synthesize(setting) ?: return set(toolCallId, Phase.Unreachable)
         } catch (e: CancellationException) {

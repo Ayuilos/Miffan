@@ -4416,6 +4416,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_settings_tts_service">朗读用</string>
   <string name="im_settings_asr_service">语音输入用</string>
   <string name="im_settings_tts_voice">音色</string>
+  <string name="im_settings_tts_model">朗读模型</string>
+  <string name="im_voice_setup_model">模型 %1$s</string>
+  <string name="im_voice_setup_voice">音色 %1$s</string>
   <string name="im_settings_voice_unknown">不是 %1$s 里认识的音色，可能读不出来</string>
   <string name="im_settings_tts_speed">朗读语速</string>
   <string name="im_settings_times">%1$s 倍</string>

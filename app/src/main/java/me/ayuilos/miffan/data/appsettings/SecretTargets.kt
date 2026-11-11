@@ -10,6 +10,7 @@ import me.ayuilos.miffan.data.ai.mcp.McpServerConfig
 import me.ayuilos.miffan.data.ai.mcp.serverUrl
 import me.ayuilos.miffan.data.datastore.Settings
 import me.rerere.ai.provider.CustomHeader
+import me.rerere.tts.provider.TTSProviderSetting
 import kotlin.uuid.Uuid
 
 const val CONNECT_SEARCH_TOOL = "connect_search_service"
@@ -30,7 +31,17 @@ data class VoiceTarget(
     override val origin: String,
     val keyUrl: String?,
     val hasKey: Boolean,
+    /** OpenRouter only: the speech model to read with, set together with the key. */
+    val model: String? = null,
+    /** The voice to read with, set together with the key; checked by the sample like the key. */
+    val voice: String? = null,
 ) : ConnectTarget
+
+/** [this] read-aloud service as [target] asks for it: on its model, in its voice. */
+fun TTSProviderSetting.configuredFor(target: VoiceTarget): TTSProviderSetting {
+    val onModel = target.model?.let { withTtsModel(it) } ?: this
+    return target.voice?.let { onModel.withVoice(it) } ?: onModel
+}
 
 /** A search service's key, for a service already in the settings ([serviceId]) or a new one of [service]. */
 data class SearchTarget(
@@ -100,6 +111,15 @@ fun resolveVoiceTarget(input: JsonElement, settings: Settings): ConnectTargetRes
     val type = params.text("type")
     if ((serviceId == null) == (type == null)) return ConnectTargetResult.Invalid("Give either service_id or type.")
     val notByCard = "This service is set up on the speech settings page, not with a key card."
+    val model = params.text("model")?.trim()?.takeIf { it.isNotEmpty() }
+    val voice = params.text("voice")?.trim()?.takeIf { it.isNotEmpty() }
+    if (kind == VoiceKind.ASR && (model != null || voice != null)) return ConnectTargetResult.Invalid("model and voice are only for tts.")
+    if (model != null && !validTtsModelId(model)) {
+        return ConnectTargetResult.Invalid("model must be an OpenRouter speech model id, like fish-audio/s2-pro.")
+    }
+    if (voice != null && (voice.length > MAX_VOICE_ID || voice.any { it.isISOControl() })) {
+        return ConnectTargetResult.Invalid("voice must be a voice id of the service.")
+    }
     return when (kind) {
         VoiceKind.TTS -> {
             val existing = if (serviceId != null) {
@@ -107,18 +127,24 @@ fun resolveVoiceTarget(input: JsonElement, settings: Settings): ConnectTargetRes
                 val setting = id?.let { settings.ttsProviders.firstOrNull { it.id == id } }
                     ?: return ConnectTargetResult.Invalid("No read-aloud service has this service_id. Call app_settings_catalog for the ids.")
                 if (TtsKeyService.of(setting) == null) return ConnectTargetResult.Invalid(notByCard)
+                if (model != null && setting !is TTSProviderSetting.OpenRouter) {
+                    return ConnectTargetResult.Invalid("model is only for openrouter; other services read with their own model.")
+                }
                 setting
             } else {
                 val service = TtsKeyService.of(type)
                     ?: return ConnectTargetResult.Invalid("type must be one of ${TtsKeyService.entries.joinToString { it.id }} for tts.")
                 // One of each kind is enough; replacing the key of the existing one avoids look-alike duplicates.
+                if (model != null && service != TtsKeyService.OPENROUTER) {
+                    return ConnectTargetResult.Invalid("model is only for openrouter; other services read with their own model.")
+                }
                 settings.ttsProviders.firstOrNull { TtsKeyService.of(it) == service }
                     ?: return ConnectTargetResult.Ok(VoiceTarget(kind, null, service.id, service.create().displayName(), service.origin,
-                        service.keyUrl, hasKey = false))
+                        service.keyUrl, hasKey = false, model = model, voice = voice))
             }
             val service = TtsKeyService.of(existing)!!
             ConnectTargetResult.Ok(VoiceTarget(kind, existing.id, service.id, existing.displayName(), service.origin, service.keyUrl,
-                hasKey = !existing.ttsApiKey().isNullOrBlank()))
+                hasKey = !existing.ttsApiKey().isNullOrBlank(), model = model, voice = voice))
         }
         VoiceKind.ASR -> {
             val existing = if (serviceId != null) {
@@ -226,8 +252,8 @@ fun Settings.withVoiceKey(target: VoiceTarget, key: String, checked: Boolean, ne
             if (target.serviceId != null) {
                 val current = ttsProviders.firstOrNull { it.id == target.serviceId }
                 if (current == null || TtsKeyService.of(current) != service) return SecretSave.TargetChanged
-                copy(ttsProviders = ttsProviders.map { if (it.id == current.id) it.transformTtsSecret { trimmed } else it })
-            } else copy(ttsProviders = ttsProviders + service.newSetting(newId, trimmed))
+                copy(ttsProviders = ttsProviders.map { if (it.id == current.id) it.transformTtsSecret { trimmed }.configuredFor(target) else it })
+            } else copy(ttsProviders = ttsProviders + service.newSetting(newId, trimmed).configuredFor(target))
         }
         VoiceKind.ASR -> {
             val service = AsrKeyService.of(target.type) ?: return SecretSave.TargetChanged
@@ -252,6 +278,8 @@ fun Settings.withVoiceKey(target: VoiceTarget, key: String, checked: Boolean, ne
         put("kind", target.kind.id)
         put("voice_service_id", id.toString())
         put("name", target.name)
+        target.model?.let { put("model", it) }
+        target.voice?.let { put("voice", it) }
         put("in_use", inUse)
         when {
             target.kind == VoiceKind.ASR -> put("note", "There is no way to check a voice input key here; ask the owner to try voice input once it is in use.")

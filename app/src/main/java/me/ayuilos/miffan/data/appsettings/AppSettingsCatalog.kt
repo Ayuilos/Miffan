@@ -132,6 +132,7 @@ fun buildAppSettingsCatalog(settings: Settings, appearance: Appearance? = null, 
                         service.ttsApiKey()?.let { put("key", it.setOrUnset()) }
                         put("in_use", service.id == settings.selectedTTSProviderId)
                         put("key_card", TtsKeyService.of(service) != null)
+                        service.ttsModel()?.let { put("model", it) }
                         service.voice()?.let { put("voice", it) }
                         if (service is me.rerere.tts.provider.TTSProviderSetting.SystemTTS) put("pitch", service.pitch)
                         voicesFor(service).takeIf { it.isNotEmpty() }?.let { voices ->
@@ -196,7 +197,10 @@ fun buildAppSettingsCatalog(settings: Settings, appearance: Appearance? = null, 
         add("Search services with key_card true take a key through connect_search_service; other kinds are set up on their settings page.")
         add("voice.tts reads replies aloud (type system is the phone's own voice, no key); voice.asr turns the owner's voice into " +
             "text. Services with key_card true, and the types in can_connect, take a key through connect_voice_service. A voice " +
-            "outside a service's voices list may not work. speed applies to every read-aloud service.")
+            "outside a service's voices list may not work. speed applies to every read-aloud service. An openrouter service " +
+            "reads with any OpenRouter speech model (its model; switch with set_tts_voice tts_model); voices belong to the " +
+            "model, and voices is only listed for the default Gemini models, so on another model use the voice id the owner " +
+            "or that model's provider gives (Fish Audio: a voice id from the owner's library).")
         add("Models are referred to as {provider_id, model_id}; only the first $CATALOG_MODELS_PER_PROVIDER of a provider are listed.")
     }
 }
