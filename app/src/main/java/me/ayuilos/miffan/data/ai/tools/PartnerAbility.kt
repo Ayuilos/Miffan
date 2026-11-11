@@ -15,7 +15,8 @@ enum class PartnerAbility(val id: String, val option: LocalToolOption, val meani
     SCREEN_TIME("screen_time", LocalToolOption.ScreenTime, "read how long the owner used each app"),
     READ_ALOUD("read_aloud", LocalToolOption.Tts, "read text aloud on the phone"),
     APP_SETTINGS("app_settings", LocalToolOption.AppSettings,
-        "set up the owner's AI services: read the provider and model setup, and connect a service (the owner types the key into a secure card you never see)"),
+        "set up the owner's AI services: read the provider and model setup, connect a service (the owner types the key " +
+            "into a secure card you never see), and change services, models, partner models and default models (the owner confirms on a card)"),
     ;
 
     companion object {

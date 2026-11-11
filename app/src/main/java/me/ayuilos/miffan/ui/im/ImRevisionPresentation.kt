@@ -47,6 +47,7 @@ internal fun imRevisionChanges(revision: Revision, parent: Revision?): List<ImRe
                 previous.values.filter { it.id !in current }.forEach { add(ImRevisionChange(R.string.im_p5_memory_removed, it.content)) }
             }
         }
+        RevisionSubject.AI_SERVICES -> listOf(ImRevisionChange(R.string.im_revision_ai_services))
     }
 }
 
@@ -81,6 +82,7 @@ internal fun imRevisionDiff(revision: Revision, parent: Revision?): List<ImDiffL
             parent?.let { MemoryRepository.restore(it.snapshot).map { memory -> "#${memory.id} ${memory.content}" } }.orEmpty(),
             MemoryRepository.restore(revision.snapshot).map { memory -> "#${memory.id} ${memory.content}" },
         )
+        RevisionSubject.AI_SERVICES -> emptyList()
     }
 }
 

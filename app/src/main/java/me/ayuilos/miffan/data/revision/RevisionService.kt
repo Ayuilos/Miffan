@@ -117,6 +117,7 @@ class RevisionService(
                     AssistantRevisionRecorder.restore(merged)
                 }
                 RevisionSubject.MEMORY -> MemoryRepository.restore(merged)
+                RevisionSubject.AI_SERVICES -> JsonInstant.parseToJsonElement(merged).jsonObject
             }
         }
         if (observeToolCallChange(toolCallId).first()?.state != expected) return@withLock RestoreResult.Conflict
@@ -168,6 +169,10 @@ class RevisionService(
                     memoryRepository.replaceAll(target.subjectId, MemoryRepository.restore(target.snapshot))
                     RestoreResult.Restored
                 }
+                RevisionSubject.AI_SERVICES -> {
+                    settingsStore.update { it.restoreAiServices(target.snapshot) }
+                    RestoreResult.Restored
+                }
             }
             // Permission preservation can make an assistant restore a no-op. Retain an explicit
             // restore revision so the call still has an observable undo/redo state.
@@ -177,6 +182,7 @@ class RevisionService(
                         .assistants.find { it.id.toString() == target.subjectId }
                         ?.let { AssistantRevisionRecorder.snapshot(it) } ?: return@withContext RestoreResult.NotFound
                     RevisionSubject.MEMORY -> target.snapshot
+                    RevisionSubject.AI_SERVICES -> aiServicesSnapshot(settingsStore.settingsFlow.first())
                 }
                 revisions.record(target.subject, target.subjectId, before = head.snapshot, after = snapshot)
             }
@@ -219,6 +225,11 @@ private fun toolCallGroup(group: List<Revision>, before: Revision): ToolCallGrou
         group, before,
         read = { MemoryRepository.restore(it).associateBy { item -> item.id } },
         write = { JsonInstant.encodeToString(it.values.sortedBy { item -> item.id }) },
+    )
+    RevisionSubject.AI_SERVICES -> ToolCallGroup(
+        group, before,
+        read = { JsonInstant.parseToJsonElement(it).jsonObject },
+        write = { JsonObject(it).toString() },
     )
 }
 
@@ -307,6 +318,7 @@ class RevisionNoticeSource(
                         } else {
                             ThreadNoticeKind.MEMORY
                         }
+                        RevisionSubject.AI_SERVICES -> ThreadNoticeKind.SETTINGS
                     },
                     summary = revision.summary,
                     trigger = trigger,

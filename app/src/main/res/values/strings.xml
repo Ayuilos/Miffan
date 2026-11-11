@@ -4338,7 +4338,7 @@
   <string name="im_nickname_hint">Partners use the new name from their next reply</string>
   <string name="im_sheet_done">Done</string>
   <string name="im_ability_app_settings">Set up AI services</string>
-  <string name="im_ability_app_settings_desc">Connects AI services for you; you type keys into a secure card it can\'t see</string>
+  <string name="im_ability_app_settings_desc">Connects AI services and sets up models for you; you type keys into a secure card it can\'t see</string>
   <string name="im_connect_title">Connect %1$s</string>
   <string name="im_connect_title_rekey">Replace the key for %1$s</string>
   <string name="im_connect_title_unknown">Connect a service</string>
@@ -4368,5 +4368,33 @@
     <item quantity="one">%1$d model</item>
     <item quantity="other">%1$d models</item>
   </plurals>
+  <string name="im_change_app_settings">Change AI services</string>
+  <string name="im_settings_tag_rename">Rename</string>
+  <string name="im_settings_tag_address">Address</string>
+  <string name="im_settings_tag_add">Add</string>
+  <string name="im_settings_tag_remove">Remove</string>
+  <string name="im_settings_tag_model">Model</string>
+  <string name="im_settings_tag_default">Default</string>
+  <string name="im_settings_arrow">%1$s → %2$s</string>
+  <string name="im_settings_address">Requests go to %1$s</string>
+  <string name="im_settings_address_clears_key">Requests go to %1$s. The saved key is removed; enter one again for the new address</string>
+  <plurals name="im_settings_models">
+    <item quantity="one">%1$s: %2$d model</item>
+    <item quantity="other">%1$s: %2$d models</item>
+  </plurals>
+  <string name="im_settings_shown_as">Shown as %1$s</string>
+  <string name="im_settings_tools_on">Can use tools</string>
+  <string name="im_settings_tools_off">No tools</string>
+  <string name="im_settings_reasoning_on">Thinks first</string>
+  <string name="im_settings_reasoning_off">No thinking</string>
+  <string name="im_settings_image_on">Can see images</string>
+  <string name="im_settings_image_off">No images</string>
+  <string name="im_settings_follow_default">the default chat model</string>
+  <string name="im_settings_follow_fast">same as the fast model</string>
+  <string name="im_settings_from">From %1$s</string>
+  <string name="im_settings_footnote">You can undo this from the record afterwards.</string>
+  <string name="im_settings_footnote_key">A key is removed when its service moves to another address. You can undo the rest from the record afterwards.</string>
+  <string name="im_settings_outdated">The settings have changed since, so these changes no longer apply. Ask your partner to try again.</string>
+  <string name="im_revision_ai_services">AI services changed</string>
   <string name="notification_approval_connect">Enter an API key</string>
 </resources>

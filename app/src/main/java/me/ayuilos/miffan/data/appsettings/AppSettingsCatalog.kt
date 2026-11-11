@@ -9,6 +9,11 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import me.ayuilos.miffan.data.datastore.DEFAULT_PROVIDERS
 import me.ayuilos.miffan.data.datastore.Settings
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import me.rerere.ai.provider.Modality
+import me.rerere.ai.provider.ModelAbility
+import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.OpenAIAuthType
 import me.rerere.ai.provider.ProviderSetting
 import java.net.URI
@@ -37,10 +42,14 @@ fun buildAppSettingsCatalog(settings: Settings): JsonObject = buildJsonObject {
                 putJsonArray("models") {
                     provider.models.take(CATALOG_MODELS_PER_PROVIDER).forEach { model ->
                         addJsonObject {
-                            put("id", model.id.toString())
                             put("model_id", model.modelId)
                             put("name", model.displayName.ifBlank { model.modelId })
                             put("type", model.type.name.lowercase())
+                            if (model.type == ModelType.CHAT) {
+                                put("tools", ModelAbility.TOOL in model.abilities)
+                                put("reasoning", ModelAbility.REASONING in model.abilities)
+                                put("image_input", Modality.IMAGE in model.inputModalities)
+                            }
                         }
                     }
                 }
@@ -48,22 +57,39 @@ fun buildAppSettingsCatalog(settings: Settings): JsonObject = buildJsonObject {
         }
     }
     putJsonObject("default_models") {
-        put("chat", settings.chatModelId.toString())
-        put("fast", settings.fastModelId.toString())
+        DefaultModelRole.entries.forEach { role ->
+            put(role.id, settings.modelRef(role.get(settings)) ?: JsonPrimitive(if (role.optional) "follow_fast" else "unset"))
+        }
     }
     putJsonArray("partners") {
         settings.assistants.forEach { assistant ->
             addJsonObject {
                 put("id", assistant.id.toString())
                 put("name", assistant.name)
-                put("model", assistant.chatModelId?.toString() ?: "default")
+                put("model", assistant.chatModelId?.let { settings.modelRef(it) } ?: JsonPrimitive("default"))
             }
         }
     }
     putJsonArray("notes") {
         add("key is set, unset, signed_in or signed_out; the key itself is never readable.")
-        add("A partner's model \"default\" means it follows default_models.chat.")
+        add("A partner's model \"default\" means it follows default_models.chat; \"follow_fast\" follows default_models.fast.")
+        add("Models are referred to as {provider_id, model_id}; only the first $CATALOG_MODELS_PER_PROVIDER of a provider are listed.")
     }
+}
+
+/** `{provider_id, model_id, name}` for a model in the settings, or null when [id] names none. */
+private fun Settings.modelRef(id: kotlin.uuid.Uuid?): JsonElement? {
+    if (id == null) return null
+    providers.forEach { provider ->
+        provider.models.firstOrNull { it.id == id }?.let { model ->
+            return buildJsonObject {
+                put("provider_id", provider.id.toString())
+                put("model_id", model.modelId)
+                put("name", model.displayName.ifBlank { model.modelId })
+            }
+        }
+    }
+    return null
 }
 
 internal fun ProviderSetting.apiType(): String = when (this) {

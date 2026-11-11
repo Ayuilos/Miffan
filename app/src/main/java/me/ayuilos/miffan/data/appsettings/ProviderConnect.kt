@@ -15,7 +15,6 @@ import me.ayuilos.miffan.data.onboarding.withApiKey
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.OpenAIAuthType
 import me.rerere.ai.provider.ProviderSetting
-import java.net.URI
 import kotlin.uuid.Uuid
 
 const val CONNECT_PROVIDER_TOOL = "connect_provider"
@@ -109,15 +108,7 @@ private fun resolveCustom(custom: JsonObject): ConnectTargetResult {
     val api = CustomProviderApi.of(custom.text("api"))
         ?: return ConnectTargetResult.Invalid("custom.api must be openai, google or claude.")
     val baseUrl = custom.text("base_url")?.trim()?.trimEnd('/').orEmpty()
-    val uri = runCatching { URI(baseUrl) }.getOrNull()
-    val problem = when {
-        uri == null || uri.scheme?.lowercase() !in setOf("https", "http") -> "custom.base_url must start with https:// or http://."
-        uri.host.isNullOrBlank() -> "custom.base_url has no host."
-        uri.rawUserInfo != null -> "custom.base_url must not contain a user name or password."
-        uri.rawQuery != null || uri.rawFragment != null -> "custom.base_url must not contain a query or fragment."
-        else -> null
-    }
-    if (problem != null) return ConnectTargetResult.Invalid(problem)
+    baseUrlProblem(baseUrl, "custom.base_url")?.let { return ConnectTargetResult.Invalid(it) }
     val origin = displayOriginOf(baseUrl) ?: return ConnectTargetResult.Invalid("custom.base_url is not a valid address.")
     return ConnectTargetResult.Ok(ConnectTarget.Custom(name, api, baseUrl, origin))
 }
@@ -182,8 +173,8 @@ fun connectResultJson(provider: ProviderSetting, checked: Boolean, models: List<
     } else {
         put("note", "The owner saved the key without checking it because the service could not be reached.")
     }
-    put("next", "No models were added to the provider. Tell the owner the service is connected; they can add models " +
-        "on the provider's settings page.")
+    put("next", "No models were added yet. Suggest which models to add (and, if the owner wants, which partner or default " +
+        "should use one), then propose it with $CHANGE_APP_SETTINGS_TOOL; the owner confirms on a card.")
 }.toString()
 
 /** Error text from a service, safe to show on the card: the key and anything that looks like a credential removed. */

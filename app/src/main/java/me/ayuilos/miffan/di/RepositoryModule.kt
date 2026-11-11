@@ -80,6 +80,7 @@ val repositoryModule = module {
     single { RevisionRepository(get()) }
 
     single { AssistantRevisionRecorder(get()) }
+    single { me.ayuilos.miffan.data.revision.AiServicesRevisionRecorder(get()) }
 
     single {
         GenMediaRepository(get())

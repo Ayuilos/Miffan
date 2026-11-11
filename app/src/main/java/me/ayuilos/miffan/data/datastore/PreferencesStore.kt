@@ -273,6 +273,9 @@ class SettingsStore(
     private val dataStore = context.settingsStore
     private val updateMutex = Mutex()
     private val assistantRevisions by lazy { runCatching { get<AssistantRevisionRecorder>() }.getOrNull() }
+    private val aiServicesRevisions by lazy {
+        runCatching { get<me.ayuilos.miffan.data.revision.AiServicesRevisionRecorder>() }.getOrNull()
+    }
     private val providerSecretCipher = ProviderSecretCipher()
 
     private val preferencesFlow = dataStore.data
@@ -526,7 +529,8 @@ class SettingsStore(
             Log.w(TAG, "Cannot update dummy settings")
             return false
         }
-        val previousAssistants = settingsFlow.value.takeUnless { it.init }?.assistants
+        val previousSettings = settingsFlow.value.takeUnless { it.init }
+        val previousAssistants = previousSettings?.assistants
         dataStore.edit { preferences ->
             preferences[DYNAMIC_COLOR] = settings.dynamicColor
             preferences[THEME_ID] = settings.themeId
@@ -609,6 +613,7 @@ class SettingsStore(
         if (previousAssistants != null) {
             assistantRevisions?.onAssistantsChanged(previousAssistants, settings.assistants)
         }
+        if (previousSettings != null) aiServicesRevisions?.onSettingsChanged(previousSettings, settings)
         return true
     }
 

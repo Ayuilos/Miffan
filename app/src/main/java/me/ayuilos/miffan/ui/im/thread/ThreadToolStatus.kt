@@ -133,6 +133,8 @@ internal fun ThreadToolPrompt(
             ThreadDrawingSetupCard(tool, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == CALENDAR_CREATE ->
             ThreadCalendarCard(tool, assistant, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == me.ayuilos.miffan.data.appsettings.CHANGE_APP_SETTINGS_TOOL ->
+            ThreadAppSettingsCard(tool, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == EXTENSIONS_APPLY ->
             ThreadExtensionCard(tool, assistant, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == SCHEDULE_TASK ->

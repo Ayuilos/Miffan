@@ -4307,7 +4307,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_nickname_hint">改了之后，下一句就会用新的称呼</string>
   <string name="im_sheet_done">好了</string>
   <string name="im_ability_app_settings">配置 AI 服务</string>
-  <string name="im_ability_app_settings_desc">帮你连接 AI 服务，Key 由你填进它看不到的安全卡片</string>
+  <string name="im_ability_app_settings_desc">帮你连接 AI 服务、配好模型，Key 由你填进它看不到的安全卡片</string>
   <string name="im_connect_title">连接 %1$s</string>
   <string name="im_connect_title_rekey">更换 %1$s 的 Key</string>
   <string name="im_connect_title_unknown">连接服务</string>
@@ -4336,5 +4336,32 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <plurals name="im_connect_models">
     <item quantity="other">%1$d 个模型</item>
   </plurals>
+  <string name="im_change_app_settings">调整 AI 服务</string>
+  <string name="im_settings_tag_rename">改名</string>
+  <string name="im_settings_tag_address">改地址</string>
+  <string name="im_settings_tag_add">添加</string>
+  <string name="im_settings_tag_remove">移除</string>
+  <string name="im_settings_tag_model">换模型</string>
+  <string name="im_settings_tag_default">默认</string>
+  <string name="im_settings_arrow">%1$s → %2$s</string>
+  <string name="im_settings_address">请求发往 %1$s</string>
+  <string name="im_settings_address_clears_key">请求发往 %1$s。已填的 Key 会清空，需要为新地址重新填写</string>
+  <plurals name="im_settings_models">
+    <item quantity="other">%1$s：%2$d 个模型</item>
+  </plurals>
+  <string name="im_settings_shown_as">显示为 %1$s</string>
+  <string name="im_settings_tools_on">能用工具</string>
+  <string name="im_settings_tools_off">不用工具</string>
+  <string name="im_settings_reasoning_on">会先思考</string>
+  <string name="im_settings_reasoning_off">不思考</string>
+  <string name="im_settings_image_on">能看图</string>
+  <string name="im_settings_image_off">不看图</string>
+  <string name="im_settings_follow_default">跟随默认聊天模型</string>
+  <string name="im_settings_follow_fast">跟随快速模型</string>
+  <string name="im_settings_from">来自 %1$s</string>
+  <string name="im_settings_footnote">改完之后可以在记录里撤销。</string>
+  <string name="im_settings_footnote_key">服务改了地址，原来的 Key 会清空；其余改动之后可以在记录里撤销。</string>
+  <string name="im_settings_outdated">设置已经变了，这些改动对不上了。可以让伙伴重新整理一次。</string>
+  <string name="im_revision_ai_services">AI 服务有改动</string>
   <string name="notification_approval_connect">等你填写 API Key</string>
 </resources>

@@ -79,6 +79,7 @@ internal fun approvalNotificationSummary(
         first.toolName == "update_my_profile" -> text(R.string.im_profile_title, emptyList())
         // Never the key: the notification only says a key card waits; it is filled in the chat on the phone.
         first.toolName == me.ayuilos.miffan.data.appsettings.CONNECT_PROVIDER_TOOL -> text(R.string.notification_approval_connect, emptyList())
+        first.toolName == me.ayuilos.miffan.data.appsettings.CHANGE_APP_SETTINGS_TOOL -> text(R.string.im_change_app_settings, emptyList())
         first.toolName == "create_partner" -> text(R.string.im_change_create_partner, emptyList())
         first.toolName == "create_group_chat" -> text(R.string.im_change_create_group_chat, emptyList())
         first.toolName == "invite_to_group_chat" -> text(R.string.im_change_invite, emptyList())

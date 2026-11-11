@@ -347,7 +347,8 @@ class GenerationHandler(
                                 error("Invalid tool arguments JSON for ${tool.toolName}: ${it.message}")
                             }
                             Log.i(TAG, "generateText: executing tool ${tool.toolName} with args: $args")
-                            val result = withContext(me.ayuilos.miffan.data.revision.CurrentToolCall(tool.toolCallId)) {
+                            val result = withContext(me.ayuilos.miffan.data.revision.CurrentToolCall(tool.toolCallId,
+                                approved = tool.approvalState is ToolApprovalState.Approved)) {
                                 executeToolWithTargetGuard(tool, toolDef, args)
                             }
                             val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }

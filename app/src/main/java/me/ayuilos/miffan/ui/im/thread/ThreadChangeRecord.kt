@@ -73,6 +73,7 @@ internal fun ToolRecordDetails(tool: UIMessagePart.Tool, assistant: Assistant?, 
                 settings.assistants.firstOrNull { it.id == assistant?.id })
             ORGANIZE_CHAT_LIST -> OrganizeContent(tool)
             EXTENSIONS_APPLY -> ExtensionChangeList(tool)
+            me.ayuilos.miffan.data.appsettings.CHANGE_APP_SETTINGS_TOOL -> AppSettingsChangeContent(tool)
             UPDATE_MY_PREFERENCES -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 toolArg(tool, "summary")?.let { Text(it) }
                 toolArg(tool, "preferences")?.let { ChangeLongText(stringResource(R.string.im_p5_preferences), it) }
@@ -107,7 +108,9 @@ private fun UndoSection(tool: UIMessagePart.Tool, change: ToolCallChange) {
             busy = false
         }
     }
-    val history = change.revisions.firstOrNull()?.let { Screen.RevisionHistory(it.subject.name, it.subjectId) }
+    // AI services have no history page of their own; their changes are read on the cards.
+    val history = change.revisions.firstOrNull { it.subject != me.ayuilos.miffan.data.revision.RevisionSubject.AI_SERVICES }
+        ?.let { Screen.RevisionHistory(it.subject.name, it.subjectId) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when (change.state) {
             ToolCallChangeState.Undoable -> OutlinedButton(onClick = { run { revisions.undoToolCall(tool.toolCallId) } },

@@ -1427,7 +1427,8 @@ class ChatService(
                         )
                         // Only the owner's own turns: a key card must never be raised by someone else's message.
                         if (LocalToolOption.AppSettings in assistant.localTools && trigger != null) {
-                            addAll(me.ayuilos.miffan.data.ai.tools.buildAppSettingsTools(settingsStore))
+                            val models = getKoin().get<me.ayuilos.miffan.data.repository.ModelCatalogRepository>()
+                            addAll(me.ayuilos.miffan.data.ai.tools.buildAppSettingsTools(settingsStore) { models.catalog.value })
                         }
                     }
                     addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd, conversation.id.toString()))
