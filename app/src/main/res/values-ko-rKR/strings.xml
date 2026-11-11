@@ -3424,6 +3424,12 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_backup_set">설정됨</string>
   <string name="im_backup_not_set">설정 안 됨</string>
   <string name="im_backup_remind">오랫동안 백업하지 않으면 알려 주기</string>
+  <string name="im_backup_due_title">백업할 시간이에요</string>
+  <string name="im_backup_due_never">아직 백업이 없어요. 눌러서 백업하세요</string>
+  <string name="im_backup_due_later">오늘은 알리지 않기</string>
+  <string name="im_backup_remind_where">때가 되면 ‘채팅’ 상단에서 알려 드려요</string>
+  <string name="im_settings_tag_backup">백업</string>
+  <string name="im_settings_backup_interval">백업 알림 기간</string>
   <string name="im_backup_restore_section">새 휴대폰이거나 앱을 다시 설치한 뒤</string>
   <string name="im_backup_restore">백업에서 복원</string>
   <string name="im_backup_import_other">다른 앱에서 옮겨 오기</string>

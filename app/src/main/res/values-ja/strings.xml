@@ -3424,6 +3424,12 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_backup_set">設定済み</string>
   <string name="im_backup_not_set">未設定</string>
   <string name="im_backup_remind">長い間バックアップしていないと知らせる</string>
+  <string name="im_backup_due_title">そろそろバックアップしましょう</string>
+  <string name="im_backup_due_never">まだバックアップがありません。タップして作成</string>
+  <string name="im_backup_due_later">今日はリマインドしない</string>
+  <string name="im_backup_remind_where">時期が来たら「チャット」の上部でお知らせします</string>
+  <string name="im_settings_tag_backup">バックアップ</string>
+  <string name="im_settings_backup_interval">何日経ったら知らせる</string>
   <string name="im_backup_restore_section">新しいスマホに替えたとき、または再インストール後</string>
   <string name="im_backup_restore">バックアップから復元</string>
   <string name="im_backup_import_other">ほかのアプリから引っ越す</string>
