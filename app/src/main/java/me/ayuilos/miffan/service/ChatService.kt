@@ -386,6 +386,10 @@ data class ChatError(
     val solution: ChatErrorSolution? = null,
 )
 
+/** [this] without the "model cannot call tools" notices of [conversationId]. */
+internal fun List<ChatError>.withoutToolsOffNotice(conversationId: Uuid): List<ChatError> =
+    filterNot { it.conversationId == conversationId && it.solution == ChatErrorSolution.EnableModelTools }
+
 enum class ChatErrorSolution {
     CheckTitleModelSettings,
 
@@ -1295,6 +1299,9 @@ class ChatService(
             val model = configuredModel.forAgentRelayTurn(access)
             val useExternalWebSearch = shouldUseExternalWebSearch(assistant, model)
             val extensionManagementEnabled = shouldEnableExtensionManagement(assistant, model)
+            // The "no tools" notice describes one turn; a later turn with a model that can call tools must not keep
+            // showing it, and a turn that still cannot replaces the old notice instead of stacking another one.
+            _errors.update { it.withoutToolsOffNotice(conversationId) }
             // memory tool
             if (!model.abilities.contains(ModelAbility.TOOL)) {
                 if (
