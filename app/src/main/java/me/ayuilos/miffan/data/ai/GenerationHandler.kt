@@ -417,7 +417,13 @@ class GenerationHandler(
             )
         }
 
-    }.flowOn(Dispatchers.IO)
+    }
+        // flowOn hands updates over through a buffer, and a failing producer cancels the collector with updates still
+        // in it: the end of a reply that broke off was lost. The failure travels as an element behind those updates
+        // and is thrown again on the other side, as the same exception.
+        .map<GenerationChunk, Any> { it }.catch { emit(StreamFailure(it)) }
+        .flowOn(Dispatchers.IO)
+        .map { if (it is StreamFailure) throw it.cause else it as GenerationChunk }
 
     private suspend fun generateInternal(
         assistant: Assistant,
