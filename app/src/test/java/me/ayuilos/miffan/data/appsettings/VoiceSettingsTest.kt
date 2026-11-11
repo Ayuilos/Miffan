@@ -182,6 +182,16 @@ class VoiceSettingsTest {
     }
 
     @Test
+    fun readingRepliesAloudCanBeSwitchedAndUndone() {
+        val before = settings()
+        val plan = ok(planAppSettingsChange(changes("""{"type":"set_read_aloud","auto_read":true}"""), before))
+        assertTrue(plan.settings.displaySetting.autoPlayTTSAfterGeneration)
+        assertEquals(listOf(AppSettingsLine.SettingChanged("auto_read", "on")), plan.lines)
+        assertTrue("\"auto_read\":false" in buildAppSettingsCatalog(before).toString())
+        assertFalse(plan.settings.restoreAiServices(aiServicesSnapshot(before)).displaySetting.autoPlayTTSAfterGeneration)
+    }
+
+    @Test
     fun voiceKeysAreKeptEncrypted() {
         val lock: (String) -> String = { if (it.isBlank()) it else "enc:$it" }
         assertEquals("enc:$elevenKey", eleven.transformTtsSecret(lock).ttsApiKey())

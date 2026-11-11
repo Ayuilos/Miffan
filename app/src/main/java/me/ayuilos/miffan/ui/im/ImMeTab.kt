@@ -64,6 +64,7 @@ import me.ayuilos.miffan.ui.hooks.useEditState
 import me.ayuilos.miffan.ui.im.computer.rememberKnownComputers
 import me.ayuilos.miffan.ui.theme.ColorMode
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Brain02
@@ -199,6 +200,9 @@ internal fun ImMeTab(vm: ImHomeVM, innerPadding: PaddingValues, listState: LazyL
                         trailing = {
                             ImRowValue(stringResource(if (settings.displaySetting.enableNotificationOnMessageGeneration) R.string.im_me_on else R.string.im_me_off))
                         })
+                    ImCardDivider()
+                    ImListRow(HugeIcons.VolumeHigh, stringResource(R.string.im_me_read_aloud), { navController.navigate(Screen.ImReadAloud) },
+                        trailing = { ImRowValue(readAloudServiceName(settings)) })
                     ImCardDivider()
                     ImListRow(HugeIcons.Cloud, stringResource(R.string.im_me_backup), { navController.navigate(Screen.ImBackup) },
                         trailing = {

@@ -4421,6 +4421,15 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_voice_sample_play">试听</string>
   <string name="im_voice_sample_failed">没放出来</string>
   <string name="im_voice_asr_saved">%1$s 的 Key 已保存，用语音输入试一下</string>
+  <string name="im_me_read_aloud">朗读</string>
+  <string name="im_read_auto">回复完自动朗读</string>
+  <string name="im_read_auto_desc">聊天开着的时候，伙伴一回完就读出来</string>
+  <string name="im_read_quoted_desc">适合角色扮演，旁白不读</string>
+  <string name="im_read_brackets_desc">括号里的动作、神态描写不读</string>
+  <string name="im_read_voice">朗读的声音</string>
+  <string name="im_read_voice_system">手机自带</string>
+  <string name="im_read_voice_input">语音输入</string>
+  <string name="im_read_voice_input_none">未设置</string>
   <string name="im_settings_image_model">画图模型</string>
   <string name="im_settings_image_none">不设置（不能画图）</string>
   <string name="notification_approval_connect">等你填写 API Key</string>

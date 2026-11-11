@@ -4454,6 +4454,15 @@
   <string name="im_voice_sample_play">Hear it</string>
   <string name="im_voice_sample_failed">Couldn\'t play</string>
   <string name="im_voice_asr_saved">%1$s key saved, try voice input</string>
+  <string name="im_me_read_aloud">Read aloud</string>
+  <string name="im_read_auto">Read replies aloud</string>
+  <string name="im_read_auto_desc">While a chat is open, each reply is read out as soon as it\'s done</string>
+  <string name="im_read_quoted_desc">Good for role-play: narration stays silent</string>
+  <string name="im_read_brackets_desc">Actions and asides in brackets stay silent</string>
+  <string name="im_read_voice">Voice</string>
+  <string name="im_read_voice_system">Phone\'s own</string>
+  <string name="im_read_voice_input">Voice input</string>
+  <string name="im_read_voice_input_none">Not set</string>
   <string name="im_settings_image_model">Drawing model</string>
   <string name="im_settings_image_none">None (drawing off)</string>
   <string name="notification_approval_connect">Enter an API key</string>

@@ -176,6 +176,7 @@ private fun settingLine(line: AppSettingsLine.SettingChanged): ExtensionLine {
         "tts_speed" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_tts_speed),
             stringResource(R.string.im_settings_times, line.value))
         "tts_pitch" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_tts_pitch), line.value)
+        "auto_read" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_read_auto), onOff(line.value))
         "read_quoted" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_read_quoted), onOff(line.value))
         "skip_brackets" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_skip_brackets), onOff(line.value))
         else -> Triple(R.string.im_extension_tag_update, line.key, line.value)

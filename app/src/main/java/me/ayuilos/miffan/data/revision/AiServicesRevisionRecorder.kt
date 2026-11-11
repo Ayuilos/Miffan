@@ -105,7 +105,7 @@ private fun Settings.trackedPart(): List<Any?> = listOf(
     providers, DefaultModelRole.entries.map { it.get(this) }, selectedSearchId(), themeId, dynamicColor, fastModelReasoningLevel,
     displaySetting.let { listOf(it.fontSizeRatio, it.enableLatexRendering, it.codeBlockAutoWrap, it.codeBlockAutoCollapse, it.skipCropImage,
         it.enableNotificationOnMessageGeneration, it.enableLiveUpdateNotification, it.userNickname, it.ttsOnlyReadQuoted,
-        it.ttsOnlyReadOutsideBrackets) },
+        it.ttsOnlyReadOutsideBrackets, it.autoPlayTTSAfterGeneration) },
     ttsProviders, selectedTTSProviderId, defaultTTSPlaybackSpeed, asrProviders, selectedASRProviderId,
 )
 
@@ -139,6 +139,7 @@ fun aiServicesSnapshot(settings: Settings, appearance: Appearance? = null): Stri
     put("theme:id", JsonPrimitive(settings.themeId))
     put("theme:dynamic", JsonPrimitive(settings.dynamicColor))
     put("fast:thinking", JsonPrimitive(settings.fastModelReasoningLevel.name))
+    put("display:tts_auto", JsonPrimitive(display.autoPlayTTSAfterGeneration))
     put("display:tts_quoted", JsonPrimitive(display.ttsOnlyReadQuoted))
     put("display:tts_brackets", JsonPrimitive(display.ttsOnlyReadOutsideBrackets))
     put("tts:selected", JsonPrimitive(settings.selectedTTSProviderId.toString()))
@@ -190,6 +191,7 @@ fun Settings.restoreAiServices(snapshot: String): Settings {
             enableNotificationOnMessageGeneration = bool("notify:reply_done") ?: d.enableNotificationOnMessageGeneration,
             enableLiveUpdateNotification = bool("notify:live") ?: d.enableLiveUpdateNotification,
             userNickname = text("owner:name") ?: d.userNickname,
+            autoPlayTTSAfterGeneration = bool("display:tts_auto") ?: d.autoPlayTTSAfterGeneration,
             ttsOnlyReadQuoted = bool("display:tts_quoted") ?: d.ttsOnlyReadQuoted,
             ttsOnlyReadOutsideBrackets = bool("display:tts_brackets") ?: d.ttsOnlyReadOutsideBrackets,
         ))

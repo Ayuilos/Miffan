@@ -104,6 +104,11 @@ fun AgentThreadPage(
     val timeline by remember { derivedStateOf { timelineState.value.items } }
     val loaded by remember { derivedStateOf { timelineState.value.loaded } }
     val hasItems by remember { derivedStateOf { timelineState.value.items.isNotEmpty() } }
+    ThreadAutoRead { id ->
+        timelineState.value.items.firstNotNullOfOrNull { item ->
+            (item as? TimelineItem.Message)?.message?.takeIf { it.id == id && it.role == me.rerere.ai.core.MessageRole.ASSISTANT }
+        }?.previewText()
+    }
     val generating by vm.generatingSegmentIds.collectAsStateWithLifecycle()
     val errors by vm.errors.collectAsStateWithLifecycle()
     val filter by vm.topicFilter.collectAsStateWithLifecycle()

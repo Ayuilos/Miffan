@@ -111,6 +111,7 @@ fun buildAppSettingsCatalog(settings: Settings, appearance: Appearance? = null, 
     }
     putJsonObject("voice") {
         putJsonObject("tts") {
+            put("auto_read", settings.displaySetting.autoPlayTTSAfterGeneration)
             put("speed", settings.defaultTTSPlaybackSpeed)
             put("only_quoted", settings.displaySetting.ttsOnlyReadQuoted)
             put("skip_brackets", settings.displaySetting.ttsOnlyReadOutsideBrackets)

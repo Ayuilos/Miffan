@@ -356,15 +356,18 @@ private fun setReadAloud(change: JsonObject, settings: Settings): Step {
     }
     val quoted = change["only_quoted"]?.let { change.bool("only_quoted") ?: fail("only_quoted must be true or false.") }
     val brackets = change["skip_brackets"]?.let { change.bool("skip_brackets") ?: fail("skip_brackets must be true or false.") }
-    if (speed == null && quoted == null && brackets == null) fail("Give speed, only_quoted or skip_brackets.")
+    val auto = change["auto_read"]?.let { change.bool("auto_read") ?: fail("auto_read must be true or false.") }
+    if (speed == null && quoted == null && brackets == null && auto == null) fail("Give auto_read, speed, only_quoted or skip_brackets.")
     val lines = buildList {
+        if (auto != null && auto != display.autoPlayTTSAfterGeneration) add(AppSettingsLine.SettingChanged("auto_read", onOff(auto)))
         if (speed != null && speed != settings.defaultTTSPlaybackSpeed) add(AppSettingsLine.SettingChanged("tts_speed", speed.toString()))
         if (quoted != null && quoted != display.ttsOnlyReadQuoted) add(AppSettingsLine.SettingChanged("read_quoted", onOff(quoted)))
         if (brackets != null && brackets != display.ttsOnlyReadOutsideBrackets) add(AppSettingsLine.SettingChanged("skip_brackets", onOff(brackets)))
     }
     return Step(settings.copy(
         defaultTTSPlaybackSpeed = speed ?: settings.defaultTTSPlaybackSpeed,
-        displaySetting = display.copy(ttsOnlyReadQuoted = quoted ?: display.ttsOnlyReadQuoted,
+        displaySetting = display.copy(autoPlayTTSAfterGeneration = auto ?: display.autoPlayTTSAfterGeneration,
+            ttsOnlyReadQuoted = quoted ?: display.ttsOnlyReadQuoted,
             ttsOnlyReadOutsideBrackets = brackets ?: display.ttsOnlyReadOutsideBrackets),
     ), null, extra = lines)
 }

@@ -301,7 +301,8 @@ private fun appSettingsChangeSchema() = buildJsonObject {
         "temperature (0–2 or \"default\"), memory, shared_memory; nothing else, permissions are the owner's; " +
         "select_tts_service = service_id (a read-aloud service from catalog voice.tts, with a key); " +
         "set_tts_voice = service_id (default: the one in use), voice (an id from its voices), pitch (0.5–2, system only); " +
-        "set_read_aloud = any of speed (0.5–2, 1 is normal), only_quoted, skip_brackets; " +
+        "set_read_aloud = any of auto_read (read each reply aloud while the chat is open), speed (0.5–2, 1 is normal), only_quoted, " +
+        "skip_brackets; " +
         "select_asr_service = service_id (a voice input service from catalog voice.asr, with a key).")
     put("properties", buildJsonObject {
         put("type", buildJsonObject {
@@ -359,6 +360,7 @@ private fun appSettingsChangeSchema() = buildJsonObject {
         put("speed", buildJsonObject { put("type", "number") })
         put("pitch", buildJsonObject { put("type", "number") })
         put("only_quoted", buildJsonObject { put("type", "boolean") })
+        put("auto_read", buildJsonObject { put("type", "boolean") })
         put("skip_brackets", buildJsonObject { put("type", "boolean") })
         put("role", buildJsonObject {
             put("type", "string")

@@ -107,6 +107,7 @@ import me.ayuilos.miffan.ui.im.ImDrawPage
 import me.ayuilos.miffan.ui.im.ImFavoritesPage
 import me.ayuilos.miffan.ui.im.ImTranslatePage
 import me.ayuilos.miffan.ui.im.ImNotificationsPage
+import me.ayuilos.miffan.ui.im.ImReadAloudPage
 import me.ayuilos.miffan.ui.pages.update.UpdatePage
 import me.ayuilos.miffan.ui.pages.update.UpdateSettingsPage
 import me.ayuilos.miffan.ui.im.ImPartnerEditPage
@@ -491,6 +492,7 @@ class RouteActivity : ComponentActivity() {
                             entry<Screen.ImMemory> { key -> ImMemoryPage(key.ownerId, key.assistantId) }
                             entry<Screen.ImAppearance> { ImAppearancePage() }
                             entry<Screen.ImNotifications> { ImNotificationsPage() }
+                            entry<Screen.ImReadAloud> { ImReadAloudPage() }
                             entry<Screen.Update> { UpdatePage() }
                             entry<Screen.UpdateSettings> { UpdateSettingsPage() }
                             entry<Screen.ImBackup> { ImBackupPage() }
@@ -839,6 +841,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object ImNotifications : Screen
+
+    @Serializable
+    data object ImReadAloud : Screen
 
     @Serializable
     data object ImBackup : Screen
