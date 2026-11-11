@@ -4433,5 +4433,17 @@
   <string name="im_settings_footnote_key">При смене адреса сервиса сохранённый ключ удаляется. Остальные изменения можно позже отменить в истории изменений.</string>
   <string name="im_settings_outdated">С тех пор настройки изменились, поэтому применить эти изменения нельзя. Попросите партнёра попробовать ещё раз.</string>
   <string name="im_revision_ai_services">AI-сервисы изменены</string>
+  <string name="im_key_guard_title">Похоже, это API Key</string>
+  <string name="im_key_guard_card">Лучше введите его в защищённую карточку для %1$s: партнёр не видит её содержимое. Если отправить ключ в чат, партнёр его увидит.</string>
+  <string name="im_key_guard_send">Если вы отправите ключ, партнёр его увидит, и он останется в истории чата.</string>
+  <string name="im_key_guard_to_card">Ввести в защищённую карточку</string>
+  <string name="im_key_guard_keep">Не отправлять</string>
+  <string name="im_key_guard_send_anyway">Всё равно отправить</string>
+  <string name="im_settings_search_in_use">Веб-поиск теперь через %1$s</string>
+  <string name="im_secret_header_title">Введите учётные данные для %1$s</string>
+  <string name="im_secret_header_privacy">Значение отправляется только на указанный адрес в заголовке %2$s и хранится на этом телефоне. %1$s его не видит.</string>
+  <string name="im_secret_header_hint">Вставьте токен</string>
+  <string name="im_secret_save">Сохранить</string>
+  <string name="im_secret_header_saved">%2$s для %1$s сохранён</string>
   <string name="notification_approval_connect">Введите API Key</string>
 </resources>

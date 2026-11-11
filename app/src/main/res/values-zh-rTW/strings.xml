@@ -4356,5 +4356,17 @@
   <string name="im_settings_footnote_key">服務改了網址，原來的 Key 會清空；其餘改動之後可以在記錄裡撤銷。</string>
   <string name="im_settings_outdated">設定已經變了，這些改動對不上了。可以讓夥伴重新整理一次。</string>
   <string name="im_revision_ai_services">AI 服務有改動</string>
+  <string name="im_key_guard_title">這像是 API Key</string>
+  <string name="im_key_guard_card">改填進「%1$s」的安全卡片吧，那裡的內容夥伴看不到。直接發在聊天裡，它就能看到。</string>
+  <string name="im_key_guard_send">發出去夥伴就能看到這個 Key，它也會留在聊天記錄裡。</string>
+  <string name="im_key_guard_to_card">填進安全卡片</string>
+  <string name="im_key_guard_keep">不發了</string>
+  <string name="im_key_guard_send_anyway">仍然發送</string>
+  <string name="im_settings_search_in_use">網路搜尋改用 %1$s</string>
+  <string name="im_secret_header_title">填寫 %1$s 的憑證</string>
+  <string name="im_secret_header_privacy">只會作為 %2$s 請求標頭發往上面這個網址，存在這台手機上。%1$s 看不到。</string>
+  <string name="im_secret_header_hint">貼上權杖</string>
+  <string name="im_secret_save">儲存</string>
+  <string name="im_secret_header_saved">%1$s 的 %2$s 已儲存</string>
   <string name="notification_approval_connect">等你填寫 API Key</string>
 </resources>

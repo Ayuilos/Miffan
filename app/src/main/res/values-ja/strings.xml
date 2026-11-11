@@ -4358,5 +4358,17 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_settings_footnote_key">サービスのアドレスを変更すると、保存済みのAPI Keyは削除されます。その他の変更は、あとで変更履歴から取り消せます。</string>
   <string name="im_settings_outdated">その後設定が変更されたため、この変更は適用できません。パートナーにもう一度試してもらってください。</string>
   <string name="im_revision_ai_services">AIサービスを変更しました</string>
+  <string name="im_key_guard_title">API Keyのようです</string>
+  <string name="im_key_guard_card">代わりに%1$sの安全なカードに入力してください。カードの内容はパートナーには見えませんが、チャットで送信すると見えてしまいます。</string>
+  <string name="im_key_guard_send">送信すると、パートナーにこのKeyが見え、チャット履歴にも残ります。</string>
+  <string name="im_key_guard_to_card">安全なカードに入力</string>
+  <string name="im_key_guard_keep">送信しない</string>
+  <string name="im_key_guard_send_anyway">このまま送信</string>
+  <string name="im_settings_search_in_use">ウェブ検索を%1$sに切り替え</string>
+  <string name="im_secret_header_title">%1$sの認証情報を入力</string>
+  <string name="im_secret_header_privacy">%2$sヘッダーとして上記のアドレスにのみ送信され、このスマホに保存されます。%1$sには見えません。</string>
+  <string name="im_secret_header_hint">トークンを貼り付け</string>
+  <string name="im_secret_save">保存</string>
+  <string name="im_secret_header_saved">%1$sの%2$sを保存しました</string>
   <string name="notification_approval_connect">API Keyを入力</string>
 </resources>
