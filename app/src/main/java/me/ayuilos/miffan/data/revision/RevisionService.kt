@@ -52,6 +52,7 @@ class RevisionService(
     private val revisions: RevisionRepository,
     private val settingsStore: SettingsStore,
     private val memoryRepository: MemoryRepository,
+    private val appearancePrefs: me.ayuilos.miffan.data.appsettings.AppearanceStore? = null,
 ) {
     private val restoreMutex = Mutex()
 
@@ -170,6 +171,8 @@ class RevisionService(
                     RestoreResult.Restored
                 }
                 RevisionSubject.AI_SERVICES -> {
+                    // Light / dark first, so the version the settings write records already holds it.
+                    appearanceIn(target.snapshot)?.let { appearancePrefs?.write(it) }
                     settingsStore.update { it.restoreAiServices(target.snapshot) }
                     RestoreResult.Restored
                 }
@@ -182,7 +185,7 @@ class RevisionService(
                         .assistants.find { it.id.toString() == target.subjectId }
                         ?.let { AssistantRevisionRecorder.snapshot(it) } ?: return@withContext RestoreResult.NotFound
                     RevisionSubject.MEMORY -> target.snapshot
-                    RevisionSubject.AI_SERVICES -> aiServicesSnapshot(settingsStore.settingsFlow.first())
+                    RevisionSubject.AI_SERVICES -> aiServicesSnapshot(settingsStore.settingsFlow.first(), appearancePrefs?.current())
                 }
                 revisions.record(target.subject, target.subjectId, before = head.snapshot, after = snapshot)
             }

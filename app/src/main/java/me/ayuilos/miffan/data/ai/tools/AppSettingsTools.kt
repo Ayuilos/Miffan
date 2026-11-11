@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import me.ayuilos.miffan.data.appsettings.AppSettingsPlan
+import me.ayuilos.miffan.data.appsettings.Appearance
 import me.ayuilos.miffan.data.appsettings.CHANGE_APP_SETTINGS_TOOL
 import me.ayuilos.miffan.data.appsettings.CONNECT_PROVIDER_TOOL
 import me.ayuilos.miffan.data.appsettings.CONNECT_SEARCH_TOOL
@@ -19,6 +20,7 @@ import me.ayuilos.miffan.data.appsettings.SearchKeyService
 import me.ayuilos.miffan.data.appsettings.resolveHeaderTarget
 import me.ayuilos.miffan.data.appsettings.resolveSearchTarget
 import me.ayuilos.miffan.data.appsettings.DefaultModelRole
+import me.ayuilos.miffan.data.appsettings.FontSize
 import me.ayuilos.miffan.data.appsettings.MAX_CHANGES
 import me.ayuilos.miffan.data.appsettings.appSettingsResultJson
 import me.ayuilos.miffan.data.appsettings.planAppSettingsChange
@@ -44,6 +46,8 @@ const val APP_SETTINGS_CATALOG_TOOL = "app_settings_catalog"
 internal fun buildAppSettingsTools(
     settingsStore: SettingsStore,
     catalog: () -> ModelCatalog = { ModelCatalog.EMPTY },
+    appearancePrefs: me.ayuilos.miffan.data.appsettings.AppearanceStore? = null,
+    recorder: me.ayuilos.miffan.data.revision.AiServicesRevisionRecorder? = null,
 ): List<Tool> = listOf(
     Tool(
         name = APP_SETTINGS_CATALOG_TOOL,
@@ -54,7 +58,7 @@ internal fun buildAppSettingsTools(
         """.trimIndent().replace("\n", " "),
         parameters = { InputSchema.Obj(properties = buildJsonObject { }) },
         execute = {
-            listOf(UIMessagePart.Text(buildAppSettingsCatalog(settingsStore.settingsFlow.value).toString()))
+            listOf(UIMessagePart.Text(buildAppSettingsCatalog(settingsStore.settingsFlow.value, appearancePrefs?.current()).toString()))
         },
     ),
     Tool(
@@ -125,6 +129,17 @@ internal fun buildAppSettingsTools(
             InputSchema.Obj(
                 properties = buildJsonObject {
                     put("service_id", buildJsonObject { put("type", "string") })
+        put("font_size", buildJsonObject { put("type", "string"); put("enum", buildJsonArray { FontSize.entries.forEach { add(it.id) } }) })
+        put("latex", buildJsonObject { put("type", "boolean") })
+        put("code_wrap", buildJsonObject { put("type", "boolean") })
+        put("code_collapse", buildJsonObject { put("type", "boolean") })
+        put("crop_before_send", buildJsonObject { put("type", "boolean") })
+        put("theme", buildJsonObject { put("type", "string") })
+        put("color_mode", buildJsonObject { put("type", "string"); put("enum", buildJsonArray { add("system"); add("light"); add("dark") }) })
+        put("pure_black", buildJsonObject { put("type", "boolean") })
+        put("reply_done", buildJsonObject { put("type", "boolean") })
+        put("live_progress", buildJsonObject { put("type", "boolean") })
+        put("level", buildJsonObject { put("type", "string"); put("enum", buildJsonArray { add("quick"); add("auto"); add("more"); add("deep") }) })
                     put("type", buildJsonObject {
                         put("type", "string")
                         put("enum", buildJsonArray { SearchKeyService.entries.forEach { add(it.id) } })
@@ -168,7 +183,8 @@ internal fun buildAppSettingsTools(
         description = """
             Change the AI service setup when the owner asks: switch services on or off, rename them, move a custom service
             to another address, add, remove or adjust models, choose the model a partner uses, set the default models, and
-            choose the web search service in use.
+            choose the web search service in use, and adjust how the app looks and notifies: font size, theme, light or dark,
+            notifications, and what partners call the owner.
             The owner confirms on a card listing every change; the changes apply together, in order, or not at all.
             Use ids and model_ids from app_settings_catalog (or the models a connect_provider result listed). Refer to a
             model as {provider_id, model_id}; a model added earlier in the same changes can be used right after.
@@ -194,25 +210,38 @@ internal fun buildAppSettingsTools(
             )
         },
         // A call the app cannot apply fails right away, with the reason, instead of asking the owner.
-        needsApproval = { input -> planAppSettingsChange(input, settingsStore.settingsFlow.value, catalog()) is AppSettingsPlan.Ok },
+        needsApproval = { input ->
+            planAppSettingsChange(input, settingsStore.settingsFlow.value, catalog(), appearance = appearancePrefs?.current() ?: Appearance()) is AppSettingsPlan.Ok
+        },
         execute = { input ->
             if (currentCoroutineContext()[CurrentToolCall]?.approved != true) {
                 // Invalid calls run without a card and must stay that way, even if the settings changed in between.
-                val reason = (planAppSettingsChange(input, settingsStore.settingsFlow.value, catalog()) as? AppSettingsPlan.Invalid)?.reason
+                val reason = (planAppSettingsChange(input, settingsStore.settingsFlow.value, catalog(),
+                    appearance = appearancePrefs?.current() ?: Appearance()) as? AppSettingsPlan.Invalid)?.reason
                 return@Tool listOf(UIMessagePart.Text(buildJsonObject {
                     put("success", false)
                     put("error", reason ?: "Nothing was changed: the owner has to confirm on the card. Call the tool again.")
                 }.toString()))
             }
             var plan: AppSettingsPlan? = null
+            val appearanceBefore = appearancePrefs?.current() ?: Appearance()
+            var settingsBefore: me.ayuilos.miffan.data.datastore.Settings? = null
             val reason = (input as? JsonObject)?.get("reason")?.jsonPrimitive?.contentOrNull?.take(200)
             // No trigger message: the call's own record in the chat is where this change is read and undone as a whole,
             // rather than a separate "changed its settings" notice that would undo only the partner's part.
             withContext(RevisionOrigin(RevisionAuthor.AGENT, summary = reason)) {
                 settingsStore.update { settings ->
                     // Planned again against the settings as they are now: the owner may have changed something since.
-                    planAppSettingsChange(input, settings, catalog()).also { plan = it }
+                    settingsBefore = settings
+                    planAppSettingsChange(input, settings, catalog(), appearance = appearanceBefore).also { plan = it }
                         .let { if (it is AppSettingsPlan.Ok) it.settings else settings }
+                }
+                // Light / dark lives outside the settings: record it in the same call's history, then switch it.
+                val ok = plan as? AppSettingsPlan.Ok
+                if (ok != null && ok.appearance != appearanceBefore && appearancePrefs != null) {
+                    val before = settingsBefore?.let { me.ayuilos.miffan.data.revision.aiServicesSnapshot(it, appearanceBefore) }
+                    recorder?.record(before, me.ayuilos.miffan.data.revision.aiServicesSnapshot(ok.settings, ok.appearance))
+                    appearancePrefs.write(ok.appearance)
                 }
             }
             val text = when (val result = plan) {
@@ -233,13 +262,19 @@ private fun appSettingsChangeSchema() = buildJsonObject {
         "remove_models = provider_id, model_ids; update_model = provider_id, model_id, and name / tools / reasoning / image_input; " +
         "set_partner_model = partner_id, model ({provider_id, model_id} or \"default\"); " +
         "set_default_model = role, model ({provider_id, model_id}, or \"follow_fast\" for title and suggestion); " +
-        "select_search_service = service_id (the web search service in use).")
+        "select_search_service = service_id (the web search service in use); " +
+        "set_display = any of font_size (small, default, large, larger), latex, code_wrap, code_collapse, crop_before_send; " +
+        "set_theme = any of theme (wallpaper or an id from catalog theme.choices), color_mode (system, light, dark), pure_black; " +
+        "set_notifications = reply_done and/or live_progress; set_owner_name = name (what partners call the owner, empty clears); " +
+        "set_fast_thinking = level (quick, auto, more, deep) for the fast model; set_default_model role image = a model that can " +
+        "draw, or \"none\".")
     put("properties", buildJsonObject {
         put("type", buildJsonObject {
             put("type", "string")
             put("enum", buildJsonArray {
                 listOf("set_provider_enabled", "rename_provider", "set_provider_address", "add_models", "remove_models",
-                    "update_model", "set_partner_model", "set_default_model", "select_search_service").forEach { add(it) }
+                    "update_model", "set_partner_model", "set_default_model", "select_search_service", "set_display", "set_theme",
+                    "set_notifications", "set_owner_name", "set_fast_thinking").forEach { add(it) }
             })
         })
         put("provider_id", buildJsonObject { put("type", "string") })

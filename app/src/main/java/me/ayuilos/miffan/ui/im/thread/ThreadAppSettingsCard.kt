@@ -8,6 +8,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
@@ -33,7 +34,8 @@ import me.rerere.hugeicons.stroke.AiBrain02
 @Composable
 internal fun ThreadAppSettingsCard(tool: UIMessagePart.Tool, onApproval: (String, Boolean) -> Unit) {
     val settings = LocalSettings.current
-    val plan = remember(tool.input, settings) { planAppSettingsChange(tool.inputAsJson(), settings) }
+    val appearance = rememberAppearance()
+    val plan = remember(tool.input, settings, appearance) { planAppSettingsChange(tool.inputAsJson(), settings, appearance = appearance) }
     val lines = (plan as? AppSettingsPlan.Ok)?.lines
     ApprovalCardFrame(tool, stringResource(R.string.im_change_app_settings), onApproval, icon = HugeIcons.AiBrain02,
         allowEnabled = lines != null,
@@ -53,12 +55,21 @@ internal fun ThreadAppSettingsCard(tool: UIMessagePart.Tool, onApproval: (String
 @Composable
 internal fun AppSettingsChangeContent(tool: UIMessagePart.Tool) {
     val settings = LocalSettings.current
+    val appearance = rememberAppearance()
     val lines = remember(tool.output, tool.input) {
         val output = tool.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
         appSettingsResultLines(output)
-            ?: (planAppSettingsChange(tool.inputAsJson(), settings) as? AppSettingsPlan.Ok)?.lines
+            ?: (planAppSettingsChange(tool.inputAsJson(), settings, appearance = appearance) as? AppSettingsPlan.Ok)?.lines
     }
     if (lines != null) AppSettingsChangeList(lines)
+}
+
+/** Light / dark as it is now, following changes from the appearance page. */
+@Composable
+private fun rememberAppearance(): me.ayuilos.miffan.data.appsettings.Appearance {
+    val prefs = org.koin.compose.koinInject<me.ayuilos.miffan.data.appsettings.AppearanceStore>()
+    val flow = remember(prefs) { prefs.changes() }
+    return flow.collectAsState(prefs.current()).value
 }
 
 @Composable
@@ -99,11 +110,12 @@ private fun appSettingsLine(line: AppSettingsLine): ExtensionLine = when (line) 
             stringResource(R.string.im_settings_arrow, name, line.model ?: stringResource(R.string.im_settings_follow_default)),
             line.provider?.let { stringResource(R.string.im_settings_from, it) })
     }
+    is AppSettingsLine.SettingChanged -> settingLine(line)
     is AppSettingsLine.SearchSelected -> ExtensionLine(R.string.im_extension_tag_switch, false,
         stringResource(R.string.im_settings_search_in_use, line.service), null)
     is AppSettingsLine.DefaultModel -> ExtensionLine(R.string.im_settings_tag_default, false,
         stringResource(R.string.im_settings_arrow, stringResource(roleLabel(line.role)),
-            line.model ?: stringResource(R.string.im_settings_follow_fast)),
+            line.model ?: stringResource(if (line.role == DefaultModelRole.IMAGE.id) R.string.im_settings_image_none else R.string.im_settings_follow_fast)),
         line.provider?.let { stringResource(R.string.im_settings_from, it) })
 }
 
@@ -114,5 +126,56 @@ private fun roleLabel(role: String): Int = when (DefaultModelRole.of(role)) {
     DefaultModelRole.TRANSLATE -> R.string.setting_model_page_translate_model
     DefaultModelRole.OCR -> R.string.setting_model_page_ocr_model
     DefaultModelRole.COMPRESS -> R.string.setting_model_page_compress_model
+    DefaultModelRole.IMAGE -> R.string.im_settings_image_model
     DefaultModelRole.CHAT, null -> R.string.setting_model_page_chat_model
+}
+
+@Composable
+private fun settingLine(line: AppSettingsLine.SettingChanged): ExtensionLine {
+    @Composable
+    fun onOff(value: String) = stringResource(if (value == "on") R.string.im_settings_on else R.string.im_settings_off)
+    val (tag, name, value) = when (line.key) {
+        "font_size" -> Triple(R.string.im_settings_tag_display, stringResource(R.string.im_settings_font_size), stringResource(when (line.value) {
+            "small" -> R.string.im_settings_font_small
+            "large" -> R.string.im_settings_font_large
+            "larger" -> R.string.im_settings_font_larger
+            else -> R.string.im_settings_font_default
+        }))
+        "latex" -> Triple(R.string.im_settings_tag_display, stringResource(R.string.im_settings_latex), onOff(line.value))
+        "code_wrap" -> Triple(R.string.im_settings_tag_display, stringResource(R.string.im_settings_code_wrap), onOff(line.value))
+        "code_collapse" -> Triple(R.string.im_settings_tag_display, stringResource(R.string.im_settings_code_collapse), onOff(line.value))
+        "crop_before_send" -> Triple(R.string.im_settings_tag_display, stringResource(R.string.im_settings_crop), onOff(line.value))
+        "theme" -> Triple(R.string.im_settings_tag_look, stringResource(R.string.im_appearance_color), line.label ?: themeName(line.value))
+        "color_mode" -> Triple(R.string.im_settings_tag_look, stringResource(R.string.im_settings_color_mode), stringResource(when (line.value) {
+            "light" -> R.string.im_appearance_mode_light
+            "dark" -> R.string.im_appearance_mode_dark
+            else -> R.string.im_appearance_mode_system
+        }))
+        "amoled" -> Triple(R.string.im_settings_tag_look, stringResource(R.string.im_appearance_amoled), onOff(line.value))
+        "reply_done_notice" -> Triple(R.string.im_settings_tag_notify, stringResource(R.string.im_notify_reply), onOff(line.value))
+        "live_notice" -> Triple(R.string.im_settings_tag_notify, stringResource(R.string.im_notify_progress), onOff(line.value))
+        "owner_name" -> Triple(R.string.im_settings_tag_name, stringResource(R.string.im_settings_owner_name),
+            line.value.ifEmpty { stringResource(R.string.im_settings_cleared) })
+        "fast_thinking" -> Triple(R.string.im_settings_tag_default, stringResource(R.string.im_settings_fast_thinking), stringResource(when (line.value) {
+            "quick" -> R.string.im_think_quick
+            "more" -> R.string.im_think_more
+            "deep" -> R.string.im_think_deep
+            else -> R.string.im_think_auto
+        }))
+        else -> Triple(R.string.im_extension_tag_update, line.key, line.value)
+    }
+    return ExtensionLine(tag, line.value == "off", stringResource(R.string.im_settings_arrow, name, value), null)
+}
+
+@Composable
+private fun themeName(id: String): String = when (id) {
+    me.ayuilos.miffan.data.appsettings.WALLPAPER_THEME -> stringResource(R.string.im_appearance_wallpaper)
+    "sakura" -> stringResource(R.string.theme_name_sakura)
+    "ocean" -> stringResource(R.string.theme_name_ocean)
+    "spring" -> stringResource(R.string.theme_name_spring)
+    "autumn" -> stringResource(R.string.theme_name_autumn)
+    "black" -> stringResource(R.string.theme_name_black)
+    "minimal" -> stringResource(R.string.theme_name_minimal)
+    "claude" -> stringResource(R.string.theme_name_claude)
+    else -> id
 }

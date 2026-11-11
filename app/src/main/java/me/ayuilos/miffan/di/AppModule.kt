@@ -159,7 +159,7 @@ val appModule = module {
         )
     }
 
-    single { RevisionService(revisions = get(), settingsStore = get(), memoryRepository = get()) }
+    single { RevisionService(revisions = get(), settingsStore = get(), memoryRepository = get(), appearancePrefs = get()) }
 
     single<ThreadNoticeSource> { RevisionNoticeSource(revisions = get(), settingsStore = get()) }
 

@@ -80,7 +80,15 @@ val repositoryModule = module {
     single { RevisionRepository(get()) }
 
     single { AssistantRevisionRecorder(get()) }
-    single { me.ayuilos.miffan.data.revision.AiServicesRevisionRecorder(get()) }
+    single<me.ayuilos.miffan.data.appsettings.AppearanceStore> { me.ayuilos.miffan.data.appsettings.AppearancePrefs(get()) }
+    single {
+        me.ayuilos.miffan.data.revision.AiServicesRevisionRecorder(get(), get<me.ayuilos.miffan.data.appsettings.AppearanceStore>()).also { recorder ->
+            val koin = getKoin()
+            recorder.watchAppearance(get<me.ayuilos.miffan.AppScope>()) {
+                runCatching { koin.get<me.ayuilos.miffan.data.datastore.SettingsStore>().settingsFlow.value }.getOrNull()
+            }
+        }
+    }
 
     single {
         GenMediaRepository(get())

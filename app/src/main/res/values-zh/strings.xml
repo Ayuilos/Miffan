@@ -4376,5 +4376,26 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_secret_save">保存</string>
   <string name="im_secret_header_saved">%1$s 的 %2$s 已保存</string>
   <string name="im_secret_cancel">不填了</string>
+  <string name="im_settings_tag_display">显示</string>
+  <string name="im_settings_tag_look">外观</string>
+  <string name="im_settings_tag_notify">通知</string>
+  <string name="im_settings_tag_name">称呼</string>
+  <string name="im_settings_on">开</string>
+  <string name="im_settings_off">关</string>
+  <string name="im_settings_font_size">字号</string>
+  <string name="im_settings_font_small">小</string>
+  <string name="im_settings_font_default">标准</string>
+  <string name="im_settings_font_large">大</string>
+  <string name="im_settings_font_larger">特大</string>
+  <string name="im_settings_latex">数学公式</string>
+  <string name="im_settings_code_wrap">代码自动换行</string>
+  <string name="im_settings_code_collapse">长代码自动折叠</string>
+  <string name="im_settings_crop">发图前裁剪</string>
+  <string name="im_settings_color_mode">深浅色</string>
+  <string name="im_settings_owner_name">伙伴怎么称呼你</string>
+  <string name="im_settings_cleared">不设置</string>
+  <string name="im_settings_fast_thinking">快速模型想多久再回</string>
+  <string name="im_settings_image_model">画图模型</string>
+  <string name="im_settings_image_none">不设置（不能画图）</string>
   <string name="notification_approval_connect">等你填写 API Key</string>
 </resources>

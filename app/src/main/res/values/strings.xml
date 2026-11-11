@@ -4409,5 +4409,26 @@
   <string name="im_secret_save">Save</string>
   <string name="im_secret_header_saved">%2$s for %1$s saved</string>
   <string name="im_secret_cancel">Not now</string>
+  <string name="im_settings_tag_display">Display</string>
+  <string name="im_settings_tag_look">Look</string>
+  <string name="im_settings_tag_notify">Alerts</string>
+  <string name="im_settings_tag_name">Name</string>
+  <string name="im_settings_on">On</string>
+  <string name="im_settings_off">Off</string>
+  <string name="im_settings_font_size">Text size</string>
+  <string name="im_settings_font_small">Small</string>
+  <string name="im_settings_font_default">Standard</string>
+  <string name="im_settings_font_large">Large</string>
+  <string name="im_settings_font_larger">Extra large</string>
+  <string name="im_settings_latex">Math formulas</string>
+  <string name="im_settings_code_wrap">Wrap long code lines</string>
+  <string name="im_settings_code_collapse">Fold long code</string>
+  <string name="im_settings_crop">Crop photos before sending</string>
+  <string name="im_settings_color_mode">Light or dark</string>
+  <string name="im_settings_owner_name">What partners call you</string>
+  <string name="im_settings_cleared">Not set</string>
+  <string name="im_settings_fast_thinking">Fast model thinking</string>
+  <string name="im_settings_image_model">Drawing model</string>
+  <string name="im_settings_image_none">None (drawing off)</string>
   <string name="notification_approval_connect">Enter an API key</string>
 </resources>

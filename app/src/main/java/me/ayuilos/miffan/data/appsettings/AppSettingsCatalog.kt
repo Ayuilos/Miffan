@@ -9,6 +9,7 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import me.ayuilos.miffan.data.datastore.DEFAULT_PROVIDERS
 import me.ayuilos.miffan.data.datastore.Settings
+import me.ayuilos.miffan.data.datastore.findModelById
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import me.rerere.ai.provider.Modality
@@ -27,7 +28,7 @@ internal const val CATALOG_MODELS_PER_PROVIDER = 40
  * the models. Never a credential, nor anything derived from one (no prefix, suffix, length or hash), and no
  * custom headers, request bodies, per-model provider overrides or account details.
  */
-fun buildAppSettingsCatalog(settings: Settings): JsonObject = buildJsonObject {
+fun buildAppSettingsCatalog(settings: Settings, appearance: Appearance? = null): JsonObject = buildJsonObject {
     val presets = DEFAULT_PROVIDERS.mapTo(HashSet()) { it.id }
     putJsonArray("providers") {
         settings.providers.forEach { provider ->
@@ -59,9 +60,35 @@ fun buildAppSettingsCatalog(settings: Settings): JsonObject = buildJsonObject {
     }
     putJsonObject("default_models") {
         DefaultModelRole.entries.forEach { role ->
-            put(role.id, settings.modelRef(role.get(settings)) ?: JsonPrimitive(if (role.optional) "follow_fast" else "unset"))
+            put(role.id, settings.modelRef(role.get(settings)) ?: JsonPrimitive(if (role.optional) role.clearWord else "unset"))
         }
     }
+    settings.findModelById(settings.fastModelId)?.takeIf { ThinkTier.QUICK.levelFor(it) != null || ThinkTier.MORE.levelFor(it) != null }
+        ?.let { put("fast_thinking", ThinkTier.of(settings.fastModelReasoningLevel, it).id) }
+    putJsonObject("display") {
+        val display = settings.displaySetting
+        put("font_size", FontSize.nearest(display.fontSizeRatio).id)
+        put("latex", display.enableLatexRendering)
+        put("code_wrap", display.codeBlockAutoWrap)
+        put("code_collapse", display.codeBlockAutoCollapse)
+        put("crop_before_send", !display.skipCropImage)
+    }
+    putJsonObject("theme") {
+        put("current", if (settings.dynamicColor) WALLPAPER_THEME else settings.themeId)
+        putJsonArray("choices") {
+            add(WALLPAPER_THEME)
+            themeChoices(settings).forEach { (id, name) -> if (name == null) add(id) else addJsonObject { put("id", id); put("name", name) } }
+        }
+        appearance?.let {
+            put("color_mode", it.colorMode.lowercase())
+            put("pure_black", it.amoled)
+        }
+    }
+    putJsonObject("notifications") {
+        put("reply_done", settings.displaySetting.enableNotificationOnMessageGeneration)
+        put("live_progress", settings.displaySetting.enableLiveUpdateNotification)
+    }
+    put("owner_name", settings.displaySetting.userNickname)
     putJsonArray("partners") {
         settings.assistants.forEach { assistant ->
             addJsonObject {
