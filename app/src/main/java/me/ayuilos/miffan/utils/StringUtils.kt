@@ -151,3 +151,11 @@ fun String.removeBracketedContent(): String? {
     val result = pattern.replace(this, "").trim()
     return result.ifBlank { null }
 }
+
+/** What read-aloud reads of this text under the owner's rules; a rule that would leave nothing is skipped. */
+fun String.forReadingAloud(onlyQuoted: Boolean, skipBrackets: Boolean): String {
+    var text = this
+    if (onlyQuoted) text = text.extractQuotedContentAsText() ?: text
+    if (skipBrackets) text = text.removeBracketedContent() ?: text
+    return text
+}

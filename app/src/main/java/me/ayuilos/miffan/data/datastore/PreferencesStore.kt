@@ -69,6 +69,8 @@ import me.ayuilos.miffan.utils.toMutableStateFlow
 import me.rerere.search.SearchCommonOptions
 import me.rerere.search.SearchServiceOptions
 import me.rerere.tts.provider.TTSProviderSetting
+import me.ayuilos.miffan.data.appsettings.transformAsrSecret
+import me.ayuilos.miffan.data.appsettings.transformTtsSecret
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 import kotlin.uuid.Uuid
@@ -372,13 +374,13 @@ class SettingsStore(
                     JsonInstant.decodeFromString(it)
                 } ?: S3Config(),
                 ttsProviders = preferences[TTS_PROVIDERS]?.let {
-                    JsonInstant.decodeFromString(it)
+                    JsonInstant.decodeFromString<List<TTSProviderSetting>>(it).map { provider -> provider.transformTtsSecret(providerSecretCipher::decrypt) }
                 } ?: emptyList(),
                 selectedTTSProviderId = preferences[SELECTED_TTS_PROVIDER]?.let { Uuid.parse(it) }
                     ?: DEFAULT_SYSTEM_TTS_ID,
                 defaultTTSPlaybackSpeed = preferences[DEFAULT_TTS_PLAYBACK_SPEED]?.coerceIn(0.5f, 2.0f) ?: 1.0f,
                 asrProviders = preferences[ASR_PROVIDERS]?.let {
-                    JsonInstant.decodeFromString(it)
+                    JsonInstant.decodeFromString<List<ASRProviderSetting>>(it).map { provider -> provider.transformAsrSecret(providerSecretCipher::decrypt) }
                 } ?: emptyList(),
                 selectedASRProviderId = preferences[SELECTED_ASR_PROVIDER]?.let { Uuid.parse(it) },
                 modeInjections = preferences[MODE_INJECTIONS]?.let {
@@ -590,12 +592,12 @@ class SettingsStore(
             preferences[AGENT_TOOLS] = JsonInstant.encodeToString(settings.agentTools)
             preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
             preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
-            preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders)
+            preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders.map { it.transformTtsSecret(providerSecretCipher::encrypt) })
             settings.selectedTTSProviderId?.let {
                 preferences[SELECTED_TTS_PROVIDER] = it.toString()
             } ?: preferences.remove(SELECTED_TTS_PROVIDER)
             preferences[DEFAULT_TTS_PLAYBACK_SPEED] = settings.defaultTTSPlaybackSpeed.coerceIn(0.5f, 2.0f)
-            preferences[ASR_PROVIDERS] = JsonInstant.encodeToString(settings.asrProviders)
+            preferences[ASR_PROVIDERS] = JsonInstant.encodeToString(settings.asrProviders.map { it.transformAsrSecret(providerSecretCipher::encrypt) })
             settings.selectedASRProviderId?.let {
                 preferences[SELECTED_ASR_PROVIDER] = it.toString()
             } ?: preferences.remove(SELECTED_ASR_PROVIDER)

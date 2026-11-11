@@ -112,6 +112,14 @@ private fun appSettingsLine(line: AppSettingsLine): ExtensionLine = when (line) 
     }
     is AppSettingsLine.SettingChanged -> settingLine(line)
     is AppSettingsLine.PartnerSetting -> partnerSettingLine(line)
+    is AppSettingsLine.TtsVoice -> {
+        val known = me.ayuilos.miffan.data.appsettings.TtsKeyService.of(line.type)?.voices?.firstOrNull { it.first == line.voice }
+        // Some services name voices by opaque ids; their description reads better there.
+        val shown = known?.second?.takeIf { line.voice.length >= 16 && line.voice.all(Char::isLetterOrDigit) } ?: line.voice
+        ExtensionLine(R.string.im_settings_tag_voice, known == null,
+            stringResource(R.string.im_settings_arrow, stringResource(R.string.im_settings_tts_voice), shown),
+            if (known == null) stringResource(R.string.im_settings_voice_unknown, line.service) else stringResource(R.string.im_settings_from, line.service))
+    }
     is AppSettingsLine.SearchSelected -> ExtensionLine(R.string.im_extension_tag_switch, false,
         stringResource(R.string.im_settings_search_in_use, line.service), null)
     is AppSettingsLine.DefaultModel -> ExtensionLine(R.string.im_settings_tag_default, false,
@@ -163,6 +171,13 @@ private fun settingLine(line: AppSettingsLine.SettingChanged): ExtensionLine {
             "deep" -> R.string.im_think_deep
             else -> R.string.im_think_auto
         }))
+        "tts_service" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_tts_service), line.value)
+        "asr_service" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_asr_service), line.value)
+        "tts_speed" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_tts_speed),
+            stringResource(R.string.im_settings_times, line.value))
+        "tts_pitch" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_tts_pitch), line.value)
+        "read_quoted" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_read_quoted), onOff(line.value))
+        "skip_brackets" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_skip_brackets), onOff(line.value))
         else -> Triple(R.string.im_extension_tag_update, line.key, line.value)
     }
     return ExtensionLine(tag, line.value == "off", stringResource(R.string.im_settings_arrow, name, value), null)

@@ -6,7 +6,7 @@ import me.rerere.search.SearchServiceOptions
 
 /*
  * Credentials besides provider keys, encrypted at rest with the same Keystore key: search service keys, MCP request
- * headers and OAuth tokens. Anything that can read the settings file (a workspace shell, a backup of the app's
+ * headers and OAuth tokens, and the keys of read-aloud and voice input services. Anything that can read the settings file (a workspace shell, a backup of the app's
  * files) then finds ciphertext only. Plain values written by older versions are read as they are and encrypted on
  * the next save.
  */

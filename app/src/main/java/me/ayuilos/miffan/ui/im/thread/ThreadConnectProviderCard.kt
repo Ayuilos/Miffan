@@ -55,6 +55,16 @@ import me.ayuilos.miffan.data.appsettings.CONNECT_PROVIDER_TOOL
 import me.ayuilos.miffan.data.appsettings.HeaderTarget
 import me.ayuilos.miffan.data.appsettings.SECRET_CARD_TOOLS
 import me.ayuilos.miffan.data.appsettings.SearchTarget
+import me.ayuilos.miffan.data.appsettings.VoiceKind
+import me.ayuilos.miffan.data.appsettings.VoiceSampler
+import me.ayuilos.miffan.data.appsettings.VoiceTarget
+import me.ayuilos.miffan.data.appsettings.asrApiKey
+import me.ayuilos.miffan.data.appsettings.displayName
+import me.ayuilos.miffan.data.appsettings.previewSaved
+import me.ayuilos.miffan.data.appsettings.ttsApiKey
+import me.rerere.hugeicons.stroke.Mic01
+import me.rerere.hugeicons.stroke.VolumeHigh
+import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.appsettings.resolveSecretTarget
 import me.ayuilos.miffan.data.appsettings.searchApiKey
 import me.rerere.hugeicons.stroke.Key01
@@ -145,7 +155,8 @@ internal fun ThreadConnectProviderCard(
         if (handedOff) cards.takeHandoff(tool.toolCallId)?.let { handed -> key = handed; connect(handed) }
     }
 
-    val rekey = (target as? ConnectTarget.Existing)?.hasKey == true || (target as? SearchTarget)?.hasKey == true
+    val rekey = (target as? ConnectTarget.Existing)?.hasKey == true || (target as? SearchTarget)?.hasKey == true ||
+        (target as? VoiceTarget)?.hasKey == true
     ImActionCard(
         title = when (target) {
             null -> stringResource(R.string.im_connect_title_unknown)
@@ -157,6 +168,7 @@ internal fun ThreadConnectProviderCard(
                 is ConnectTarget.Existing -> AutoAIIcon(target.name, Modifier.size(40.dp))
                 is SearchTarget -> ImCardIcon(HugeIcons.Search01)
                 is HeaderTarget -> ImCardIcon(HugeIcons.Key01)
+                is VoiceTarget -> ImCardIcon(if (target.kind == VoiceKind.TTS) HugeIcons.VolumeHigh else HugeIcons.Mic01)
                 else -> ImCardIcon(HugeIcons.CloudServer)
             }
         },
@@ -173,6 +185,10 @@ internal fun ThreadConnectProviderCard(
             rekey -> stringResource(R.string.im_connect_privacy_rekey, partner)
             else -> stringResource(R.string.im_connect_privacy, partner)
         })
+        // The sample is how the owner knows the key works; say so before they paste it.
+        if (target is VoiceTarget && target.kind == VoiceKind.TTS) {
+            CardNote(HugeIcons.VolumeHigh, MaterialTheme.colorScheme.onSurfaceVariant, stringResource(R.string.im_voice_sample_note))
+        }
         if (conversation == null) {
             CardNote(HugeIcons.LockPassword, MaterialTheme.colorScheme.onSurfaceVariant, stringResource(R.string.im_connect_phone_only))
             ImCardButtons { ImCardOutlinedButton(stringResource(if (target is HeaderTarget) R.string.im_secret_cancel else R.string.im_connect_cancel), onClick = { cancel() }) }
@@ -247,7 +263,7 @@ internal fun ThreadConnectProviderCard(
             else -> Unit
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            val keyUrl = (target as? ConnectTarget.Existing)?.keyUrl ?: (target as? SearchTarget)?.service?.keyUrl
+            val keyUrl = (target as? ConnectTarget.Existing)?.keyUrl ?: (target as? SearchTarget)?.service?.keyUrl ?: (target as? VoiceTarget)?.keyUrl
             when {
                 target is ConnectTarget.Custom -> {
                     val wrong = stringResource(R.string.im_connect_wrong_address)
@@ -280,23 +296,31 @@ internal fun ThreadConnectRecord(tool: UIMessagePart.Tool) {
     val searchId = result["search_service_id"]?.jsonPrimitive?.contentOrNull
     val search = remember(settings.searchServices, searchId) { settings.searchServices.firstOrNull { it.id.toString() == searchId } }
     val header = result["header"]?.jsonPrimitive?.contentOrNull
-    val name = provider?.name ?: search?.displayName
+    val voiceId = result["voice_service_id"]?.jsonPrimitive?.contentOrNull
+    val voiceKind = result["kind"]?.jsonPrimitive?.contentOrNull
+    val tts = remember(settings.ttsProviders, voiceId) { settings.ttsProviders.firstOrNull { it.id.toString() == voiceId } }
+    val asr = remember(settings.asrProviders, voiceId) { settings.asrProviders.firstOrNull { it.id.toString() == voiceId } }
+    val name = provider?.name ?: search?.displayName ?: tts?.displayName() ?: asr?.displayName()
         ?: (result["provider_name"] ?: result["name"])?.jsonPrimitive?.contentOrNull.orEmpty()
     val checked = result["status"]?.jsonPrimitive?.contentOrNull == "connected"
     val models = result["model_count"]?.jsonPrimitive?.intOrNull
-    val currentKey = provider?.currentKey() ?: search?.searchApiKey()
+    val currentKey = provider?.currentKey() ?: search?.searchApiKey() ?: tts?.ttsApiKey() ?: asr?.asrApiKey()
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             when {
                 header != null -> Icon(HugeIcons.Key01, null, Modifier.size(32.dp).padding(4.dp))
+                voiceId != null -> Icon(if (voiceKind == "asr") HugeIcons.Mic01 else HugeIcons.VolumeHigh, null, Modifier.size(32.dp).padding(4.dp))
                 searchId != null -> Icon(HugeIcons.Search01, null, Modifier.size(32.dp).padding(4.dp))
                 else -> AutoAIIcon(name, Modifier.size(32.dp))
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(if (header != null) stringResource(R.string.im_secret_header_saved, name, header)
-                        else stringResource(if (checked) R.string.im_connect_done else R.string.im_connect_saved_unchecked, name),
+                    Text(when {
+                        header != null -> stringResource(R.string.im_secret_header_saved, name, header)
+                        voiceKind == "asr" -> stringResource(R.string.im_voice_asr_saved, name)
+                        else -> stringResource(if (checked) R.string.im_connect_done else R.string.im_connect_saved_unchecked, name)
+                    },
                         style = MaterialTheme.typography.bodyMedium)
                     if (checked || header != null) Icon(HugeIcons.Tick01, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                 }
@@ -305,11 +329,34 @@ internal fun ThreadConnectRecord(tool: UIMessagePart.Tool) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            // Hear the voice again: read by the saved service, so the key never comes near the card.
+            if (tts != null) VoiceSampleButton(tts.id)
             if (checked && models != null) Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.extraLarge) {
                 Text(pluralStringResource(R.plurals.im_connect_models, models, models), Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
                     style = MaterialTheme.typography.labelMedium)
             }
         }
+    }
+}
+
+@Composable
+private fun VoiceSampleButton(serviceId: Uuid) {
+    val sampler = koinInject<VoiceSampler>()
+    val store = koinInject<me.ayuilos.miffan.data.datastore.SettingsStore>()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var playing by remember(serviceId) { mutableStateOf(false) }
+    var failed by remember(serviceId) { mutableStateOf(false) }
+    TextButton(enabled = !playing, onClick = {
+        playing = true
+        scope.launch {
+            failed = !sampler.previewSaved(store, serviceId)
+            playing = false
+        }
+    }) {
+        if (playing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+        else Icon(if (failed) HugeIcons.Alert02 else HugeIcons.VolumeHigh, null, Modifier.size(18.dp))
+        Spacer8()
+        Text(stringResource(if (failed) R.string.im_voice_sample_failed else R.string.im_voice_sample_play))
     }
 }
 

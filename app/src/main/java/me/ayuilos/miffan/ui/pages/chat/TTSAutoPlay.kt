@@ -8,8 +8,7 @@ import me.rerere.ai.core.MessageRole
 import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.data.model.Conversation
 import me.ayuilos.miffan.ui.context.LocalTTSState
-import me.ayuilos.miffan.utils.extractQuotedContentAsText
-import me.ayuilos.miffan.utils.removeBracketedContent
+import me.ayuilos.miffan.utils.forReadingAloud
 
 @Composable
 fun TTSAutoPlay(vm: ChatVM, setting: Settings, conversation: Conversation) {
@@ -22,14 +21,8 @@ fun TTSAutoPlay(vm: ChatVM, setting: Settings, conversation: Conversation) {
             if (updatedSetting.displaySetting.autoPlayTTSAfterGeneration) {
                 val lastMessage = currentConversation.currentMessages.lastOrNull()
                 if (lastMessage != null && lastMessage.role == MessageRole.ASSISTANT) {
-                    val text = lastMessage.toText()
-                    var textToSpeak = text
-                    if (updatedSetting.displaySetting.ttsOnlyReadQuoted) {
-                        textToSpeak = textToSpeak.extractQuotedContentAsText() ?: textToSpeak
-                    }
-                    if (updatedSetting.displaySetting.ttsOnlyReadOutsideBrackets) {
-                        textToSpeak = textToSpeak.removeBracketedContent() ?: textToSpeak
-                    }
+                    val display = updatedSetting.displaySetting
+                    val textToSpeak = lastMessage.toText().forReadingAloud(display.ttsOnlyReadQuoted, display.ttsOnlyReadOutsideBrackets)
                     if (textToSpeak.isNotBlank()) {
                         tts.speak(textToSpeak)
                     }

@@ -13,6 +13,10 @@ import kotlinx.serialization.json.jsonPrimitive
 import me.ayuilos.miffan.data.appsettings.AppSettingsPlan
 import me.ayuilos.miffan.data.appsettings.Appearance
 import me.ayuilos.miffan.data.appsettings.CHANGE_APP_SETTINGS_TOOL
+import me.ayuilos.miffan.data.appsettings.AsrKeyService
+import me.ayuilos.miffan.data.appsettings.CONNECT_VOICE_TOOL
+import me.ayuilos.miffan.data.appsettings.TtsKeyService
+import me.ayuilos.miffan.data.appsettings.resolveVoiceTarget
 import me.ayuilos.miffan.data.appsettings.MAX_CONTEXT_MESSAGES
 import me.ayuilos.miffan.data.appsettings.MAX_REPLY_LIMIT
 import me.ayuilos.miffan.data.appsettings.MIN_CONTEXT_MESSAGES
@@ -136,17 +140,6 @@ internal fun buildAppSettingsTools(
             InputSchema.Obj(
                 properties = buildJsonObject {
                     put("service_id", buildJsonObject { put("type", "string") })
-        put("font_size", buildJsonObject { put("type", "string"); put("enum", buildJsonArray { FontSize.entries.forEach { add(it.id) } }) })
-        put("latex", buildJsonObject { put("type", "boolean") })
-        put("code_wrap", buildJsonObject { put("type", "boolean") })
-        put("code_collapse", buildJsonObject { put("type", "boolean") })
-        put("crop_before_send", buildJsonObject { put("type", "boolean") })
-        put("theme", buildJsonObject { put("type", "string") })
-        put("color_mode", buildJsonObject { put("type", "string"); put("enum", buildJsonArray { add("system"); add("light"); add("dark") }) })
-        put("pure_black", buildJsonObject { put("type", "boolean") })
-        put("reply_done", buildJsonObject { put("type", "boolean") })
-        put("live_progress", buildJsonObject { put("type", "boolean") })
-        put("level", buildJsonObject { put("type", "string"); put("enum", buildJsonArray { add("quick"); add("auto"); add("more"); add("deep") }) })
                     put("type", buildJsonObject {
                         put("type", "string")
                         put("enum", buildJsonArray { SearchKeyService.entries.forEach { add(it.id) } })
@@ -157,6 +150,33 @@ internal fun buildAppSettingsTools(
         },
         needsApproval = { input -> resolveSearchTarget(input, settingsStore.settingsFlow.value) is ConnectTargetResult.Ok },
         execute = { input -> listOf(UIMessagePart.Text(secretCardFallback(resolveSearchTarget(input, settingsStore.settingsFlow.value)))) },
+    ),
+    Tool(
+        name = CONNECT_VOICE_TOOL,
+        description = """
+            Set up a voice service's API key for the owner when they ask: kind "tts" reads replies aloud, kind "asr" turns
+            their voice into text. Like connect_provider, the app shows the owner a secure card for the key; you never see
+            it, and must never ask for it in the chat. Give service_id (from app_settings_catalog voice, for one with
+            key_card true) or type (to add one). For tts the app reads a short sample with the key and the owner hears it.
+            Connecting does not put the service in use: propose select_tts_service / select_asr_service with
+            $CHANGE_APP_SETTINGS_TOOL for that.
+        """.trimIndent().replace("\n", " "),
+        parameters = {
+            InputSchema.Obj(
+                properties = buildJsonObject {
+                    put("kind", buildJsonObject { put("type", "string"); put("enum", buildJsonArray { add("tts"); add("asr") }) })
+                    put("service_id", buildJsonObject { put("type", "string") })
+                    put("type", buildJsonObject {
+                        put("type", "string")
+                        put("description", "tts: ${TtsKeyService.entries.joinToString { it.id }}; asr: ${AsrKeyService.entries.joinToString { it.id }}")
+                    })
+                    put("reason", buildJsonObject { put("type", "string"); put("description", "Why, in the owner's language") })
+                },
+                required = listOf("kind"),
+            )
+        },
+        needsApproval = { input -> resolveVoiceTarget(input, settingsStore.settingsFlow.value) is ConnectTargetResult.Ok },
+        execute = { input -> listOf(UIMessagePart.Text(secretCardFallback(resolveVoiceTarget(input, settingsStore.settingsFlow.value)))) },
     ),
     Tool(
         name = SET_SECRET_HEADER_TOOL,
@@ -192,7 +212,8 @@ internal fun buildAppSettingsTools(
             to another address, add, remove or adjust models, choose the model a partner uses, set the default models, and
             choose the web search service in use, and adjust how the app looks and notifies: font size, theme, light or dark,
             notifications, and what partners call the owner, and a partner's reply settings (yours or another partner's):
-            how long it thinks, how long a reply may get, how much of the chat it is sent, temperature, and memory.
+            how long it thinks, how long a reply may get, how much of the chat it is sent, temperature, and memory; and voice:
+            which service reads replies aloud and with which voice, how fast, what it skips, and which service does voice input.
             The owner confirms on a card listing every change; the changes apply together, in order, or not at all.
             Use ids and model_ids from app_settings_catalog (or the models a connect_provider result listed). Refer to a
             model as {provider_id, model_id}; a model added earlier in the same changes can be used right after.
@@ -277,14 +298,19 @@ private fun appSettingsChangeSchema() = buildJsonObject {
         "set_fast_thinking = level (quick, auto, more, deep) for the fast model; set_default_model role image = a model that can " +
         "draw, or \"none\"; set_partner_settings = partner_id and any of thinking (quick, auto, more, deep), reply_limit " +
         "($MIN_REPLY_LIMIT–$MAX_REPLY_LIMIT tokens or \"none\"), context_messages ($MIN_CONTEXT_MESSAGES–$MAX_CONTEXT_MESSAGES or \"all\"), " +
-        "temperature (0–2 or \"default\"), memory, shared_memory; nothing else, permissions are the owner's.")
+        "temperature (0–2 or \"default\"), memory, shared_memory; nothing else, permissions are the owner's; " +
+        "select_tts_service = service_id (a read-aloud service from catalog voice.tts, with a key); " +
+        "set_tts_voice = service_id (default: the one in use), voice (an id from its voices), pitch (0.5–2, system only); " +
+        "set_read_aloud = any of speed (0.5–2, 1 is normal), only_quoted, skip_brackets; " +
+        "select_asr_service = service_id (a voice input service from catalog voice.asr, with a key).")
     put("properties", buildJsonObject {
         put("type", buildJsonObject {
             put("type", "string")
             put("enum", buildJsonArray {
                 listOf("set_provider_enabled", "rename_provider", "set_provider_address", "add_models", "remove_models",
                     "update_model", "set_partner_model", "set_default_model", "select_search_service", "set_display", "set_theme",
-                    "set_notifications", "set_owner_name", "set_fast_thinking", "set_partner_settings").forEach { add(it) }
+                    "set_notifications", "set_owner_name", "set_fast_thinking", "set_partner_settings", "select_tts_service", "set_tts_voice",
+                    "set_read_aloud", "select_asr_service").forEach { add(it) }
             })
         })
         put("provider_id", buildJsonObject { put("type", "string") })
@@ -312,6 +338,28 @@ private fun appSettingsChangeSchema() = buildJsonObject {
         put("image_input", buildJsonObject { put("type", "boolean") })
         put("partner_id", buildJsonObject { put("type", "string") })
         put("service_id", buildJsonObject { put("type", "string") })
+        put("font_size", buildJsonObject { put("type", "string"); put("enum", buildJsonArray { FontSize.entries.forEach { add(it.id) } }) })
+        put("latex", buildJsonObject { put("type", "boolean") })
+        put("code_wrap", buildJsonObject { put("type", "boolean") })
+        put("code_collapse", buildJsonObject { put("type", "boolean") })
+        put("crop_before_send", buildJsonObject { put("type", "boolean") })
+        put("theme", buildJsonObject { put("type", "string") })
+        put("color_mode", buildJsonObject { put("type", "string"); put("enum", buildJsonArray { add("system"); add("light"); add("dark") }) })
+        put("pure_black", buildJsonObject { put("type", "boolean") })
+        put("reply_done", buildJsonObject { put("type", "boolean") })
+        put("live_progress", buildJsonObject { put("type", "boolean") })
+        put("level", buildJsonObject { put("type", "string"); put("enum", buildJsonArray { add("quick"); add("auto"); add("more"); add("deep") }) })
+        put("thinking", buildJsonObject { put("type", "string"); put("enum", buildJsonArray { add("quick"); add("auto"); add("more"); add("deep") }) })
+        put("reply_limit", buildJsonObject { put("description", "tokens, or \"none\"") })
+        put("context_messages", buildJsonObject { put("description", "a number, or \"all\"") })
+        put("temperature", buildJsonObject { put("description", "0–2, or \"default\"") })
+        put("memory", buildJsonObject { put("type", "boolean") })
+        put("shared_memory", buildJsonObject { put("type", "boolean") })
+        put("voice", buildJsonObject { put("type", "string") })
+        put("speed", buildJsonObject { put("type", "number") })
+        put("pitch", buildJsonObject { put("type", "number") })
+        put("only_quoted", buildJsonObject { put("type", "boolean") })
+        put("skip_brackets", buildJsonObject { put("type", "boolean") })
         put("role", buildJsonObject {
             put("type", "string")
             put("enum", buildJsonArray { DefaultModelRole.entries.forEach { add(it.id) } })

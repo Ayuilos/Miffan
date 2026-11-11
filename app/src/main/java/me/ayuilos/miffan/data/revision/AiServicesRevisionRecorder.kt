@@ -21,6 +21,14 @@ import me.ayuilos.miffan.data.datastore.Settings
 import me.ayuilos.miffan.utils.JsonInstant
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
+import me.rerere.asr.ASRProviderSetting
+import me.rerere.tts.provider.TTSProviderSetting
+import me.ayuilos.miffan.data.appsettings.address
+import me.ayuilos.miffan.data.appsettings.asrApiKey
+import me.ayuilos.miffan.data.appsettings.transformAsrSecret
+import me.ayuilos.miffan.data.appsettings.transformTtsSecret
+import me.ayuilos.miffan.data.appsettings.ttsApiKey
+import me.ayuilos.miffan.data.appsettings.voiceOriginOf
 import kotlin.uuid.Uuid
 
 private const val TAG = "AiServicesRevisions"
@@ -78,21 +86,30 @@ class AiServicesRevisionRecorder(
     }
 }
 
+/**
+ * Keys of things that come and go (a provider, its model list, a voice service); every other key is a fixed setting
+ * the current format always writes, so one missing from a snapshot only means an older format.
+ */
+internal fun isListedKey(key: String) = DYNAMIC_PREFIXES.any { key.startsWith(it) }
+
+private val DYNAMIC_PREFIXES = listOf("provider:", "models:", "ttsp:", "asrp:")
+
 /** True when [snapshot] lacks a fixed setting [current] has: it was written by an older format. */
 private fun missesKeysOf(snapshot: String, current: String): Boolean {
     val old = JsonInstant.parseToJsonElement(snapshot).jsonObject.keys
-    return JsonInstant.parseToJsonElement(current).jsonObject.keys.any { key ->
-        key !in old && !key.startsWith("provider:") && !key.startsWith("models:")
-    }
+    return JsonInstant.parseToJsonElement(current).jsonObject.keys.any { key -> key !in old && !isListedKey(key) }
 }
 
 /** What the history follows; a settings write that leaves all of it alone records nothing. */
 private fun Settings.trackedPart(): List<Any?> = listOf(
     providers, DefaultModelRole.entries.map { it.get(this) }, selectedSearchId(), themeId, dynamicColor, fastModelReasoningLevel,
     displaySetting.let { listOf(it.fontSizeRatio, it.enableLatexRendering, it.codeBlockAutoWrap, it.codeBlockAutoCollapse, it.skipCropImage,
-        it.enableNotificationOnMessageGeneration, it.enableLiveUpdateNotification, it.userNickname) },
+        it.enableNotificationOnMessageGeneration, it.enableLiveUpdateNotification, it.userNickname, it.ttsOnlyReadQuoted,
+        it.ttsOnlyReadOutsideBrackets) },
+    ttsProviders, selectedTTSProviderId, defaultTTSPlaybackSpeed, asrProviders, selectedASRProviderId,
 )
 
+private val VOICE_SECRETS = setOf("apiKey")
 private val PROVIDER_SECRETS = setOf("apiKey", "privateKey", "serviceAccountEmail", "codexCredentials")
 private val MODEL_PRIVATE = setOf("customHeaders", "customBodies", "providerOverwrite")
 
@@ -122,6 +139,18 @@ fun aiServicesSnapshot(settings: Settings, appearance: Appearance? = null): Stri
     put("theme:id", JsonPrimitive(settings.themeId))
     put("theme:dynamic", JsonPrimitive(settings.dynamicColor))
     put("fast:thinking", JsonPrimitive(settings.fastModelReasoningLevel.name))
+    put("display:tts_quoted", JsonPrimitive(display.ttsOnlyReadQuoted))
+    put("display:tts_brackets", JsonPrimitive(display.ttsOnlyReadOutsideBrackets))
+    put("tts:selected", JsonPrimitive(settings.selectedTTSProviderId.toString()))
+    put("tts:speed", JsonPrimitive(settings.defaultTTSPlaybackSpeed))
+    put("asr:selected", settings.selectedASRProviderId?.let { JsonPrimitive(it.toString()) } ?: JsonNull)
+    // Voice services without their keys, one key each: a key entered on a card is never part of a version.
+    settings.ttsProviders.forEach { service ->
+        put("ttsp:${service.id}", JsonObject(JsonInstant.encodeToJsonElement(TTSProviderSetting.serializer(), service).jsonObject - VOICE_SECRETS))
+    }
+    settings.asrProviders.forEach { service ->
+        put("asrp:${service.id}", JsonObject(JsonInstant.encodeToJsonElement(ASRProviderSetting.serializer(), service).jsonObject - VOICE_SECRETS))
+    }
     appearance?.let {
         put("appearance:color_mode", JsonPrimitive(it.colorMode))
         put("appearance:amoled", JsonPrimitive(it.amoled))
@@ -161,8 +190,11 @@ fun Settings.restoreAiServices(snapshot: String): Settings {
             enableNotificationOnMessageGeneration = bool("notify:reply_done") ?: d.enableNotificationOnMessageGeneration,
             enableLiveUpdateNotification = bool("notify:live") ?: d.enableLiveUpdateNotification,
             userNickname = text("owner:name") ?: d.userNickname,
+            ttsOnlyReadQuoted = bool("display:tts_quoted") ?: d.ttsOnlyReadQuoted,
+            ttsOnlyReadOutsideBrackets = bool("display:tts_brackets") ?: d.ttsOnlyReadOutsideBrackets,
         ))
     }
+    restored = restored.restoreVoice(values)
     text("theme:id")?.let { restored = restored.copy(themeId = it) }
     bool("theme:dynamic")?.let { restored = restored.copy(dynamicColor = it) }
     text("fast:thinking")?.let { name ->
@@ -173,6 +205,35 @@ fun Settings.restoreAiServices(snapshot: String): Settings {
         if (index >= 0) restored = restored.copy(searchServiceSelected = index)
     }
     return restored
+}
+
+/**
+ * Voice services come back with their keys as they are now; one that would send requests elsewhere than now loses its
+ * key. Services the snapshot does not know stay: they were added later, on a card or the settings page.
+ */
+private fun Settings.restoreVoice(values: JsonObject): Settings {
+    val tts = ttsProviders.map { current ->
+        val saved = values["ttsp:${current.id}"] as? JsonObject ?: return@map current
+        val decoded = runCatching { JsonInstant.decodeFromJsonElement(TTSProviderSetting.serializer(), saved) }.getOrNull() ?: return@map current
+        val sameHost = voiceOriginOf(decoded.address().orEmpty()) == voiceOriginOf(current.address().orEmpty())
+        decoded.transformTtsSecret { if (sameHost) current.ttsApiKey().orEmpty() else "" }
+    }
+    val asr = asrProviders.map { current ->
+        val saved = values["asrp:${current.id}"] as? JsonObject ?: return@map current
+        val decoded = runCatching { JsonInstant.decodeFromJsonElement(ASRProviderSetting.serializer(), saved) }.getOrNull() ?: return@map current
+        val sameHost = voiceOriginOf(decoded.address()) == voiceOriginOf(current.address())
+        decoded.transformAsrSecret { if (sameHost) current.asrApiKey() else "" }
+    }
+    fun id(key: String) = (values[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+    val ttsSelected = id("tts:selected")?.takeIf { selected -> tts.any { it.id == selected } } ?: selectedTTSProviderId
+    val asrSelected = when (values["asr:selected"]) {
+        null -> selectedASRProviderId
+        is JsonNull -> null
+        else -> id("asr:selected")?.takeIf { selected -> asr.any { it.id == selected } } ?: selectedASRProviderId
+    }
+    val speed = (values["tts:speed"] as? JsonPrimitive)?.floatOrNull?.coerceIn(0.5f, 2f) ?: defaultTTSPlaybackSpeed
+    return copy(ttsProviders = tts, asrProviders = asr, selectedTTSProviderId = ttsSelected, selectedASRProviderId = asrSelected,
+        defaultTTSPlaybackSpeed = speed)
 }
 
 /** The light / dark choice a snapshot holds, or null for snapshots written before it was kept. */

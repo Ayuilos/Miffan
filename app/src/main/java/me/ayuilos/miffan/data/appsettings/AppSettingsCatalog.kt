@@ -109,6 +109,50 @@ fun buildAppSettingsCatalog(settings: Settings, appearance: Appearance? = null, 
             }
         }
     }
+    putJsonObject("voice") {
+        putJsonObject("tts") {
+            put("speed", settings.defaultTTSPlaybackSpeed)
+            put("only_quoted", settings.displaySetting.ttsOnlyReadQuoted)
+            put("skip_brackets", settings.displaySetting.ttsOnlyReadOutsideBrackets)
+            putJsonArray("services") {
+                settings.ttsProviders.forEach { service ->
+                    addJsonObject {
+                        put("id", service.id.toString())
+                        put("name", service.displayName())
+                        put("type", service.typeId())
+                        service.address()?.let(::voiceOriginOf)?.let { put("host", it) }
+                        service.ttsApiKey()?.let { put("key", it.setOrUnset()) }
+                        put("in_use", service.id == settings.selectedTTSProviderId)
+                        put("key_card", TtsKeyService.of(service) != null)
+                        service.voice()?.let { put("voice", it) }
+                        if (service is me.rerere.tts.provider.TTSProviderSetting.SystemTTS) put("pitch", service.pitch)
+                        voicesFor(service).takeIf { it.isNotEmpty() }?.let { voices ->
+                            putJsonArray("voices") {
+                                voices.forEach { (id, about) -> addJsonObject { put("id", id); about?.let { put("about", it) } } }
+                            }
+                        }
+                    }
+                }
+            }
+            putJsonArray("can_connect") { TtsKeyService.entries.forEach { add(it.id) } }
+        }
+        putJsonObject("asr") {
+            putJsonArray("services") {
+                settings.asrProviders.forEach { service ->
+                    addJsonObject {
+                        put("id", service.id.toString())
+                        put("name", service.displayName())
+                        put("type", service.typeId())
+                        voiceOriginOf(service.address())?.let { put("host", it) }
+                        put("key", service.asrApiKey().setOrUnset())
+                        put("in_use", service.id == settings.selectedASRProviderId)
+                        put("key_card", AsrKeyService.of(service) != null)
+                    }
+                }
+            }
+            putJsonArray("can_connect") { AsrKeyService.entries.forEach { add(it.id) } }
+        }
+    }
     putJsonArray("search_services") {
         settings.searchServices.forEachIndexed { index, options ->
             addJsonObject {
@@ -142,6 +186,9 @@ fun buildAppSettingsCatalog(settings: Settings, appearance: Appearance? = null, 
             "context_messages is how many recent messages it is sent; temperature \"default\" leaves it to the model; " +
             "shared_memory means it uses the memory all partners share instead of its own.")
         add("Search services with key_card true take a key through connect_search_service; other kinds are set up on their settings page.")
+        add("voice.tts reads replies aloud (type system is the phone's own voice, no key); voice.asr turns the owner's voice into " +
+            "text. Services with key_card true, and the types in can_connect, take a key through connect_voice_service. A voice " +
+            "outside a service's voices list may not work. speed applies to every read-aloud service.")
         add("Models are referred to as {provider_id, model_id}; only the first $CATALOG_MODELS_PER_PROVIDER of a provider are listed.")
     }
 }

@@ -117,7 +117,7 @@ private fun resolveCustom(custom: JsonObject): ConnectTargetResult {
 fun ConnectTarget.providerWith(settings: Settings, key: String): ProviderSetting? = when (this) {
     is ConnectTarget.Existing -> settings.providers.firstOrNull { it.id == providerId }?.withApiKey(key)
     is ConnectTarget.Custom -> newCustomProvider(Uuid.random(), key)
-    is SearchTarget, is HeaderTarget -> null
+    is SearchTarget, is HeaderTarget, is VoiceTarget -> null
 }
 
 private fun ConnectTarget.Custom.newCustomProvider(id: Uuid, key: String): ProviderSetting = when (api) {
@@ -150,7 +150,7 @@ fun Settings.withConnectedProvider(target: ConnectTarget, key: String, newId: Uu
             val added = target.newCustomProvider(newId, trimmed)
             ConnectSave.Saved(copy(providers = providers + added), added)
         }
-        is SearchTarget, is HeaderTarget -> ConnectSave.TargetChanged
+        is SearchTarget, is HeaderTarget, is VoiceTarget -> ConnectSave.TargetChanged
     }
 }
 

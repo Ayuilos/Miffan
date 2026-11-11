@@ -126,6 +126,10 @@ sealed interface AppSettingsLine {
     @Serializable @SerialName("partner_setting")
     data class PartnerSetting(val partnerId: String, val partner: String, val key: String, val value: String) : AppSettingsLine
 
+    /** The voice a read-aloud service reads with; [type] tells whether the app knows the voice. */
+    @Serializable @SerialName("tts_voice")
+    data class TtsVoice(val service: String, val type: String, val voice: String) : AppSettingsLine
+
     @Serializable @SerialName("search_selected")
     data class SearchSelected(val service: String) : AppSettingsLine
 
@@ -258,6 +262,22 @@ private fun applyOne(change: JsonObject, settings: Settings, catalog: ModelCatal
         }
         "set_display" -> setDisplay(change, settings)
         "set_partner_settings" -> setPartnerSettings(change, settings)
+        "select_tts_service" -> {
+            val service = settings.ttsService(change)
+            if (service.ttsApiKey()?.isBlank() == true) fail("${service.displayName()} has no key yet; use $CONNECT_VOICE_TOOL first.")
+            if (service.id == settings.selectedTTSProviderId) Step(settings, null)
+            else Step(settings.copy(selectedTTSProviderId = service.id), AppSettingsLine.SettingChanged("tts_service", service.displayName()))
+        }
+        "set_tts_voice" -> setTtsVoice(change, settings)
+        "set_read_aloud" -> setReadAloud(change, settings)
+        "select_asr_service" -> {
+            val id = change.text("service_id")?.let { runCatching { Uuid.parse(it.trim()) }.getOrNull() }
+            val service = id?.let { settings.asrProviders.firstOrNull { it.id == id } }
+                ?: fail("No voice input service has this service_id. Call app_settings_catalog for the ids.")
+            if (service.asrApiKey().isBlank()) fail("${service.displayName()} has no key yet; use $CONNECT_VOICE_TOOL first.")
+            if (service.id == settings.selectedASRProviderId) Step(settings, null)
+            else Step(settings.copy(selectedASRProviderId = service.id), AppSettingsLine.SettingChanged("asr_service", service.displayName()))
+        }
         "set_notifications" -> {
             val display = settings.displaySetting
             val replyDone = change.bool("reply_done") ?: display.enableNotificationOnMessageGeneration
@@ -287,6 +307,66 @@ private fun applyOne(change: JsonObject, settings: Settings, catalog: ModelCatal
         null -> fail("type is required.")
         else -> fail("Unknown type \"$type\".")
     }
+}
+
+private const val MAX_VOICE_ID = 100
+
+/** A read-aloud service by service_id, or the one in use when none is given. */
+private fun Settings.ttsService(change: JsonObject, defaultToSelected: Boolean = false): me.rerere.tts.provider.TTSProviderSetting {
+    val raw = change.text("service_id")
+    if (raw == null && defaultToSelected) {
+        return ttsProviders.firstOrNull { it.id == selectedTTSProviderId } ?: fail("No read-aloud service is in use; give service_id.")
+    }
+    val id = raw?.let { runCatching { Uuid.parse(it.trim()) }.getOrNull() }
+    return id?.let { ttsProviders.firstOrNull { it.id == id } } ?: fail("No read-aloud service has this service_id. Call app_settings_catalog for the ids.")
+}
+
+/** A voice outside the service's list is allowed (services add voices often); the card marks it as unknown. */
+private fun setTtsVoice(change: JsonObject, settings: Settings): Step {
+    val service = settings.ttsService(change, defaultToSelected = true)
+    val voice = change.text("voice")?.trim()
+    val pitch = change["pitch"]?.let { value ->
+        if (service !is me.rerere.tts.provider.TTSProviderSetting.SystemTTS) fail("pitch only applies to the phone's own voice (type system).")
+        (value as? JsonPrimitive)?.takeUnless { it.isString }?.content?.toFloatOrNull()?.takeIf { it in 0.5f..2f }
+            ?.let { kotlin.math.round(it * 100) / 100 } ?: fail("pitch must be a number from 0.5 to 2.")
+    }
+    if (voice == null && pitch == null) fail("Give voice${if (service is me.rerere.tts.provider.TTSProviderSetting.SystemTTS) " or pitch" else ""}.")
+    var updated = service
+    val lines = mutableListOf<AppSettingsLine>()
+    if (voice != null) {
+        if (service.voice() == null) fail("${service.displayName()} has no voice to pick here; the speech settings page sets it up.")
+        if (voice.length > MAX_VOICE_ID || voice.any { it.isISOControl() }) fail("voice must be a voice id from the catalog.")
+        if (voice != service.voice()) {
+            updated = updated.withVoice(voice)
+            lines += AppSettingsLine.TtsVoice(service.displayName(), service.typeId(), voice)
+        }
+    }
+    if (pitch != null && updated is me.rerere.tts.provider.TTSProviderSetting.SystemTTS && pitch != updated.pitch) {
+        updated = updated.copy(pitch = pitch)
+        lines += AppSettingsLine.SettingChanged("tts_pitch", pitch.toString())
+    }
+    return Step(settings.copy(ttsProviders = settings.ttsProviders.map { if (it.id == service.id) updated else it }), null, extra = lines)
+}
+
+private fun setReadAloud(change: JsonObject, settings: Settings): Step {
+    val display = settings.displaySetting
+    val speed = change["speed"]?.let { value ->
+        (value as? JsonPrimitive)?.takeUnless { it.isString }?.content?.toFloatOrNull()?.takeIf { it in 0.5f..2f }
+            ?.let { kotlin.math.round(it * 100) / 100 } ?: fail("speed must be a number from 0.5 to 2 (1 is normal).")
+    }
+    val quoted = change["only_quoted"]?.let { change.bool("only_quoted") ?: fail("only_quoted must be true or false.") }
+    val brackets = change["skip_brackets"]?.let { change.bool("skip_brackets") ?: fail("skip_brackets must be true or false.") }
+    if (speed == null && quoted == null && brackets == null) fail("Give speed, only_quoted or skip_brackets.")
+    val lines = buildList {
+        if (speed != null && speed != settings.defaultTTSPlaybackSpeed) add(AppSettingsLine.SettingChanged("tts_speed", speed.toString()))
+        if (quoted != null && quoted != display.ttsOnlyReadQuoted) add(AppSettingsLine.SettingChanged("read_quoted", onOff(quoted)))
+        if (brackets != null && brackets != display.ttsOnlyReadOutsideBrackets) add(AppSettingsLine.SettingChanged("skip_brackets", onOff(brackets)))
+    }
+    return Step(settings.copy(
+        defaultTTSPlaybackSpeed = speed ?: settings.defaultTTSPlaybackSpeed,
+        displaySetting = display.copy(ttsOnlyReadQuoted = quoted ?: display.ttsOnlyReadQuoted,
+            ttsOnlyReadOutsideBrackets = brackets ?: display.ttsOnlyReadOutsideBrackets),
+    ), null, extra = lines)
 }
 
 internal const val MIN_REPLY_LIMIT = 1024

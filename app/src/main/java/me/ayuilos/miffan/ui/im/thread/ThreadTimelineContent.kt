@@ -31,6 +31,7 @@ import me.ayuilos.miffan.Screen
 import kotlin.uuid.Uuid
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalSettings
+import me.ayuilos.miffan.utils.forReadingAloud
 import me.ayuilos.miffan.ui.im.ImPressMenu
 import me.ayuilos.miffan.ui.im.ImPressMenuItem
 import me.ayuilos.miffan.ui.im.imLongPress
@@ -138,6 +139,7 @@ internal fun ThreadMessageBubble(
 
     val user = item.message.role == MessageRole.USER
     val partners = LocalSettings.current.assistants
+    val display = LocalSettings.current.displaySetting
     val parts = item.message.parts
     val liveComputer = computerWorkIsLive(parts, item.streaming)
     val steps = remember(parts) { if (user) emptyList() else threadSteps(parts) }
@@ -244,7 +246,8 @@ internal fun ThreadMessageBubble(
                     ImPressMenuItem(if (speaking) HugeIcons.VolumeOff else HugeIcons.VolumeHigh,
                         stringResource(if (speaking) R.string.im_thread_stop_reading else R.string.im_thread_read_aloud)) {
                         menu.close()
-                        if (speaking) tts.stop() else tts.speak(item.message.previewText())
+                        if (speaking) tts.stop()
+                        else tts.speak(item.message.previewText().forReadingAloud(display.ttsOnlyReadQuoted, display.ttsOnlyReadOutsideBrackets))
                     }
                 }
                 ImPressMenuItem(HugeIcons.Filter, stringResource(R.string.im_thread_filter)) { menu.close(); onFilter() }

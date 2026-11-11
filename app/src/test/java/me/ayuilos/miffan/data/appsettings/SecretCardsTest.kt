@@ -144,7 +144,7 @@ class SecretCardsTest {
 
     @Test
     fun everySecureCardToolIsGuarded() {
-        assertEquals(SECRET_CARD_TOOLS, setOf(CONNECT_PROVIDER_TOOL, CONNECT_SEARCH_TOOL, SET_SECRET_HEADER_TOOL))
+        assertEquals(SECRET_CARD_TOOLS, setOf(CONNECT_PROVIDER_TOOL, CONNECT_SEARCH_TOOL, SET_SECRET_HEADER_TOOL, CONNECT_VOICE_TOOL))
         // Every secure card tool is covered by the guard that only lets the card itself settle the call.
         assertNull(secretCardDecisionIds("c1", setOf("c1"), setOf("c1"), settles = true, fromCard = false))
     }

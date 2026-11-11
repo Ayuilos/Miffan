@@ -14,6 +14,23 @@ import kotlin.uuid.Uuid
 
 const val CONNECT_SEARCH_TOOL = "connect_search_service"
 const val SET_SECRET_HEADER_TOOL = "set_secret_header"
+const val CONNECT_VOICE_TOOL = "connect_voice_service"
+
+enum class VoiceKind(val id: String) { TTS("tts"), ASR("asr") }
+
+/**
+ * A voice service's key: read aloud ([VoiceKind.TTS]) or voice input ([VoiceKind.ASR]), for a service already in the
+ * settings ([serviceId]) or a new one of [type].
+ */
+data class VoiceTarget(
+    val kind: VoiceKind,
+    val serviceId: Uuid?,
+    val type: String,
+    override val name: String,
+    override val origin: String,
+    val keyUrl: String?,
+    val hasKey: Boolean,
+) : ConnectTarget
 
 /** A search service's key, for a service already in the settings ([serviceId]) or a new one of [service]. */
 data class SearchTarget(
@@ -47,6 +64,7 @@ fun resolveSecretTarget(toolName: String, input: JsonElement, settings: Settings
     CONNECT_PROVIDER_TOOL -> resolveConnectTarget(input, settings)
     CONNECT_SEARCH_TOOL -> resolveSearchTarget(input, settings)
     SET_SECRET_HEADER_TOOL -> resolveHeaderTarget(input, settings)
+    CONNECT_VOICE_TOOL -> resolveVoiceTarget(input, settings)
     else -> ConnectTargetResult.Invalid("Not a secure card.")
 }
 
@@ -72,6 +90,55 @@ fun resolveSearchTarget(input: JsonElement, settings: Settings): ConnectTargetRe
             hasKey = !existing.searchApiKey().isNullOrBlank()))
     }
     return ConnectTargetResult.Ok(SearchTarget(null, service, service.create().displayName, service.origin, hasKey = false))
+}
+
+fun resolveVoiceTarget(input: JsonElement, settings: Settings): ConnectTargetResult {
+    val params = input as? JsonObject ?: return ConnectTargetResult.Invalid("Arguments must be an object.")
+    val kind = VoiceKind.entries.firstOrNull { it.id == params.text("kind")?.trim()?.lowercase() }
+        ?: return ConnectTargetResult.Invalid("kind must be tts (read aloud) or asr (voice input).")
+    val serviceId = params.text("service_id")
+    val type = params.text("type")
+    if ((serviceId == null) == (type == null)) return ConnectTargetResult.Invalid("Give either service_id or type.")
+    val notByCard = "This service is set up on the speech settings page, not with a key card."
+    return when (kind) {
+        VoiceKind.TTS -> {
+            val existing = if (serviceId != null) {
+                val id = runCatching { Uuid.parse(serviceId.trim()) }.getOrNull()
+                val setting = id?.let { settings.ttsProviders.firstOrNull { it.id == id } }
+                    ?: return ConnectTargetResult.Invalid("No read-aloud service has this service_id. Call app_settings_catalog for the ids.")
+                if (TtsKeyService.of(setting) == null) return ConnectTargetResult.Invalid(notByCard)
+                setting
+            } else {
+                val service = TtsKeyService.of(type)
+                    ?: return ConnectTargetResult.Invalid("type must be one of ${TtsKeyService.entries.joinToString { it.id }} for tts.")
+                // One of each kind is enough; replacing the key of the existing one avoids look-alike duplicates.
+                settings.ttsProviders.firstOrNull { TtsKeyService.of(it) == service }
+                    ?: return ConnectTargetResult.Ok(VoiceTarget(kind, null, service.id, service.create().displayName(), service.origin,
+                        service.keyUrl, hasKey = false))
+            }
+            val service = TtsKeyService.of(existing)!!
+            ConnectTargetResult.Ok(VoiceTarget(kind, existing.id, service.id, existing.displayName(), service.origin, service.keyUrl,
+                hasKey = !existing.ttsApiKey().isNullOrBlank()))
+        }
+        VoiceKind.ASR -> {
+            val existing = if (serviceId != null) {
+                val id = runCatching { Uuid.parse(serviceId.trim()) }.getOrNull()
+                val setting = id?.let { settings.asrProviders.firstOrNull { it.id == id } }
+                    ?: return ConnectTargetResult.Invalid("No voice input service has this service_id. Call app_settings_catalog for the ids.")
+                if (AsrKeyService.of(setting) == null) return ConnectTargetResult.Invalid(notByCard)
+                setting
+            } else {
+                val service = AsrKeyService.of(type)
+                    ?: return ConnectTargetResult.Invalid("type must be one of ${AsrKeyService.entries.joinToString { it.id }} for asr.")
+                settings.asrProviders.firstOrNull { AsrKeyService.of(it) == service }
+                    ?: return ConnectTargetResult.Ok(VoiceTarget(kind, null, service.id, service.create().displayName(), service.origin,
+                        service.keyUrl, hasKey = false))
+            }
+            val service = AsrKeyService.of(existing)!!
+            ConnectTargetResult.Ok(VoiceTarget(kind, existing.id, service.id, existing.displayName(), service.origin, service.keyUrl,
+                hasKey = existing.asrApiKey().isNotBlank()))
+        }
+    }
 }
 
 private val HEADER_NAME = Regex("^[A-Za-z0-9][A-Za-z0-9-]{0,63}$")
@@ -143,6 +210,55 @@ fun Settings.withSearchKey(target: SearchTarget, key: String, checked: Boolean, 
         if (!checked) put("note", "The owner saved the key without a test search because the service could not be reached.")
         if (!selected) put("next", "It is not the search service in use. To switch to it, propose select_search_service with " +
             "$CHANGE_APP_SETTINGS_TOOL if the owner wants that.")
+    }.toString())
+}
+
+/**
+ * Stores [key] for a voice service: the existing entry's key is replaced, or a new entry is added. Not put in use:
+ * that is a change the owner confirms on its own card.
+ */
+fun Settings.withVoiceKey(target: VoiceTarget, key: String, checked: Boolean, newId: Uuid = Uuid.random()): SecretSave {
+    val trimmed = key.trim()
+    val id = target.serviceId ?: newId
+    val updated = when (target.kind) {
+        VoiceKind.TTS -> {
+            val service = TtsKeyService.of(target.type) ?: return SecretSave.TargetChanged
+            if (target.serviceId != null) {
+                val current = ttsProviders.firstOrNull { it.id == target.serviceId }
+                if (current == null || TtsKeyService.of(current) != service) return SecretSave.TargetChanged
+                copy(ttsProviders = ttsProviders.map { if (it.id == current.id) it.transformTtsSecret { trimmed } else it })
+            } else copy(ttsProviders = ttsProviders + service.newSetting(newId, trimmed))
+        }
+        VoiceKind.ASR -> {
+            val service = AsrKeyService.of(target.type) ?: return SecretSave.TargetChanged
+            if (target.serviceId != null) {
+                val current = asrProviders.firstOrNull { it.id == target.serviceId }
+                if (current == null || AsrKeyService.of(current) != service) return SecretSave.TargetChanged
+                copy(asrProviders = asrProviders.map { if (it.id == current.id) it.transformAsrSecret { trimmed } else it })
+            } else copy(asrProviders = asrProviders + service.newSetting(newId, trimmed))
+        }
+    }
+    val inUse = when (target.kind) {
+        VoiceKind.TTS -> updated.selectedTTSProviderId == id
+        VoiceKind.ASR -> updated.selectedASRProviderId == id
+    }
+    val select = if (target.kind == VoiceKind.TTS) "select_tts_service" else "select_asr_service"
+    return SecretSave.Saved(updated, buildJsonObject {
+        put("status", when {
+            target.kind == VoiceKind.ASR -> "saved"
+            checked -> "connected"
+            else -> "saved_unchecked"
+        })
+        put("kind", target.kind.id)
+        put("voice_service_id", id.toString())
+        put("name", target.name)
+        put("in_use", inUse)
+        when {
+            target.kind == VoiceKind.ASR -> put("note", "There is no way to check a voice input key here; ask the owner to try voice input once it is in use.")
+            checked -> put("note", "The owner heard a sample read with this key.")
+            else -> put("note", "The owner saved the key without a sample because the service could not be reached.")
+        }
+        if (!inUse) put("next", "It is not in use yet. To use it, propose $select with $CHANGE_APP_SETTINGS_TOOL if the owner wants that.")
     }.toString())
 }
 

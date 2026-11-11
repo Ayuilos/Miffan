@@ -16,7 +16,7 @@ import me.rerere.ai.provider.Model
 import kotlin.uuid.Uuid
 
 /** Tool calls that are settled only by the app, from a card the owner fills on the phone. */
-val SECRET_CARD_TOOLS: Set<String> = setOf(CONNECT_PROVIDER_TOOL, CONNECT_SEARCH_TOOL, SET_SECRET_HEADER_TOOL)
+val SECRET_CARD_TOOLS: Set<String> = setOf(CONNECT_PROVIDER_TOOL, CONNECT_SEARCH_TOOL, SET_SECRET_HEADER_TOOL, CONNECT_VOICE_TOOL)
 
 /**
  * Guards a decision on [toolCallId] (plus [alsoIds] decided with it) against the secure cards among [secretIds].
@@ -49,6 +49,7 @@ class ProviderConnectCards(
     private val connector: OnboardingConnector,
     private val chatService: ChatService,
     private val scope: CoroutineScope,
+    private val voice: VoiceSampler? = null,
 ) {
     sealed interface Phase {
         data object Checking : Phase
@@ -97,6 +98,10 @@ class ProviderConnectCards(
                         }
                         return@launch
                     }
+                    is VoiceTarget -> {
+                        connectVoice(conversationId, toolCallId, target, trimmed)
+                        return@launch
+                    }
                     // Nothing to check a header against without calling the service's tools; it is stored as given.
                     is HeaderTarget -> {
                         saveSecret(conversationId, toolCallId) { it.withSecretHeader(target, trimmed) }
@@ -135,6 +140,7 @@ class ProviderConnectCards(
         jobs[toolCallId] = scope.launch {
             try {
                 if (target is SearchTarget) saveSecret(conversationId, toolCallId) { it.withSearchKey(target, trimmed, checked = false) }
+                else if (target is VoiceTarget) saveSecret(conversationId, toolCallId) { it.withVoiceKey(target, trimmed, checked = false) }
                 else save(conversationId, toolCallId, target, trimmed, checked = false, models = emptyList())
             } finally {
                 jobs.remove(toolCallId)
@@ -174,6 +180,47 @@ class ProviderConnectCards(
         if (delivered) clear(toolCallId) else set(toolCallId, Phase.Saved)
     }
 
+    /**
+     * A read-aloud key is checked by reading the sample with it, which the owner then hears; a voice input key cannot
+     * be checked without recording, so it is stored as given.
+     */
+    private suspend fun connectVoice(conversationId: Uuid, toolCallId: String, target: VoiceTarget, key: String) {
+        val sampler = voice
+        if (target.kind == VoiceKind.ASR || sampler == null) {
+            saveSecret(conversationId, toolCallId) { it.withVoiceKey(target, key, checked = false) }
+            return
+        }
+        val service = TtsKeyService.of(target.type) ?: return set(toolCallId, Phase.TargetChanged)
+        val current = target.serviceId?.let { id -> settingsStore.settingsFlow.value.ttsProviders.firstOrNull { it.id == id } }
+        if (target.serviceId != null && (current == null || TtsKeyService.of(current) != service)) return set(toolCallId, Phase.TargetChanged)
+        val setting = (current ?: service.create()).transformTtsSecret { key }
+        val sample = try {
+            sampler.synthesize(setting) ?: return set(toolCallId, Phase.Unreachable)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return set(toolCallId, checkFailure(e, key))
+        }
+        if (!saveSecret(conversationId, toolCallId) { it.withVoiceKey(target, key, checked = true) }) return
+        // Heard right on the card: the voice the owner gets is the proof the key works.
+        try {
+            sampler.play(sample)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Playback trouble does not undo a key that worked.
+        }
+    }
+
+    /** What a card shows when a check with the key failed. */
+    private fun checkFailure(error: Throwable, key: String): Phase {
+        if (generateSequence(error) { it.cause }.any { it is java.io.IOException }) return Phase.Unreachable
+        val text = error.message.orEmpty()
+        val rejected = listOf("401", "403", "unauthorized", "forbidden", "invalid api key", "invalid_api_key", "api key")
+            .any { text.contains(it, ignoreCase = true) }
+        return if (rejected) Phase.KeyRejected else Phase.ServiceError(scrubServiceDetail(text, key))
+    }
+
     /** One test search with the key: null when it works, otherwise what the card shows. */
     private suspend fun checkSearchKey(target: SearchTarget, key: String): Phase? {
         val current = target.serviceId?.let { id -> settingsStore.settingsFlow.value.searchServices.firstOrNull { it.id == id } }
@@ -184,14 +231,11 @@ class ProviderConnectCards(
                 me.rerere.search.SearchCommonOptions(resultSize = 1), options)
         } ?: return Phase.Unreachable
         val error = result.exceptionOrNull() ?: return null
-        if (generateSequence(error) { it.cause }.any { it is java.io.IOException }) return Phase.Unreachable
-        val text = error.message.orEmpty()
-        val rejected = listOf("401", "403", "unauthorized", "forbidden", "invalid api key", "invalid_api_key", "api key")
-            .any { text.contains(it, ignoreCase = true) }
-        return if (rejected) Phase.KeyRejected else Phase.ServiceError(scrubServiceDetail(text, key))
+        return checkFailure(error, key)
     }
 
-    private suspend fun saveSecret(conversationId: Uuid, toolCallId: String, apply: (me.ayuilos.miffan.data.datastore.Settings) -> SecretSave) {
+    /** True when the key was stored (whether or not the call could still be settled). */
+    private suspend fun saveSecret(conversationId: Uuid, toolCallId: String, apply: (me.ayuilos.miffan.data.datastore.Settings) -> SecretSave): Boolean {
         var saved: SecretSave.Saved? = null
         settingsStore.update { settings ->
             when (val outcome = apply(settings)) {
@@ -199,9 +243,10 @@ class ProviderConnectCards(
                 SecretSave.TargetChanged -> settings
             }
         }
-        val result = saved ?: return set(toolCallId, Phase.TargetChanged)
+        val result = saved ?: run { set(toolCallId, Phase.TargetChanged); return false }
         val delivered = chatService.completeSecretCard(conversationId, toolCallId, result.result)
         if (delivered) clear(toolCallId) else set(toolCallId, Phase.Saved)
+        return true
     }
 
     private fun set(toolCallId: String, phase: Phase) = _phases.update { it + (toolCallId to phase) }

@@ -238,9 +238,7 @@ private fun toolCallGroup(group: List<Revision>, before: Revision): ToolCallGrou
             group, before,
             read = { JsonInstant.parseToJsonElement(it).jsonObject },
             write = { JsonObject(it).toString() },
-            ignored = { key ->
-                !key.startsWith("provider:") && !key.startsWith("models:") && (key !in beforeKeys || key !in afterKeys)
-            },
+            ignored = { key -> !isListedKey(key) && (key !in beforeKeys || key !in afterKeys) },
         )
     }
 }
