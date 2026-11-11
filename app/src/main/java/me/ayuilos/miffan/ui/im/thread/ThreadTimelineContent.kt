@@ -302,6 +302,7 @@ internal fun ThreadErrorBubble(error: ChatError, canRetry: Boolean, onRetry: () 
  */
 private fun List<UIMessagePart>.batchApprovals(): List<UIMessagePart.Tool> = filterIsInstance<UIMessagePart.Tool>().filter {
     it.approvalState is me.rerere.ai.ui.ToolApprovalState.Pending && it.toolName != ASK_USER &&
+        it.toolName !in me.ayuilos.miffan.data.appsettings.SECRET_CARD_TOOLS &&
         it.toolName != me.ayuilos.miffan.data.ai.tools.WORKSPACE_TERMINAL_TOOL_NAME && !it.isImageGeneration() &&
         it.toolName != DRAFT_BUG_REPORT && !it.isComputerTool() && !it.isPartnerMessage()
 }

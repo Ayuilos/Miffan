@@ -983,9 +983,22 @@ class ChatService(
         editedInput: JsonObject? = null,
         /** Other pending calls of the same reply decided the same way in this one step. */
         alsoIds: Set<String> = emptySet(),
+        /** Set only by [completeSecretCard]: the app's own result for a secure card. */
+        secretCard: Boolean = false,
     ): Job? {
         val session = getOrCreateSession(conversationId)
         val receiptId = terminalResultReceiptId(answer)
+
+        // A secure card is settled by the app once the owner's key is stored; no other path (web, notification,
+        // partner screen, allow-all) may approve or answer it. Declining stays possible everywhere.
+        val secretIds = session.state.value.messageNodes.asSequence()
+            .flatMap { it.message.getTools().asSequence() }
+            .filter { it.toolName in me.ayuilos.miffan.data.appsettings.SECRET_CARD_TOOLS }
+            .mapTo(HashSet()) { it.toolCallId }
+        @Suppress("NAME_SHADOWING")
+        val alsoIds = me.ayuilos.miffan.data.appsettings.secretCardDecisionIds(
+            toolCallId, alsoIds, secretIds, settles = approved || answer != null, fromCard = secretCard,
+        ) ?: return null
 
         // A terminal may finish after navigation, branching, cancellation, or result delivery.
         // Only resume the still-pending call at the current conversation tip.
@@ -1103,6 +1116,29 @@ class ChatService(
      * Decides several pending calls of the latest reply at once. Each decision starts the turn's next step and cancels
      * the one before it, so deciding them one by one in a row would lose all but the last.
      */
+    /**
+     * Settles a secure card (see [me.ayuilos.miffan.data.appsettings.SECRET_CARD_TOOLS]) with [result], which the app
+     * built after storing what the owner typed; the partner reads [result] as the call's output. Never pass anything
+     * the owner typed into [result].
+     */
+    suspend fun completeSecretCard(conversationId: Uuid, toolCallId: String, result: String): Boolean {
+        loadStoredSession(conversationId)
+        return applyToolApproval(conversationId, toolCallId, approved = true, reason = "", answer = result,
+            via = ToolDecisionVia.CARD, secretCard = true) != null
+    }
+
+    /** Declines a secure card; [reason] is the owner's own words, or empty. */
+    suspend fun declineSecretCard(conversationId: Uuid, toolCallId: String, reason: String) {
+        loadStoredSession(conversationId)
+        handleToolApproval(conversationId, toolCallId, approved = false, reason = reason)
+    }
+
+    /** Idle sessions are released; a card can be settled long after, so bring its conversation back first. */
+    private suspend fun loadStoredSession(conversationId: Uuid) {
+        if (getOrCreateSession(conversationId).state.value.messageNodes.isNotEmpty()) return
+        conversationRepo.getConversationById(conversationId)?.let { updateConversation(conversationId, it) }
+    }
+
     fun handleToolApprovals(conversationId: Uuid, toolCallIds: List<String>, approved: Boolean, via: ToolDecisionVia = ToolDecisionVia.CARD) {
         val first = toolCallIds.firstOrNull() ?: return
         applyToolApproval(conversationId, first, approved, "", null, via, alsoIds = toolCallIds.drop(1).toSet())
@@ -1389,6 +1425,10 @@ class ChatService(
                                 localTools = assistant.localTools,
                             )
                         )
+                        // Only the owner's own turns: a key card must never be raised by someone else's message.
+                        if (LocalToolOption.AppSettings in assistant.localTools && trigger != null) {
+                            addAll(me.ayuilos.miffan.data.ai.tools.buildAppSettingsTools(settingsStore))
+                        }
                     }
                     addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd, conversation.id.toString()))
                     createSpaceNetworkToolIfReady(assistant, conversation.id.toString())?.let { add(it) }

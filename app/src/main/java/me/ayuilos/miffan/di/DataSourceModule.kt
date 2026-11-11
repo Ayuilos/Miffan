@@ -305,6 +305,7 @@ val dataSourceModule = module {
     }
 
     single { me.ayuilos.miffan.data.onboarding.OnboardingConnector(get(), get(), get()) }
+    single { me.ayuilos.miffan.data.appsettings.ProviderConnectCards(get(), get(), get(), get<me.ayuilos.miffan.AppScope>()) }
 
     single {
         WebDavSync(

@@ -4337,4 +4337,36 @@
   <string name="im_nickname_title">What partners call you</string>
   <string name="im_nickname_hint">Partners use the new name from their next reply</string>
   <string name="im_sheet_done">Done</string>
+  <string name="im_ability_app_settings">Set up AI services</string>
+  <string name="im_ability_app_settings_desc">Connects AI services for you; you type keys into a secure card it can\'t see</string>
+  <string name="im_connect_title">Connect %1$s</string>
+  <string name="im_connect_title_rekey">Replace the key for %1$s</string>
+  <string name="im_connect_title_unknown">Connect a service</string>
+  <string name="im_connect_unknown_service">a service</string>
+  <string name="im_connect_partner_fallback">Your partner</string>
+  <string name="im_connect_privacy">The key stays on this phone and is only sent to this address. %1$s can\'t see it.</string>
+  <string name="im_connect_privacy_rekey">The new key replaces the old one and stays on this phone. %1$s can\'t see it.</string>
+  <string name="im_connect_privacy_custom">%1$s filled in this address. Enter the key only if this is the service you want. %1$s can\'t see the key.</string>
+  <string name="im_connect_key_hint">Paste API key</string>
+  <string name="im_connect_show_key">Show key</string>
+  <string name="im_connect_hide_key">Hide key</string>
+  <string name="im_connect_checking">Checking</string>
+  <string name="im_connect_get_key">No key yet? Get one from %1$s</string>
+  <string name="im_connect_cancel">Don\'t connect</string>
+  <string name="im_connect_wrong_address">Wrong address</string>
+  <string name="im_connect_rejected">%1$s says this key is wrong. Check that it was copied in full, then connect again.</string>
+  <string name="im_connect_unreachable">Can\'t reach %1$s. It may be a network problem.</string>
+  <string name="im_connect_save_anyway">Save, check later</string>
+  <string name="im_connect_retry">Try again</string>
+  <string name="im_connect_service_error">%1$s answered with an error: %2$s</string>
+  <string name="im_connect_target_changed">This service was changed or removed after the card appeared, so the key was not saved.</string>
+  <string name="im_connect_invalid">%1$s\'s request is incomplete, so there is nothing to connect.</string>
+  <string name="im_connect_phone_only">Enter the key in this chat on your phone.</string>
+  <string name="im_connect_done">%1$s connected</string>
+  <string name="im_connect_saved_unchecked">%1$s saved, not checked yet</string>
+  <plurals name="im_connect_models">
+    <item quantity="one">%1$d model</item>
+    <item quantity="other">%1$d models</item>
+  </plurals>
+  <string name="notification_approval_connect">Enter an API key</string>
 </resources>
