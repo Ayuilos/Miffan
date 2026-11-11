@@ -4414,6 +4414,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_settings_tts_model">読み上げモデル</string>
   <string name="im_voice_setup_model">モデル %1$s</string>
   <string name="im_voice_setup_voice">声の種類 %1$s</string>
+  <string name="im_settings_tts_format">読み上げ音声フォーマット</string>
+  <string name="im_voice_setup_format">フォーマット %1$s</string>
   <string name="im_settings_voice_unknown">%1$s で認識できない声です。読み上げられない可能性があります</string>
   <string name="im_settings_tts_speed">読み上げ速度</string>
   <string name="im_settings_times">%1$s 倍</string>

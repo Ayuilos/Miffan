@@ -4412,6 +4412,8 @@
   <string name="im_settings_tts_model">朗讀模型</string>
   <string name="im_voice_setup_model">模型 %1$s</string>
   <string name="im_voice_setup_voice">音色 %1$s</string>
+  <string name="im_settings_tts_format">朗讀音訊格式</string>
+  <string name="im_voice_setup_format">格式 %1$s</string>
   <string name="im_settings_voice_unknown">不是 %1$s 認識的音色，可能無法朗讀</string>
   <string name="im_settings_tts_speed">朗讀語速</string>
   <string name="im_settings_times">%1$s 倍</string>
