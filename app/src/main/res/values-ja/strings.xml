@@ -4301,4 +4301,35 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_nickname_title">パートナーからの呼び名</string>
   <string name="im_nickname_hint">変更すると、次の返事から新しい呼び名になります</string>
   <string name="im_sheet_done">完了</string>
+  <string name="im_ability_app_settings">AIサービスを設定</string>
+  <string name="im_ability_app_settings_desc">AIサービスへの接続をお手伝いします。API Keyは、パートナーから見えない安全なカードに入力してください</string>
+  <string name="im_connect_title">%1$sに接続</string>
+  <string name="im_connect_title_rekey">%1$sのAPI Keyを変更</string>
+  <string name="im_connect_title_unknown">サービスに接続</string>
+  <string name="im_connect_unknown_service">サービス</string>
+  <string name="im_connect_partner_fallback">パートナー</string>
+  <string name="im_connect_privacy">API Keyはこのスマホにだけ保存され、上記のアドレスにのみ送信されます。%1$sには見えません。</string>
+  <string name="im_connect_privacy_rekey">新しいAPI Keyは古いものに置き換わり、このスマホにだけ保存されます。%1$sには見えません。</string>
+  <string name="im_connect_privacy_custom">このアドレスは%1$sが入力しました。接続したいサービスか確認してからAPI Keyを入力してください。%1$sにはAPI Keyが見えません。</string>
+  <string name="im_connect_key_hint">API Keyを貼り付け</string>
+  <string name="im_connect_show_key">API Keyを表示</string>
+  <string name="im_connect_hide_key">API Keyを隠す</string>
+  <string name="im_connect_checking">確認中</string>
+  <string name="im_connect_get_key">API Keyをお持ちでない場合は、%1$sで取得してください</string>
+  <string name="im_connect_cancel">接続しない</string>
+  <string name="im_connect_wrong_address">アドレスが正しくありません</string>
+  <string name="im_connect_rejected">%1$sでこのAPI Keyが正しくないと判定されました。すべてコピーできているか確認して、もう一度接続してください。</string>
+  <string name="im_connect_unreachable">%1$sに接続できません。ネットワークの問題かもしれません。</string>
+  <string name="im_connect_save_anyway">保存して、あとで確認</string>
+  <string name="im_connect_retry">もう一度試す</string>
+  <string name="im_connect_service_error">%1$sからエラーが返されました：%2$s</string>
+  <string name="im_connect_target_changed">カードが表示された後にこのサービスが変更または削除されたため、API Keyは保存されませんでした。</string>
+  <string name="im_connect_invalid">%1$sからの情報が不完全なため、接続できません。</string>
+  <string name="im_connect_phone_only">スマホのこのチャットでAPI Keyを入力してください。</string>
+  <string name="im_connect_done">%1$sに接続しました</string>
+  <string name="im_connect_saved_unchecked">%1$sを保存しました（未確認）</string>
+  <plurals name="im_connect_models">
+    <item quantity="other">%1$d個のモデル</item>
+  </plurals>
+  <string name="notification_approval_connect">API Keyを入力</string>
 </resources>

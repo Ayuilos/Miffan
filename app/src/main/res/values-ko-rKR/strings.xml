@@ -4301,4 +4301,35 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_nickname_title">파트너가 부르는 이름</string>
   <string name="im_nickname_hint">바꾸면 다음 답장부터 새 이름으로 불러요</string>
   <string name="im_sheet_done">완료</string>
+  <string name="im_ability_app_settings">AI 서비스 설정</string>
+  <string name="im_ability_app_settings_desc">AI 서비스 연결을 도와드려요. API Key는 파트너가 볼 수 없는 안전한 카드에 입력해 주세요</string>
+  <string name="im_connect_title">%1$s 연결</string>
+  <string name="im_connect_title_rekey">%1$s의 API Key 바꾸기</string>
+  <string name="im_connect_title_unknown">서비스 연결</string>
+  <string name="im_connect_unknown_service">서비스</string>
+  <string name="im_connect_partner_fallback">파트너</string>
+  <string name="im_connect_privacy">API Key는 이 휴폰에만 저장되고 위 주소로만 전송돼요. %1$s은(는) 볼 수 없어요.</string>
+  <string name="im_connect_privacy_rekey">새 API Key가 기존 Key를 대체하고 이 휴폰에만 저장돼요. %1$s은(는) 볼 수 없어요.</string>
+  <string name="im_connect_privacy_custom">이 주소는 %1$s이(가) 입력했어요. 원하는 서비스가 맞는지 확인한 후 API Key를 입력해 주세요. %1$s은(는) API Key를 볼 수 없어요.</string>
+  <string name="im_connect_key_hint">API Key 붙여넣기</string>
+  <string name="im_connect_show_key">API Key 보기</string>
+  <string name="im_connect_hide_key">API Key 숨기기</string>
+  <string name="im_connect_checking">확인 중</string>
+  <string name="im_connect_get_key">아직 API Key가 없나요? %1$s에서 발급받으세요</string>
+  <string name="im_connect_cancel">연결 안 할게요</string>
+  <string name="im_connect_wrong_address">주소가 올바르지 않아요</string>
+  <string name="im_connect_rejected">%1$s에서 이 API Key가 올바르지 않다고 해요. 빠짐없이 복사했는지 확인하고 다시 연결해 주세요.</string>
+  <string name="im_connect_unreachable">%1$s에 연결할 수 없어요. 네트워크 문제일 수 있어요.</string>
+  <string name="im_connect_save_anyway">저장하고 나중에 확인</string>
+  <string name="im_connect_retry">다시 시도</string>
+  <string name="im_connect_service_error">%1$s에서 오류를 반환했어요: %2$s</string>
+  <string name="im_connect_target_changed">카드가 표시된 후 이 서비스가 변경되거나 삭제되어 API Key를 저장하지 않았어요.</string>
+  <string name="im_connect_invalid">%1$s의 요청 정보가 완전하지 않아 연결할 수 없어요.</string>
+  <string name="im_connect_phone_only">휴폰의 이 채팅에서 API Key를 입력해 주세요.</string>
+  <string name="im_connect_done">%1$s 연결 완료</string>
+  <string name="im_connect_saved_unchecked">%1$s 저장 완료, 아직 확인하지 않았어요</string>
+  <plurals name="im_connect_models">
+    <item quantity="other">모델 %1$d개</item>
+  </plurals>
+  <string name="notification_approval_connect">API Key 입력</string>
 </resources>
