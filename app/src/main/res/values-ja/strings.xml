@@ -4416,6 +4416,15 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_voice_sample_play">聞いてみる</string>
   <string name="im_voice_sample_failed">再生できませんでした</string>
   <string name="im_voice_asr_saved">%1$s の API Key を保存しました。音声入力を試してみてください</string>
+  <string name="im_me_read_aloud">読み上げ</string>
+  <string name="im_read_auto">返信後に自動で読み上げ</string>
+  <string name="im_read_auto_desc">チャットを開いている間は、返信が完了するとすぐに読み上げます</string>
+  <string name="im_read_quoted_desc">ロールプレイに便利。地の文は読み上げません</string>
+  <string name="im_read_brackets_desc">括弧内の動作や表情の描写は読み上げません</string>
+  <string name="im_read_voice">読み上げの声</string>
+  <string name="im_read_voice_system">端末標準</string>
+  <string name="im_read_voice_input">音声入力</string>
+  <string name="im_read_voice_input_none">未設定</string>
   <string name="im_settings_image_model">画像生成モデル</string>
   <string name="im_settings_image_none">設定しない（画像生成オフ）</string>
   <string name="notification_approval_connect">API Keyを入力</string>
