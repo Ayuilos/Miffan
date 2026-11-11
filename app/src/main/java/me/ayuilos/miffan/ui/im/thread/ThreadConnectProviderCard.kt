@@ -267,12 +267,13 @@ internal fun ThreadConnectProviderCard(
             when {
                 target is ConnectTarget.Custom -> {
                     val wrong = stringResource(R.string.im_connect_wrong_address)
-                    TextButton(onClick = { cancel(wrong) }, enabled = !checking) {
+                    TextButton(onClick = { cancel(wrong) }, enabled = !checking, modifier = Modifier.weight(1f, fill = false)) {
                         Text(wrong, color = MaterialTheme.colorScheme.error)
                     }
                 }
-                keyUrl != null -> TextButton(onClick = { uriHandler.openUri(keyUrl) }) {
-                    Text(stringResource(R.string.im_connect_get_key, target.name))
+                // Long service names wrap here instead of pushing the cancel button off the card.
+                keyUrl != null -> TextButton(onClick = { uriHandler.openUri(keyUrl) }, modifier = Modifier.weight(1f, fill = false)) {
+                    Text(stringResource(R.string.im_connect_get_key, target.name), Modifier.weight(1f, fill = false))
                     Spacer8()
                     Icon(HugeIcons.ArrowUpRight01, null, Modifier.size(16.dp))
                 }
