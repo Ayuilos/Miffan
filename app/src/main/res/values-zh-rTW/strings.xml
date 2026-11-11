@@ -4299,4 +4299,35 @@
   <string name="im_nickname_title">夥伴們怎麼稱呼你</string>
   <string name="im_nickname_hint">改了之後，下一句就會用新的稱呼</string>
   <string name="im_sheet_done">好了</string>
+  <string name="im_ability_app_settings">設定 AI 服務</string>
+  <string name="im_ability_app_settings_desc">幫你連接 AI 服務，Key 由你填進夥伴看不到的安全卡片</string>
+  <string name="im_connect_title">連接 %1$s</string>
+  <string name="im_connect_title_rekey">更換 %1$s 的 Key</string>
+  <string name="im_connect_title_unknown">連接服務</string>
+  <string name="im_connect_unknown_service">服務</string>
+  <string name="im_connect_partner_fallback">夥伴</string>
+  <string name="im_connect_privacy">Key 只存在這台手機上，只發給上面這個網址。%1$s 看不到。</string>
+  <string name="im_connect_privacy_rekey">新 Key 會取代舊的，只存在這台手機上。%1$s 看不到。</string>
+  <string name="im_connect_privacy_custom">這個網址是 %1$s 填的，確認是你要連的服務再填 Key。%1$s 看不到 Key。</string>
+  <string name="im_connect_key_hint">貼上 API Key</string>
+  <string name="im_connect_show_key">顯示 Key</string>
+  <string name="im_connect_hide_key">隱藏 Key</string>
+  <string name="im_connect_checking">檢查中</string>
+  <string name="im_connect_get_key">還沒有 Key？去 %1$s 申請</string>
+  <string name="im_connect_cancel">不連了</string>
+  <string name="im_connect_wrong_address">網址不對</string>
+  <string name="im_connect_rejected">%1$s 說這個 Key 不對。看看是不是沒複製完整，改好再點連接。</string>
+  <string name="im_connect_unreachable">連不上 %1$s，可能是網路問題。</string>
+  <string name="im_connect_save_anyway">先儲存，稍後再試</string>
+  <string name="im_connect_retry">再試一次</string>
+  <string name="im_connect_service_error">%1$s 回傳了錯誤：%2$s</string>
+  <string name="im_connect_target_changed">卡片出現後這個服務被改過或刪掉了，Key 沒有儲存。</string>
+  <string name="im_connect_invalid">%1$s 給的資訊不完整，沒辦法連接。</string>
+  <string name="im_connect_phone_only">請在手機上的這個聊天裡填寫 Key。</string>
+  <string name="im_connect_done">%1$s 已連接</string>
+  <string name="im_connect_saved_unchecked">%1$s 已儲存，還沒檢查</string>
+  <plurals name="im_connect_models">
+    <item quantity="other">%1$d 個模型</item>
+  </plurals>
+  <string name="notification_approval_connect">等你填寫 API Key</string>
 </resources>
