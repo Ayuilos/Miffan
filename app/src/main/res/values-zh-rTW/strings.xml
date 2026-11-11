@@ -4368,5 +4368,6 @@
   <string name="im_secret_header_hint">貼上權杖</string>
   <string name="im_secret_save">儲存</string>
   <string name="im_secret_header_saved">%1$s 的 %2$s 已儲存</string>
+  <string name="im_secret_cancel">不填了</string>
   <string name="notification_approval_connect">等你填寫 API Key</string>
 </resources>

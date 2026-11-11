@@ -4370,5 +4370,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_secret_header_hint">トークンを貼り付け</string>
   <string name="im_secret_save">保存</string>
   <string name="im_secret_header_saved">%1$sの%2$sを保存しました</string>
+  <string name="im_secret_cancel">入力しない</string>
   <string name="notification_approval_connect">API Keyを入力</string>
 </resources>

@@ -4370,5 +4370,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_secret_header_hint">토큰 붙여넣기</string>
   <string name="im_secret_save">저장</string>
   <string name="im_secret_header_saved">%1$s의 %2$s 저장 완료</string>
+  <string name="im_secret_cancel">입력 안 할게요</string>
   <string name="notification_approval_connect">API Key 입력</string>
 </resources>
