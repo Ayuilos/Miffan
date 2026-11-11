@@ -52,17 +52,20 @@ internal fun buildAppSettingsTools(
     catalog: () -> ModelCatalog = { ModelCatalog.EMPTY },
     appearancePrefs: me.ayuilos.miffan.data.appsettings.AppearanceStore? = null,
     recorder: me.ayuilos.miffan.data.revision.AiServicesRevisionRecorder? = null,
+    /** The partner whose turn this is, marked in the catalog so it can tell its own settings from another partner's. */
+    selfId: kotlin.uuid.Uuid? = null,
 ): List<Tool> = listOf(
     Tool(
         name = APP_SETTINGS_CATALOG_TOOL,
         description = """
             Read the app's AI service setup: each provider (id, name, api, host, whether a key is set, models), the
-            default models, and which model each partner uses. Use it before connecting or changing services.
+            default models, which model each partner uses and its reply settings (you are the partner with is_you), and how
+            the app looks. Use it before connecting or changing anything.
             API keys are never readable here or anywhere else.
         """.trimIndent().replace("\n", " "),
         parameters = { InputSchema.Obj(properties = buildJsonObject { }) },
         execute = {
-            listOf(UIMessagePart.Text(buildAppSettingsCatalog(settingsStore.settingsFlow.value, appearancePrefs?.current()).toString()))
+            listOf(UIMessagePart.Text(buildAppSettingsCatalog(settingsStore.settingsFlow.value, appearancePrefs?.current(), selfId).toString()))
         },
     ),
     Tool(

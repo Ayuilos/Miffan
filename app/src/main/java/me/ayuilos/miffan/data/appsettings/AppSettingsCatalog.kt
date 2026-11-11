@@ -28,7 +28,7 @@ internal const val CATALOG_MODELS_PER_PROVIDER = 40
  * the models. Never a credential, nor anything derived from one (no prefix, suffix, length or hash), and no
  * custom headers, request bodies, per-model provider overrides or account details.
  */
-fun buildAppSettingsCatalog(settings: Settings, appearance: Appearance? = null): JsonObject = buildJsonObject {
+fun buildAppSettingsCatalog(settings: Settings, appearance: Appearance? = null, selfId: kotlin.uuid.Uuid? = null): JsonObject = buildJsonObject {
     val presets = DEFAULT_PROVIDERS.mapTo(HashSet()) { it.id }
     putJsonArray("providers") {
         settings.providers.forEach { provider ->
@@ -93,7 +93,8 @@ fun buildAppSettingsCatalog(settings: Settings, appearance: Appearance? = null):
         settings.assistants.forEach { assistant ->
             addJsonObject {
                 put("id", assistant.id.toString())
-                put("name", assistant.name)
+                put("name", assistant.displayName())
+                if (assistant.id == selfId) put("is_you", true)
                 put("model", assistant.chatModelId?.let { settings.modelRef(it) } ?: JsonPrimitive("default"))
                 putJsonObject("settings") {
                     settings.findModelById(assistant.chatModelId ?: settings.chatModelId)

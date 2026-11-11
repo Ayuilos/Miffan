@@ -40,6 +40,8 @@ class ImRevisionPermissionTest {
 
     @Test
     fun unrelatedChangesStillCountAsOtherSettings() {
-        assertEquals(listOf(ImRevisionChange(R.string.im_p5_other_settings)), changes(base, base.copy(temperature = 0.3f)))
+        assertEquals(listOf(ImRevisionChange(R.string.im_p5_other_settings)), changes(base, base.copy(topP = 0.3f)))
+        // Reply settings a partner can adjust are named, so the owner can find what it changed.
+        assertEquals(listOf(ImRevisionChange(R.string.im_revision_reply_settings)), changes(base, base.copy(temperature = 0.3f)))
     }
 }

@@ -235,7 +235,7 @@ private fun applyOne(change: JsonObject, settings: Settings, catalog: ModelCatal
             val model = ref?.let { settings.chatModel(it) }
             if (partner.chatModelId == model?.second?.id) return Step(settings, null)
             Step(settings.copy(assistants = settings.assistants.map { if (it.id == partner.id) it.copy(chatModelId = model?.second?.id) else it }),
-                AppSettingsLine.PartnerModel(partner.id.toString(), partner.name, model?.second?.label(), model?.first?.name),
+                AppSettingsLine.PartnerModel(partner.id.toString(), partner.displayName(), model?.second?.label(), model?.first?.name),
                 assigned = model?.second?.id)
         }
         "set_default_model" -> {
@@ -309,14 +309,14 @@ private fun setPartnerSettings(change: JsonObject, settings: Settings): Step {
     if (change.keys.none { it in PARTNER_SETTING_FIELDS }) fail("Give at least one of ${PARTNER_SETTING_FIELDS.joinToString()}.")
     var updated = partner
     val lines = mutableListOf<AppSettingsLine>()
-    fun line(key: String, value: String) { lines += AppSettingsLine.PartnerSetting(partner.id.toString(), partner.name, key, value) }
+    fun line(key: String, value: String) { lines += AppSettingsLine.PartnerSetting(partner.id.toString(), partner.displayName(), key, value) }
 
     change.text("thinking")?.let { id ->
         val tier = ThinkTier.of(id) ?: fail("thinking must be one of ${ThinkTier.entries.joinToString { it.id }}.")
         val model = settings.findModelById(partner.chatModelId ?: settings.chatModelId)
             ?.takeIf { ModelAbility.REASONING in it.abilities }
-            ?: fail("${partner.name}'s model cannot think, so thinking does not apply to it.")
-        val level = tier.levelFor(model) ?: fail("${partner.name}'s model has no \"${tier.id}\" tier.")
+            ?: fail("${partner.displayName()}'s model cannot think, so thinking does not apply to it.")
+        val level = tier.levelFor(model) ?: fail("${partner.displayName()}'s model has no \"${tier.id}\" tier.")
         if (level != partner.reasoningLevel) { updated = updated.copy(reasoningLevel = level); line("thinking", tier.id) }
     } ?: change["thinking"]?.let { fail("thinking must be one of ${ThinkTier.entries.joinToString { it.id }}.") }
 
@@ -352,6 +352,9 @@ private fun setPartnerSettings(change: JsonObject, settings: Settings): Step {
     if (updated == partner) return Step(settings, null)
     return Step(settings.copy(assistants = settings.assistants.map { if (it.id == partner.id) updated else it }), null, extra = lines)
 }
+
+/** The unnamed partner is the app's default one; the model needs some name to tell it apart. */
+internal fun me.ayuilos.miffan.data.model.Assistant.displayName() = name.ifBlank { "Default assistant" }
 
 private fun Settings.partner(change: JsonObject): me.ayuilos.miffan.data.model.Assistant {
     val id = change.text("partner_id")?.let { runCatching { Uuid.parse(it.trim()) }.getOrNull() }

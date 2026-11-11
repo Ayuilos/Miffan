@@ -1436,7 +1436,7 @@ class ChatService(
                         if (LocalToolOption.AppSettings in assistant.localTools && trigger != null) {
                             val models = getKoin().get<me.ayuilos.miffan.data.repository.ModelCatalogRepository>()
                             addAll(me.ayuilos.miffan.data.ai.tools.buildAppSettingsTools(settingsStore, { models.catalog.value },
-                                getKoin().get(), getKoin().get()))
+                                getKoin().get(), getKoin().get(), selfId = assistant.id))
                         }
                     }
                     addAll(createWorkspaceToolsIfReady(assistant, conversation.workspaceCwd, conversation.id.toString()))

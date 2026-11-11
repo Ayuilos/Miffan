@@ -117,7 +117,7 @@ class PartnerSettingsChangeTest {
 
     @Test
     fun theCatalogShowsEachPartnersReplySettings() {
-        val catalog = buildAppSettingsCatalog(settings().copy(assistants = listOf(whale.copy(maxTokens = 2048, reasoningLevel = ReasoningLevel.HIGH), fox)))
+        val catalog = buildAppSettingsCatalog(settings().copy(assistants = listOf(whale.copy(maxTokens = 2048, reasoningLevel = ReasoningLevel.HIGH), fox)), selfId = fox.id)
         val partners = catalog["partners"]!!.jsonArray.map { it.jsonObject }
         val whaleSettings = partners.first { it["id"]!!.jsonPrimitive.content == whale.id.toString() }["settings"]!!.jsonObject
         assertEquals("2048", whaleSettings["reply_limit"]!!.jsonPrimitive.content)
@@ -126,6 +126,8 @@ class PartnerSettingsChangeTest {
         assertTrue("thinking" in whaleSettings)
         val foxSettings = partners.first { it["id"]!!.jsonPrimitive.content == fox.id.toString() }["settings"]!!.jsonObject
         assertFalse("thinking" in foxSettings)
+        // The calling partner can tell itself apart from the others.
+        assertEquals(listOf(fox.id.toString()), partners.filter { "is_you" in it }.map { it["id"]!!.jsonPrimitive.content })
     }
 
     private class FakeStore : RevisionStore {
