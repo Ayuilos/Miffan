@@ -1924,6 +1924,7 @@
   <string name="im_p5_origin_baseline">初始狀態</string>
   <string name="im_p5_preferences">學到的偏好</string>
   <string name="im_p5_other_settings">其他設定</string>
+  <string name="im_revision_reply_settings">回覆長度、參考訊息則數和溫度</string>
   <string name="im_p5_changed">修改了：%1$s</string>
   <string name="im_p5_memory_added">新增：%1$s</string>
   <string name="im_p5_memory_changed">修改：%1$s</string>
@@ -4388,6 +4389,16 @@
   <string name="im_settings_owner_name">夥伴怎麼稱呼你</string>
   <string name="im_settings_cleared">不設定</string>
   <string name="im_settings_fast_thinking">快速模型想多久再回</string>
+  <string name="im_settings_tag_partner">夥伴</string>
+  <string name="im_settings_reply_limit">回覆最長</string>
+  <string name="im_settings_tokens">%1$s tokens</string>
+  <string name="im_settings_no_limit">不限</string>
+  <string name="im_settings_context">參考最近的訊息</string>
+  <string name="im_settings_messages">%1$s 則</string>
+  <string name="im_settings_all">全部</string>
+  <string name="im_settings_temperature">溫度</string>
+  <string name="im_settings_temperature_default">模型預設</string>
+  <string name="im_settings_shared_memory">和其他夥伴共用記憶</string>
   <string name="im_settings_image_model">畫圖模型</string>
   <string name="im_settings_image_none">不設定（不能畫圖）</string>
   <string name="notification_approval_connect">等你填寫 API Key</string>
