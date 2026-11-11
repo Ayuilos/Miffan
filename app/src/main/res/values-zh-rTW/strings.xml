@@ -4300,7 +4300,7 @@
   <string name="im_nickname_hint">改了之後，下一句就會用新的稱呼</string>
   <string name="im_sheet_done">好了</string>
   <string name="im_ability_app_settings">設定 AI 服務</string>
-  <string name="im_ability_app_settings_desc">幫你連接 AI 服務，Key 由你填進夥伴看不到的安全卡片</string>
+  <string name="im_ability_app_settings_desc">幫你連接 AI 服務、配好模型，Key 由你填進它看不到的安全卡片</string>
   <string name="im_connect_title">連接 %1$s</string>
   <string name="im_connect_title_rekey">更換 %1$s 的 Key</string>
   <string name="im_connect_title_unknown">連接服務</string>
@@ -4329,5 +4329,32 @@
   <plurals name="im_connect_models">
     <item quantity="other">%1$d 個模型</item>
   </plurals>
+  <string name="im_change_app_settings">調整 AI 服務</string>
+  <string name="im_settings_tag_rename">改名</string>
+  <string name="im_settings_tag_address">改網址</string>
+  <string name="im_settings_tag_add">新增</string>
+  <string name="im_settings_tag_remove">移除</string>
+  <string name="im_settings_tag_model">換模型</string>
+  <string name="im_settings_tag_default">預設</string>
+  <string name="im_settings_arrow">%1$s → %2$s</string>
+  <string name="im_settings_address">請求發往 %1$s</string>
+  <string name="im_settings_address_clears_key">請求發往 %1$s。已填的 Key 會清空，需要為新網址重新填寫</string>
+  <plurals name="im_settings_models">
+    <item quantity="other">%1$s：%2$d 個模型</item>
+  </plurals>
+  <string name="im_settings_shown_as">顯示為 %1$s</string>
+  <string name="im_settings_tools_on">能用工具</string>
+  <string name="im_settings_tools_off">不用工具</string>
+  <string name="im_settings_reasoning_on">會先思考</string>
+  <string name="im_settings_reasoning_off">不思考</string>
+  <string name="im_settings_image_on">能看圖</string>
+  <string name="im_settings_image_off">不看圖</string>
+  <string name="im_settings_follow_default">跟隨預設聊天模型</string>
+  <string name="im_settings_follow_fast">跟隨快速模型</string>
+  <string name="im_settings_from">來自 %1$s</string>
+  <string name="im_settings_footnote">改完之後可以在記錄裡撤銷。</string>
+  <string name="im_settings_footnote_key">服務改了網址，原來的 Key 會清空；其餘改動之後可以在記錄裡撤銷。</string>
+  <string name="im_settings_outdated">設定已經變了，這些改動對不上了。可以讓夥伴重新整理一次。</string>
+  <string name="im_revision_ai_services">AI 服務有改動</string>
   <string name="notification_approval_connect">等你填寫 API Key</string>
 </resources>

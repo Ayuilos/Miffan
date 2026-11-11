@@ -4302,7 +4302,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_nickname_hint">바꾸면 다음 답장부터 새 이름으로 불러요</string>
   <string name="im_sheet_done">완료</string>
   <string name="im_ability_app_settings">AI 서비스 설정</string>
-  <string name="im_ability_app_settings_desc">AI 서비스 연결을 도와드려요. API Key는 파트너가 볼 수 없는 안전한 카드에 입력해 주세요</string>
+  <string name="im_ability_app_settings_desc">AI 서비스를 연결하고 모델을 설정해 줘요. API Key는 파트너가 볼 수 없는 안전한 카드에 직접 입력해 주세요</string>
   <string name="im_connect_title">%1$s 연결</string>
   <string name="im_connect_title_rekey">%1$s의 API Key 바꾸기</string>
   <string name="im_connect_title_unknown">서비스 연결</string>
@@ -4331,5 +4331,32 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <plurals name="im_connect_models">
     <item quantity="other">모델 %1$d개</item>
   </plurals>
+  <string name="im_change_app_settings">AI 서비스 변경</string>
+  <string name="im_settings_tag_rename">이름 변경</string>
+  <string name="im_settings_tag_address">주소 변경</string>
+  <string name="im_settings_tag_add">추가</string>
+  <string name="im_settings_tag_remove">삭제</string>
+  <string name="im_settings_tag_model">모델 변경</string>
+  <string name="im_settings_tag_default">기본</string>
+  <string name="im_settings_arrow">%1$s → %2$s</string>
+  <string name="im_settings_address">요청을 %1$s(으)로 전송해요</string>
+  <string name="im_settings_address_clears_key">요청을 %1$s(으)로 전송해요. 저장된 API Key가 삭제되므로 새 주소에 맞는 Key를 다시 입력해 주세요</string>
+  <plurals name="im_settings_models">
+    <item quantity="other">%1$s: 모델 %2$d개</item>
+  </plurals>
+  <string name="im_settings_shown_as">%1$s(으)로 표시</string>
+  <string name="im_settings_tools_on">도구를 쓸 수 있어요</string>
+  <string name="im_settings_tools_off">도구를 쓰지 않아요</string>
+  <string name="im_settings_reasoning_on">먼저 생각해요</string>
+  <string name="im_settings_reasoning_off">생각하지 않아요</string>
+  <string name="im_settings_image_on">이미지를 볼 수 있어요</string>
+  <string name="im_settings_image_off">이미지를 보지 않아요</string>
+  <string name="im_settings_follow_default">기본 채팅 모델과 같음</string>
+  <string name="im_settings_follow_fast">빠른 모델과 같음</string>
+  <string name="im_settings_from">%1$s에서</string>
+  <string name="im_settings_footnote">나중에 변경 기록에서 되돌릴 수 있어요.</string>
+  <string name="im_settings_footnote_key">서비스 주소가 바뀌면 저장된 API Key가 삭제돼요. 다른 변경 사항은 나중에 변경 기록에서 되돌릴 수 있어요.</string>
+  <string name="im_settings_outdated">이후 설정이 바뀌어 이 변경 사항을 적용할 수 없어요. 파트너에게 다시 시도해 달라고 해 주세요.</string>
+  <string name="im_revision_ai_services">AI 서비스가 변경됐어요</string>
   <string name="notification_approval_connect">API Key 입력</string>
 </resources>

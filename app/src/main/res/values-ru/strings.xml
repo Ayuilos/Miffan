@@ -4371,7 +4371,7 @@
   <string name="im_nickname_hint">Новое имя партнёры начнут использовать со следующего ответа</string>
   <string name="im_sheet_done">Готово</string>
   <string name="im_ability_app_settings">Настройка AI-сервисов</string>
-  <string name="im_ability_app_settings_desc">Помогает подключить AI-сервисы. Ключ вы вводите в защищённую карточку, которую партнёр не видит</string>
+  <string name="im_ability_app_settings_desc">Помогает подключить AI-сервисы и настроить модели. Ключ вы вводите в защищённую карточку, которую партнёр не видит</string>
   <string name="im_connect_title">Подключить %1$s</string>
   <string name="im_connect_title_rekey">Заменить ключ для %1$s</string>
   <string name="im_connect_title_unknown">Подключить сервис</string>
@@ -4403,5 +4403,35 @@
     <item quantity="many">%1$d моделей</item>
     <item quantity="other">%1$d модели</item>
   </plurals>
+  <string name="im_change_app_settings">Изменение AI-сервисов</string>
+  <string name="im_settings_tag_rename">Переименовать</string>
+  <string name="im_settings_tag_address">Сменить адрес</string>
+  <string name="im_settings_tag_add">Добавить</string>
+  <string name="im_settings_tag_remove">Удалить</string>
+  <string name="im_settings_tag_model">Сменить модель</string>
+  <string name="im_settings_tag_default">По умолчанию</string>
+  <string name="im_settings_arrow">%1$s → %2$s</string>
+  <string name="im_settings_address">Запросы отправляются на %1$s</string>
+  <string name="im_settings_address_clears_key">Запросы отправляются на %1$s. Сохранённый ключ будет удалён — введите его снова для нового адреса</string>
+  <plurals name="im_settings_models">
+    <item quantity="one">%1$s: %2$d модель</item>
+    <item quantity="few">%1$s: %2$d модели</item>
+    <item quantity="many">%1$s: %2$d моделей</item>
+    <item quantity="other">%1$s: %2$d модели</item>
+  </plurals>
+  <string name="im_settings_shown_as">Отображается как %1$s</string>
+  <string name="im_settings_tools_on">Может использовать инструменты</string>
+  <string name="im_settings_tools_off">Без инструментов</string>
+  <string name="im_settings_reasoning_on">Сначала рассуждает</string>
+  <string name="im_settings_reasoning_off">Без рассуждений</string>
+  <string name="im_settings_image_on">Видит изображения</string>
+  <string name="im_settings_image_off">Не видит изображения</string>
+  <string name="im_settings_follow_default">Как модель чата по умолчанию</string>
+  <string name="im_settings_follow_fast">Как быстрая модель</string>
+  <string name="im_settings_from">От %1$s</string>
+  <string name="im_settings_footnote">Позже это можно отменить в истории изменений.</string>
+  <string name="im_settings_footnote_key">При смене адреса сервиса сохранённый ключ удаляется. Остальные изменения можно позже отменить в истории изменений.</string>
+  <string name="im_settings_outdated">С тех пор настройки изменились, поэтому применить эти изменения нельзя. Попросите партнёра попробовать ещё раз.</string>
+  <string name="im_revision_ai_services">AI-сервисы изменены</string>
   <string name="notification_approval_connect">Введите API Key</string>
 </resources>
