@@ -4302,7 +4302,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_nickname_hint">変更すると、次の返事から新しい呼び名になります</string>
   <string name="im_sheet_done">完了</string>
   <string name="im_ability_app_settings">AIサービスを設定</string>
-  <string name="im_ability_app_settings_desc">AIサービスへの接続をお手伝いします。API Keyは、パートナーから見えない安全なカードに入力してください</string>
+  <string name="im_ability_app_settings_desc">AIサービスへの接続とモデルの設定をお手伝いします。API Keyは、パートナーから見えない安全なカードに入力してください</string>
   <string name="im_connect_title">%1$sに接続</string>
   <string name="im_connect_title_rekey">%1$sのAPI Keyを変更</string>
   <string name="im_connect_title_unknown">サービスに接続</string>
@@ -4331,5 +4331,32 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <plurals name="im_connect_models">
     <item quantity="other">%1$d個のモデル</item>
   </plurals>
+  <string name="im_change_app_settings">AIサービスを変更</string>
+  <string name="im_settings_tag_rename">名前を変更</string>
+  <string name="im_settings_tag_address">アドレスを変更</string>
+  <string name="im_settings_tag_add">追加</string>
+  <string name="im_settings_tag_remove">削除</string>
+  <string name="im_settings_tag_model">モデルを変更</string>
+  <string name="im_settings_tag_default">デフォルト</string>
+  <string name="im_settings_arrow">%1$s → %2$s</string>
+  <string name="im_settings_address">リクエストの送信先：%1$s</string>
+  <string name="im_settings_address_clears_key">リクエストの送信先は%1$sです。保存済みのAPI Keyは削除されるため、新しいアドレス用に再度入力してください</string>
+  <plurals name="im_settings_models">
+    <item quantity="other">%1$s：%2$d個のモデル</item>
+  </plurals>
+  <string name="im_settings_shown_as">表示名：%1$s</string>
+  <string name="im_settings_tools_on">ツールを使える</string>
+  <string name="im_settings_tools_off">ツールを使わない</string>
+  <string name="im_settings_reasoning_on">先に考える</string>
+  <string name="im_settings_reasoning_off">考えない</string>
+  <string name="im_settings_image_on">画像を見られる</string>
+  <string name="im_settings_image_off">画像を見ない</string>
+  <string name="im_settings_follow_default">デフォルトのチャットモデルに合わせる</string>
+  <string name="im_settings_follow_fast">高速モデルに合わせる</string>
+  <string name="im_settings_from">%1$sから</string>
+  <string name="im_settings_footnote">あとで変更履歴から取り消せます。</string>
+  <string name="im_settings_footnote_key">サービスのアドレスを変更すると、保存済みのAPI Keyは削除されます。その他の変更は、あとで変更履歴から取り消せます。</string>
+  <string name="im_settings_outdated">その後設定が変更されたため、この変更は適用できません。パートナーにもう一度試してもらってください。</string>
+  <string name="im_revision_ai_services">AIサービスを変更しました</string>
   <string name="notification_approval_connect">API Keyを入力</string>
 </resources>
