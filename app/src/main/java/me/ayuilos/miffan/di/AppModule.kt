@@ -160,6 +160,15 @@ val appModule = module {
     }
 
     single { RevisionService(revisions = get(), settingsStore = get(), memoryRepository = get(), appearancePrefs = get()) }
+    single {
+        val conversations = get<me.ayuilos.miffan.data.repository.ConversationRepository>()
+        val settingsStore = get<me.ayuilos.miffan.data.datastore.SettingsStore>()
+        me.ayuilos.miffan.data.partner.PartnerRecords(
+            revisions = get(), revisionService = get(), audit = get(),
+            assistantOf = { conversations.getAssistantIdOf(it) },
+            settings = { settingsStore.settingsFlow.value },
+        )
+    }
 
     single<ThreadNoticeSource> { RevisionNoticeSource(revisions = get(), settingsStore = get()) }
 

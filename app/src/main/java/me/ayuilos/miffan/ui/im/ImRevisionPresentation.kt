@@ -5,6 +5,7 @@ import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.ComputerUseMode
 import me.ayuilos.miffan.data.repository.MemoryRepository
 import me.ayuilos.miffan.data.revision.*
+import me.ayuilos.miffan.utils.textLines
 
 /** [label] is a whole sentence, or a format taking [detail] (or the string [detailRes]) as its argument. */
 internal data class ImRevisionChange(val label: Int, val detail: String? = null, val detailRes: Int? = null)
@@ -92,27 +93,5 @@ internal fun imRevisionDiff(revision: Revision, parent: Revision?): List<ImDiffL
     }
 }
 
-/** Blank text has no lines, so an empty field never shows as a removed or added blank line. */
-private fun String?.textLines(): List<String> = if (isNullOrBlank()) emptyList() else lines()
-
-private fun imCompareLines(before: List<String>, after: List<String>): List<ImDiffLine> {
-    // A bounded LCS avoids excessive UI work with unusually long prompts; the tail is shown verbatim.
-    val a = before.take(500)
-    val b = after.take(500)
-    val lengths = Array(a.size + 1) { IntArray(b.size + 1) }
-    for (i in a.indices.reversed()) for (j in b.indices.reversed()) {
-        lengths[i][j] = if (a[i] == b[j]) lengths[i + 1][j + 1] + 1 else maxOf(lengths[i + 1][j], lengths[i][j + 1])
-    }
-    return buildList {
-        var i = 0; var j = 0
-        while (i < a.size || j < b.size) {
-            when {
-                i < a.size && j < b.size && a[i] == b[j] -> { i++; j++ }
-                i < a.size && (j == b.size || lengths[i + 1][j] >= lengths[i][j + 1]) -> add(ImDiffLine(a[i++], false))
-                else -> add(ImDiffLine(b[j++], true))
-            }
-        }
-        before.drop(500).forEach { add(ImDiffLine(it, false)) }
-        after.drop(500).forEach { add(ImDiffLine(it, true)) }
-    }
-}
+private fun imCompareLines(before: List<String>, after: List<String>): List<ImDiffLine> =
+    me.ayuilos.miffan.utils.diffLines(before, after).map { (text, added) -> ImDiffLine(text, added) }

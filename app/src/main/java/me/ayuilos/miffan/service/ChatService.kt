@@ -1357,6 +1357,7 @@ class ChatService(
                     add(workspaceReminderTransformer)
                     add(me.ayuilos.miffan.data.ai.transformers.PartnerMentionTransformer(turnConversation, settings))
                     add(me.ayuilos.miffan.data.ai.transformers.UndoneChangesTransformer(getKoin().get<me.ayuilos.miffan.data.revision.RevisionService>()))
+                    if (settings.isImMode) add(me.ayuilos.miffan.data.ai.transformers.PartnerRecordsTransformer(getKoin().get<me.ayuilos.miffan.data.partner.PartnerRecords>()))
                 },
                 outputTransformers = outputTransformers,
                 dynamicTools = {
@@ -1400,6 +1401,8 @@ class ChatService(
                     if (settings.isImMode) {
                         addAll(me.ayuilos.miffan.data.ai.tools.buildPartnerMessageTools(
                             turnConversation, access, settingsStore, getKoin().get<me.ayuilos.miffan.data.partner.DefaultPartnerChatService>()))
+                        addAll(me.ayuilos.miffan.data.ai.tools.buildPartnerRecordsTools(
+                            settings.isImMode, assistant.id, getKoin().get<me.ayuilos.miffan.data.partner.PartnerRecords>()))
                         addAll(me.ayuilos.miffan.data.ai.tools.buildSelfProfileTools(
                             access = access,
                             isImMode = settings.isImMode,

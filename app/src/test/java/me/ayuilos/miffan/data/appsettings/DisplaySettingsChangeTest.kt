@@ -200,6 +200,38 @@ class DisplaySettingsChangeTest {
     }
 
     @Test
+    fun eachUndoneCallIsDatedByItsOwnUndo() = runBlocking {
+        var now = java.time.Instant.parse("2026-11-12T01:00:00Z")
+        val revisions = RevisionRepository(FakeStore()) { now }
+        val appearance = FakeAppearance()
+        val recorder = AiServicesRevisionRecorder(revisions, appearance)
+        val state = MutableStateFlow(settings())
+        val store = mockk<SettingsStore>()
+        every { store.settingsFlow } returns state
+        coEvery { store.update(any<(Settings) -> Settings>()) } coAnswers {
+            val old = state.value
+            val next = firstArg<(Settings) -> Settings>()(old)
+            state.value = next
+            recorder.onSettingsChanged(old, next)
+        }
+        val service = RevisionService(revisions, store, mockk<MemoryRepository>(relaxed = true), appearance)
+        val tool = buildAppSettingsTools(store, appearancePrefs = appearance, recorder = recorder).first { it.name == CHANGE_APP_SETTINGS_TOOL }
+        suspend fun call(id: String, change: String) = withContext(CurrentToolCall(id, approved = true) + RevisionOrigin(RevisionAuthor.AGENT)) {
+            tool.execute(changes(change))
+        }
+        call("c1", """{"type":"set_display","font_size":"large"}""")
+        now = java.time.Instant.parse("2026-11-12T01:01:00Z")
+        call("c2", """{"type":"set_owner_name","name":"Chen"}""")
+        now = java.time.Instant.parse("2026-11-12T01:02:00Z")
+        assertEquals(RestoreResult.Restored, service.undoToolCall("c2"))
+        now = java.time.Instant.parse("2026-11-12T01:03:00Z")
+        assertEquals(RestoreResult.Restored, service.undoToolCall("c1"))
+        // The later undo of c1 is not c2's undo too.
+        assertEquals(java.time.Instant.parse("2026-11-12T01:02:00Z"), service.undoneAt("c2"))
+        assertEquals(java.time.Instant.parse("2026-11-12T01:03:00Z"), service.undoneAt("c1"))
+    }
+
+    @Test
     fun theToolSwitchesToDarkAndUndoBringsLightBackWithTheRest() = runBlocking {
         val revisions = RevisionRepository(FakeStore())
         val appearance = FakeAppearance()

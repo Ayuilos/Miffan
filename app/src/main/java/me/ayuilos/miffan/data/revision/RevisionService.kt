@@ -97,6 +97,21 @@ class RevisionService(
             observeToolCallChange(it).first()?.state == ToolCallChangeState.Undone
         }
 
+    /**
+     * When the owner undid [toolCallId], while it stays undone. An undo restores the version before the call, so it is
+     * the latest restore pointing back at that version; restores of other calls on the same subject do not count.
+     * Null when the call changed nothing undoable or is in effect (again).
+     */
+    suspend fun undoneAt(toolCallId: String): java.time.Instant? {
+        val change = observeToolCallChange(toolCallId).first()?.takeIf { it.state == ToolCallChangeState.Undone } ?: return null
+        return change.revisions.groupBy { it.subject to it.subjectId }.mapNotNull { (key, group) ->
+            val before = group.minBy { it.createdAt }.parentId ?: return@mapNotNull null
+            revisions.history(key.first, key.second).first()
+                .filter { it.author == RevisionAuthor.RESTORE && it.revertOf == before }
+                .maxOfOrNull { it.createdAt }
+        }.maxOrNull()
+    }
+
     /** Reverts every reversible subject changed by the call, after checking all subject heads. */
     suspend fun undoToolCall(toolCallId: String): RestoreResult = restoreToolCall(toolCallId, redo = false)
 
