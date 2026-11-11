@@ -75,7 +75,13 @@ sealed interface AppSettingsLine {
 
     /** [clearsKey]: the saved key is removed, because it was meant for the old address. */
     @Serializable @SerialName("provider_address")
-    data class ProviderAddress(val provider: String, val origin: String, val clearsKey: Boolean) : AppSettingsLine
+    data class ProviderAddress(
+        val provider: String,
+        val origin: String,
+        val clearsKey: Boolean,
+        /** The whole new address, when only its path changed and [origin] alone would read as no change. */
+        val url: String? = null,
+    ) : AppSettingsLine
 
     @Serializable @SerialName("models_added")
     data class ModelsAdded(val provider: String, val models: List<String>) : AppSettingsLine
@@ -233,7 +239,9 @@ private fun setAddress(change: JsonObject, settings: Settings): Step {
     if (baseUrl == provider.baseUrl()?.trim()?.trimEnd('/')) return Step(settings, null)
     val clearsKey = provider.keyStatus() == "set"
     val moved = provider.withBaseUrl(baseUrl).let { if (clearsKey) it.withApiKey("") else it }
-    return Step(settings.replace(moved), AppSettingsLine.ProviderAddress(provider.name, displayOriginOf(baseUrl).orEmpty(), clearsKey))
+    val origin = displayOriginOf(baseUrl).orEmpty()
+    return Step(settings.replace(moved), AppSettingsLine.ProviderAddress(provider.name, origin, clearsKey,
+        url = baseUrl.takeIf { origin == provider.displayOrigin() }))
 }
 
 private fun addModels(change: JsonObject, settings: Settings, catalog: ModelCatalog, newId: () -> Uuid): Step {

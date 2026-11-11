@@ -175,7 +175,7 @@ internal fun ThreadConnectProviderCard(
         })
         if (conversation == null) {
             CardNote(HugeIcons.LockPassword, MaterialTheme.colorScheme.onSurfaceVariant, stringResource(R.string.im_connect_phone_only))
-            ImCardButtons { ImCardOutlinedButton(stringResource(R.string.im_connect_cancel), onClick = { cancel() }) }
+            ImCardButtons { ImCardOutlinedButton(stringResource(if (target is HeaderTarget) R.string.im_secret_cancel else R.string.im_connect_cancel), onClick = { cancel() }) }
             return@ImActionCard
         }
         if (phase == ProviderConnectCards.Phase.Saved) {
@@ -184,7 +184,7 @@ internal fun ThreadConnectProviderCard(
         }
         if (phase == ProviderConnectCards.Phase.TargetChanged) {
             CardNote(HugeIcons.Alert02, MaterialTheme.colorScheme.error, stringResource(R.string.im_connect_target_changed))
-            ImCardButtons { ImCardOutlinedButton(stringResource(R.string.im_connect_cancel), onClick = { cancel() }) }
+            ImCardButtons { ImCardOutlinedButton(stringResource(if (target is HeaderTarget) R.string.im_secret_cancel else R.string.im_connect_cancel), onClick = { cancel() }) }
             return@ImActionCard
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -263,7 +263,7 @@ internal fun ThreadConnectProviderCard(
                 else -> Unit
             }
             TextButton(onClick = { cancel() }, enabled = !checking) {
-                Text(stringResource(R.string.im_connect_cancel), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(if (target is HeaderTarget) R.string.im_secret_cancel else R.string.im_connect_cancel), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

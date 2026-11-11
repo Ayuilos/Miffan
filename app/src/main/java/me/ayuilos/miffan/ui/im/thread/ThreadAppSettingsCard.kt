@@ -80,7 +80,7 @@ private fun appSettingsLine(line: AppSettingsLine): ExtensionLine = when (line) 
     is AppSettingsLine.ProviderRenamed -> ExtensionLine(R.string.im_settings_tag_rename, false,
         stringResource(R.string.im_settings_arrow, line.from, line.to), null)
     is AppSettingsLine.ProviderAddress -> ExtensionLine(R.string.im_settings_tag_address, line.clearsKey, line.provider,
-        stringResource(if (line.clearsKey) R.string.im_settings_address_clears_key else R.string.im_settings_address, line.origin))
+        stringResource(if (line.clearsKey) R.string.im_settings_address_clears_key else R.string.im_settings_address, line.url ?: line.origin))
     is AppSettingsLine.ModelsAdded -> ExtensionLine(R.string.im_settings_tag_add, false,
         pluralStringResource(R.plurals.im_settings_models, line.models.size, line.provider, line.models.size), line.models.joinToString("、"))
     is AppSettingsLine.ModelsRemoved -> ExtensionLine(R.string.im_settings_tag_remove, true,

@@ -141,6 +141,10 @@ class AppSettingsChangeTest {
         assertEquals("https://relay2.example.com/v1", moved.baseUrl)
         assertEquals("", moved.apiKey)
         assertEquals(listOf(AppSettingsLine.ProviderAddress("Relay", "relay2.example.com", clearsKey = true)), plan.lines)
+        // Only the path changed: the line names the whole address, or it would read as no change at all.
+        val samehost = ok(planAppSettingsChange(changes(
+            """{"type":"set_provider_address","provider_id":"${relay.id}","base_url":"https://relay.example.com/v2"}"""), settings()))
+        assertEquals("https://relay.example.com/v2", (samehost.lines.single() as AppSettingsLine.ProviderAddress).url)
         val result = appSettingsResultJson(plan.lines)
         assertTrue("connect_provider" in result)
         assertEquals(plan.lines, appSettingsResultLines(result))
@@ -201,6 +205,32 @@ class AppSettingsChangeTest {
         override fun byToolCallId(toolCallId: String) = revisions.map { list -> list.filter { it.toolCallId == toolCallId } }
         override fun byAuthor(author: RevisionAuthor, subjectIds: List<String>): Flow<List<Revision>> =
             revisions.map { list -> list.filter { it.author == author && it.subjectId in subjectIds } }
+    }
+
+    @Test
+    fun undoWorksWhenTheLastRecordedVersionPredatesASlotTheSnapshotsGained() = runBlocking {
+        val revisions = RevisionRepository(FakeStore())
+        val services = AiServicesRevisionRecorder(revisions)
+        val state = MutableStateFlow(settings())
+        val store = mockk<SettingsStore>()
+        every { store.settingsFlow } returns state
+        coEvery { store.update(any<(Settings) -> Settings>()) } coAnswers {
+            val old = state.value
+            val next = firstArg<(Settings) -> Settings>()(old)
+            state.value = next
+            services.onSettingsChanged(old, next)
+        }
+        // A version written before snapshots had the search slot.
+        val older = Json.parseToJsonElement(aiServicesSnapshot(state.value)).jsonObject - "search:selected"
+        revisions.record(RevisionSubject.AI_SERVICES, "app", before = null, after = JsonObject(older).toString())
+        val service = RevisionService(revisions, store, mockk<MemoryRepository>(relaxed = true))
+        withContext(CurrentToolCall("c2", approved = true) + RevisionOrigin(RevisionAuthor.AGENT)) {
+            store.update { ok(planAppSettingsChange(changes(addReasoner), it)).settings }
+        }
+        assertEquals(ToolCallChangeState.Undoable, service.observeToolCallChange("c2").first()!!.state)
+        assertEquals(RestoreResult.Restored, service.undoToolCall("c2"))
+        assertEquals(ToolCallChangeState.Undone, service.observeToolCallChange("c2").first()!!.state)
+        assertEquals(listOf(chat), state.value.providers.first { it.id == deepseekId }.models)
     }
 
     @Test

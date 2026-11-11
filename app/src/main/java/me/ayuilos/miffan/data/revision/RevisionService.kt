@@ -226,11 +226,20 @@ private fun toolCallGroup(group: List<Revision>, before: Revision): ToolCallGrou
         read = { MemoryRepository.restore(it).associateBy { item -> item.id } },
         write = { JsonInstant.encodeToString(it.values.sortedBy { item -> item.id }) },
     )
-    RevisionSubject.AI_SERVICES -> ToolCallGroup(
-        group, before,
-        read = { JsonInstant.parseToJsonElement(it).jsonObject },
-        write = { JsonObject(it).toString() },
-    )
+    RevisionSubject.AI_SERVICES -> {
+        // Providers and model lists come and go; the fixed slots (default models, search service in use) are always
+        // there in the current format, so one missing from either side only means an older snapshot, not a change.
+        val beforeKeys = JsonInstant.parseToJsonElement(before.snapshot).jsonObject.keys
+        val afterKeys = JsonInstant.parseToJsonElement(group.last().snapshot).jsonObject.keys
+        ToolCallGroup(
+            group, before,
+            read = { JsonInstant.parseToJsonElement(it).jsonObject },
+            write = { JsonObject(it).toString() },
+            ignored = { key ->
+                !key.startsWith("provider:") && !key.startsWith("models:") && (key !in beforeKeys || key !in afterKeys)
+            },
+        )
+    }
 }
 
 /** Null map lookups represent absence, distinct from any present value (including JSON null). */

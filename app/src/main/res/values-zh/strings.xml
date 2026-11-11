@@ -4375,5 +4375,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_secret_header_hint">粘贴令牌</string>
   <string name="im_secret_save">保存</string>
   <string name="im_secret_header_saved">%1$s 的 %2$s 已保存</string>
+  <string name="im_secret_cancel">不填了</string>
   <string name="notification_approval_connect">等你填写 API Key</string>
 </resources>
