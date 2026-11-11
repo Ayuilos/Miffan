@@ -1926,6 +1926,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_p5_origin_baseline">처음 상태</string>
   <string name="im_p5_preferences">배운 선호</string>
   <string name="im_p5_other_settings">기타 설정</string>
+  <string name="im_revision_reply_settings">답장 길이, 참고하는 메시지 수, 온도</string>
   <string name="im_p5_changed">수정: %1$s</string>
   <string name="im_p5_memory_added">추가: %1$s</string>
   <string name="im_p5_memory_changed">수정: %1$s</string>
@@ -4390,6 +4391,16 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_settings_owner_name">파트너가 부르는 내 이름</string>
   <string name="im_settings_cleared">설정 안 함</string>
   <string name="im_settings_fast_thinking">빠른 모델의 생각 시간</string>
+  <string name="im_settings_tag_partner">파트너</string>
+  <string name="im_settings_reply_limit">최대 답장 길이</string>
+  <string name="im_settings_tokens">%1$s tokens</string>
+  <string name="im_settings_no_limit">제한 없음</string>
+  <string name="im_settings_context">최근 메시지 참고</string>
+  <string name="im_settings_messages">%1$s개</string>
+  <string name="im_settings_all">전체</string>
+  <string name="im_settings_temperature">온도</string>
+  <string name="im_settings_temperature_default">모델 기본값</string>
+  <string name="im_settings_shared_memory">다른 파트너와 기억 공유</string>
   <string name="im_settings_image_model">이미지 생성 모델</string>
   <string name="im_settings_image_none">설정 안 함(이미지 생성 끔)</string>
   <string name="notification_approval_connect">API Key 입력</string>
