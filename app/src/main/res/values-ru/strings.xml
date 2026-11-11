@@ -4403,7 +4403,7 @@
     <item quantity="many">%1$d моделей</item>
     <item quantity="other">%1$d модели</item>
   </plurals>
-  <string name="im_change_app_settings">Изменение AI-сервисов</string>
+  <string name="im_change_app_settings">Изменение настроек</string>
   <string name="im_settings_tag_rename">Переименовать</string>
   <string name="im_settings_tag_address">Сменить адрес</string>
   <string name="im_settings_tag_add">Добавить</string>
@@ -4446,5 +4446,26 @@
   <string name="im_secret_save">Сохранить</string>
   <string name="im_secret_header_saved">%2$s для %1$s сохранён</string>
   <string name="im_secret_cancel">Не вводить</string>
+  <string name="im_settings_tag_display">Показ</string>
+  <string name="im_settings_tag_look">Вид</string>
+  <string name="im_settings_tag_notify">Уведомления</string>
+  <string name="im_settings_tag_name">Обращение</string>
+  <string name="im_settings_on">Вкл.</string>
+  <string name="im_settings_off">Выкл.</string>
+  <string name="im_settings_font_size">Размер текста</string>
+  <string name="im_settings_font_small">Мелкий</string>
+  <string name="im_settings_font_default">Стандартный</string>
+  <string name="im_settings_font_large">Крупный</string>
+  <string name="im_settings_font_larger">Очень крупный</string>
+  <string name="im_settings_latex">Формулы</string>
+  <string name="im_settings_code_wrap">Перенос длинных строк кода</string>
+  <string name="im_settings_code_collapse">Сворачивание длинного кода</string>
+  <string name="im_settings_crop">Обрезка фото перед отправкой</string>
+  <string name="im_settings_color_mode">Светлая или тёмная</string>
+  <string name="im_settings_owner_name">Как партнёры вас называют</string>
+  <string name="im_settings_cleared">Не задано</string>
+  <string name="im_settings_fast_thinking">Размышления быстрой модели</string>
+  <string name="im_settings_image_model">Модель рисования</string>
+  <string name="im_settings_image_none">Не задано (рисование выключено)</string>
   <string name="notification_approval_connect">Введите API Key</string>
 </resources>

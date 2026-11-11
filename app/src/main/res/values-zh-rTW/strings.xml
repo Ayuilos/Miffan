@@ -4329,7 +4329,7 @@
   <plurals name="im_connect_models">
     <item quantity="other">%1$d 個模型</item>
   </plurals>
-  <string name="im_change_app_settings">調整 AI 服務</string>
+  <string name="im_change_app_settings">調整設定</string>
   <string name="im_settings_tag_rename">改名</string>
   <string name="im_settings_tag_address">改網址</string>
   <string name="im_settings_tag_add">新增</string>
@@ -4369,5 +4369,26 @@
   <string name="im_secret_save">儲存</string>
   <string name="im_secret_header_saved">%1$s 的 %2$s 已儲存</string>
   <string name="im_secret_cancel">不填了</string>
+  <string name="im_settings_tag_display">顯示</string>
+  <string name="im_settings_tag_look">外觀</string>
+  <string name="im_settings_tag_notify">通知</string>
+  <string name="im_settings_tag_name">稱呼</string>
+  <string name="im_settings_on">開</string>
+  <string name="im_settings_off">關</string>
+  <string name="im_settings_font_size">字體大小</string>
+  <string name="im_settings_font_small">小</string>
+  <string name="im_settings_font_default">標準</string>
+  <string name="im_settings_font_large">大</string>
+  <string name="im_settings_font_larger">特大</string>
+  <string name="im_settings_latex">數學公式</string>
+  <string name="im_settings_code_wrap">程式碼自動換行</string>
+  <string name="im_settings_code_collapse">長程式碼自動摺疊</string>
+  <string name="im_settings_crop">傳圖前裁切</string>
+  <string name="im_settings_color_mode">深淺色</string>
+  <string name="im_settings_owner_name">夥伴怎麼稱呼你</string>
+  <string name="im_settings_cleared">不設定</string>
+  <string name="im_settings_fast_thinking">快速模型想多久再回</string>
+  <string name="im_settings_image_model">畫圖模型</string>
+  <string name="im_settings_image_none">不設定（不能畫圖）</string>
   <string name="notification_approval_connect">等你填寫 API Key</string>
 </resources>

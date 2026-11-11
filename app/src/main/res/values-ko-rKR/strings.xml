@@ -4331,7 +4331,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <plurals name="im_connect_models">
     <item quantity="other">모델 %1$d개</item>
   </plurals>
-  <string name="im_change_app_settings">AI 서비스 변경</string>
+  <string name="im_change_app_settings">설정 변경</string>
   <string name="im_settings_tag_rename">이름 변경</string>
   <string name="im_settings_tag_address">주소 변경</string>
   <string name="im_settings_tag_add">추가</string>
@@ -4371,5 +4371,26 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_secret_save">저장</string>
   <string name="im_secret_header_saved">%1$s의 %2$s 저장 완료</string>
   <string name="im_secret_cancel">입력 안 할게요</string>
+  <string name="im_settings_tag_display">표시</string>
+  <string name="im_settings_tag_look">외관</string>
+  <string name="im_settings_tag_notify">알림</string>
+  <string name="im_settings_tag_name">호칭</string>
+  <string name="im_settings_on">켜기</string>
+  <string name="im_settings_off">끄기</string>
+  <string name="im_settings_font_size">글자 크기</string>
+  <string name="im_settings_font_small">작게</string>
+  <string name="im_settings_font_default">표준</string>
+  <string name="im_settings_font_large">크게</string>
+  <string name="im_settings_font_larger">아주 크게</string>
+  <string name="im_settings_latex">수식</string>
+  <string name="im_settings_code_wrap">긴 코드 줄 바꿈</string>
+  <string name="im_settings_code_collapse">긴 코드 접기</string>
+  <string name="im_settings_crop">사진을 보내기 전에 자르기</string>
+  <string name="im_settings_color_mode">밝게·어둡게</string>
+  <string name="im_settings_owner_name">파트너가 부르는 내 이름</string>
+  <string name="im_settings_cleared">설정 안 함</string>
+  <string name="im_settings_fast_thinking">빠른 모델의 생각 시간</string>
+  <string name="im_settings_image_model">이미지 생성 모델</string>
+  <string name="im_settings_image_none">설정 안 함(이미지 생성 끔)</string>
   <string name="notification_approval_connect">API Key 입력</string>
 </resources>
