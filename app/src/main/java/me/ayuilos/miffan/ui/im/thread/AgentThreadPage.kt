@@ -16,7 +16,7 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -126,7 +126,6 @@ fun AgentThreadPage(
     val delivery: me.ayuilos.miffan.data.remotetask.RemoteTaskDelivery = org.koin.compose.koinInject()
     val deliveries by delivery.summaries.collectAsStateWithLifecycle()
     val taskDelivery = deliveries[assistantId]
-    val listState = rememberLazyListState()
     LaunchedEffect(loaded) { if (loaded) me.ayuilos.miffan.utils.ThreadOpenTrace.end() }
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -148,7 +147,13 @@ fun AgentThreadPage(
     // ends the welcome shrinks to a marker instead of taking the partner back.
     var partnerLeft by rememberSaveable { mutableStateOf(false) }
     var welcomeSettled by rememberSaveable { mutableStateOf(false) }
-    val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
+    // The welcome's partner flies into the status row as a shared element, which needs a lookahead scope, and
+    // inside one everything is measured twice. So the scope holds only the list, and only from a welcome until
+    // the partner has landed; the list keeps its rows as they are when it moves in and out.
+    var partnerLanded by rememberSaveable { mutableStateOf(false) }
+    val inFlightScope = welcomeCutoff != null && !partnerLanded
+    val listState = rememberLazyListStateAcross(inFlightScope)
+    val atBottom by remember(listState) { derivedStateOf { !listState.canScrollForward } }
     val dragging by listState.interactionSource.collectIsDraggedAsState()
     val visibleErrors = errors.filter { filter == null || it.conversationId == filter }
     // A topic without a title is called by its first words; kept per message, the timeline changes with every chunk.
@@ -468,17 +473,13 @@ fun AgentThreadPage(
             }
         }
     }
-    // The welcome's partner flies into the status row as a shared element, which needs a lookahead scope, and
-    // inside one everything is measured twice. So the scope holds only the list, and only from a welcome until
-    // the partner has landed; the list keeps its rows as they are when it moves in and out.
-    var partnerLanded by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(welcomeSettled) {
         // Until the welcome's place for the partner has closed, it still belongs to the flight.
         if (welcomeSettled && !partnerLanded) { delay(1_000); partnerLanded = true }
     }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         assistant?.let { AssistantBackground(it, Modifier.fillMaxSize().hazeSource(hazeState, zIndex = -1f)) }
-        SharedElementScope(enabled = welcomeCutoff != null && !partnerLanded, Modifier.fillMaxSize()) { flight ->
+        SharedElementScope(enabled = inFlightScope, Modifier.fillMaxSize()) { flight ->
             // During a welcome the big partner moves into the live status row when the partner starts working.
             CompositionLocalProvider(LocalThreadPartnerTransition provides flight?.let {
                 ThreadPartnerTransition(it, handOff = welcome != null && welcomeDecided && (status != null || partnerLeft))
@@ -608,3 +609,16 @@ fun AgentThreadPage(
 
 /** Rows of one kind reuse each other's compositions while scrolling; a message bubble never becomes a date line. */
 private fun timelineContentType(item: TimelineItem): Any = item::class
+
+/**
+ * A list state that starts over, where the last one was, whenever [scope] changes. A LazyListState measured inside a
+ * lookahead scope (the welcome's SharedTransitionLayout) keeps reading its lookahead layout after the list moves out
+ * of it: the list stopped scrolling past the rows it had when the partner landed, until the thread was reopened.
+ */
+@Composable
+private fun rememberLazyListStateAcross(scope: Boolean): LazyListState {
+    val last = remember { arrayOfNulls<LazyListState>(1) }
+    return rememberSaveable(scope, saver = LazyListState.Saver) {
+        LazyListState(last[0]?.firstVisibleItemIndex ?: 0, last[0]?.firstVisibleItemScrollOffset ?: 0)
+    }.also { last[0] = it }
+}
