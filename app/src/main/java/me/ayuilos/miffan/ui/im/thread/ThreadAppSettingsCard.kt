@@ -99,6 +99,8 @@ private fun appSettingsLine(line: AppSettingsLine): ExtensionLine = when (line) 
             stringResource(R.string.im_settings_arrow, name, line.model ?: stringResource(R.string.im_settings_follow_default)),
             line.provider?.let { stringResource(R.string.im_settings_from, it) })
     }
+    is AppSettingsLine.SearchSelected -> ExtensionLine(R.string.im_extension_tag_switch, false,
+        stringResource(R.string.im_settings_search_in_use, line.service), null)
     is AppSettingsLine.DefaultModel -> ExtensionLine(R.string.im_settings_tag_default, false,
         stringResource(R.string.im_settings_arrow, stringResource(roleLabel(line.role)),
             line.model ?: stringResource(R.string.im_settings_follow_fast)),

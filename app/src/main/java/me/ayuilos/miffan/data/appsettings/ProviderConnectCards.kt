@@ -16,7 +16,7 @@ import me.rerere.ai.provider.Model
 import kotlin.uuid.Uuid
 
 /** Tool calls that are settled only by the app, from a card the owner fills on the phone. */
-val SECRET_CARD_TOOLS: Set<String> = setOf(CONNECT_PROVIDER_TOOL)
+val SECRET_CARD_TOOLS: Set<String> = setOf(CONNECT_PROVIDER_TOOL, CONNECT_SEARCH_TOOL, SET_SECRET_HEADER_TOOL)
 
 /**
  * Guards a decision on [toolCallId] (plus [alsoIds] decided with it) against the secure cards among [secretIds].
@@ -42,6 +42,8 @@ fun secretCardDecisionIds(
  * service the card names and stored for it, and is then dropped. The partner only gets [connectResultJson];
  * the state shown on cards ([phases]) never holds the key either.
  */
+private const val SEARCH_CHECK_TIMEOUT_MS = 30_000L
+
 class ProviderConnectCards(
     private val settingsStore: SettingsStore,
     private val connector: OnboardingConnector,
@@ -87,6 +89,21 @@ class ProviderConnectCards(
         set(toolCallId, Phase.Checking)
         jobs[toolCallId] = scope.launch {
             try {
+                when (target) {
+                    is SearchTarget -> {
+                        when (val result = checkSearchKey(target, trimmed)) {
+                            null -> saveSecret(conversationId, toolCallId) { it.withSearchKey(target, trimmed, checked = true) }
+                            else -> set(toolCallId, result)
+                        }
+                        return@launch
+                    }
+                    // Nothing to check a header against without calling the service's tools; it is stored as given.
+                    is HeaderTarget -> {
+                        saveSecret(conversationId, toolCallId) { it.withSecretHeader(target, trimmed) }
+                        return@launch
+                    }
+                    else -> Unit
+                }
                 val provider = target.providerWith(settingsStore.settingsFlow.value, trimmed)
                 if (provider == null) {
                     set(toolCallId, Phase.TargetChanged)
@@ -117,7 +134,8 @@ class ProviderConnectCards(
         set(toolCallId, Phase.Checking)
         jobs[toolCallId] = scope.launch {
             try {
-                save(conversationId, toolCallId, target, trimmed, checked = false, models = emptyList())
+                if (target is SearchTarget) saveSecret(conversationId, toolCallId) { it.withSearchKey(target, trimmed, checked = false) }
+                else save(conversationId, toolCallId, target, trimmed, checked = false, models = emptyList())
             } finally {
                 jobs.remove(toolCallId)
             }
@@ -153,6 +171,36 @@ class ProviderConnectCards(
         }
         val delivered = chatService.completeSecretCard(conversationId, toolCallId, connectResultJson(result.provider, checked, models))
         // Saved either way; never offer the field again, or a second submit would add the service twice.
+        if (delivered) clear(toolCallId) else set(toolCallId, Phase.Saved)
+    }
+
+    /** One test search with the key: null when it works, otherwise what the card shows. */
+    private suspend fun checkSearchKey(target: SearchTarget, key: String): Phase? {
+        val current = target.serviceId?.let { id -> settingsStore.settingsFlow.value.searchServices.firstOrNull { it.id == id } }
+        val options = (current ?: target.service.create()).withSearchApiKey(key)
+        val result = kotlinx.coroutines.withTimeoutOrNull(SEARCH_CHECK_TIMEOUT_MS) {
+            me.rerere.search.SearchService.getService(options).search(
+                kotlinx.serialization.json.buildJsonObject { put("query", kotlinx.serialization.json.JsonPrimitive("Miffan")) },
+                me.rerere.search.SearchCommonOptions(resultSize = 1), options)
+        } ?: return Phase.Unreachable
+        val error = result.exceptionOrNull() ?: return null
+        if (generateSequence(error) { it.cause }.any { it is java.io.IOException }) return Phase.Unreachable
+        val text = error.message.orEmpty()
+        val rejected = listOf("401", "403", "unauthorized", "forbidden", "invalid api key", "invalid_api_key", "api key")
+            .any { text.contains(it, ignoreCase = true) }
+        return if (rejected) Phase.KeyRejected else Phase.ServiceError(scrubServiceDetail(text, key))
+    }
+
+    private suspend fun saveSecret(conversationId: Uuid, toolCallId: String, apply: (me.ayuilos.miffan.data.datastore.Settings) -> SecretSave) {
+        var saved: SecretSave.Saved? = null
+        settingsStore.update { settings ->
+            when (val outcome = apply(settings)) {
+                is SecretSave.Saved -> outcome.settings.also { saved = outcome }
+                SecretSave.TargetChanged -> settings
+            }
+        }
+        val result = saved ?: return set(toolCallId, Phase.TargetChanged)
+        val delivered = chatService.completeSecretCard(conversationId, toolCallId, result.result)
         if (delivered) clear(toolCallId) else set(toolCallId, Phase.Saved)
     }
 

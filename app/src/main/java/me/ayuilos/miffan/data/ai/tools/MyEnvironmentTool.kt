@@ -152,6 +152,8 @@ private val imAbilityNames = linkedMapOf(
     "request_web_search" to "申请打开联网搜索（需主人同意）",
     "app_settings_catalog" to "查看 AI 服务和模型的配置（看不到 Key）",
     "connect_provider" to "帮主人连接 AI 服务（Key 由主人填进安全卡片）",
+    "connect_search_service" to "帮主人设置搜索服务的 Key（由主人填进安全卡片）",
+    "set_secret_header" to "帮主人给 MCP 服务器或模型设置鉴权请求头（由主人填进安全卡片）",
     "change_app_settings" to "调整 AI 服务、模型、伙伴用的模型和默认模型（主人在卡片上确认）",
 )
 

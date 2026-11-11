@@ -98,6 +98,9 @@ sealed interface AppSettingsLine {
     @Serializable @SerialName("partner_model")
     data class PartnerModel(val partnerId: String, val partner: String, val model: String? = null, val provider: String? = null) : AppSettingsLine
 
+    @Serializable @SerialName("search_selected")
+    data class SearchSelected(val service: String) : AppSettingsLine
+
     /** [model] null: an optional slot follows the fast model again. */
     @Serializable @SerialName("default_model")
     data class DefaultModel(val role: String, val model: String? = null, val provider: String? = null) : AppSettingsLine
@@ -205,6 +208,15 @@ private fun applyOne(change: JsonObject, settings: Settings, catalog: ModelCatal
             if (role.get(settings) == model?.second?.id) return Step(settings, null)
             Step(role.set(settings, model?.second?.id), AppSettingsLine.DefaultModel(role.id, model?.second?.label(), model?.first?.name),
                 assigned = model?.second?.id)
+        }
+        "select_search_service" -> {
+            val id = change.text("service_id")?.let { runCatching { Uuid.parse(it.trim()) }.getOrNull() }
+            val index = settings.searchServices.indexOfFirst { it.id == id }
+            if (index < 0) fail("No search service has this service_id. Call app_settings_catalog for the ids.")
+            val options = settings.searchServices[index]
+            if (options.searchApiKey()?.isBlank() == true) fail("${options.displayName} has no key yet; use connect_search_service first.")
+            if (index == settings.searchServiceSelected) Step(settings, null)
+            else Step(settings.copy(searchServiceSelected = index), AppSettingsLine.SearchSelected(options.displayName))
         }
         null -> fail("type is required.")
         else -> fail("Unknown type \"$type\".")

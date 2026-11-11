@@ -14,6 +14,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ModelType
+import me.ayuilos.miffan.data.ai.mcp.serverUrl
 import me.rerere.ai.provider.OpenAIAuthType
 import me.rerere.ai.provider.ProviderSetting
 import java.net.URI
@@ -70,9 +71,35 @@ fun buildAppSettingsCatalog(settings: Settings): JsonObject = buildJsonObject {
             }
         }
     }
+    putJsonArray("search_services") {
+        settings.searchServices.forEachIndexed { index, options ->
+            addJsonObject {
+                put("id", options.id.toString())
+                put("name", options.displayName)
+                put("in_use", index == settings.searchServiceSelected)
+                options.searchApiKey()?.let { put("key", it.setOrUnset()) }
+                SearchKeyService.of(options)?.let { put("type", it.id); put("host", it.origin) }
+                put("key_card", SearchKeyService.of(options) != null)
+            }
+        }
+    }
+    putJsonArray("mcp_servers") {
+        settings.mcpServers.forEach { server ->
+            addJsonObject {
+                put("id", server.id.toString())
+                put("name", server.commonOptions.name)
+                displayOriginOf(server.serverUrl)?.let { put("host", it) }
+                put("enabled", server.commonOptions.enable)
+                // Header names only; the values often are tokens.
+                putJsonArray("headers") { server.commonOptions.headers.forEach { add(it.first) } }
+                if (server.commonOptions.oauth?.enabled == true) put("oauth", true)
+            }
+        }
+    }
     putJsonArray("notes") {
         add("key is set, unset, signed_in or signed_out; the key itself is never readable.")
         add("A partner's model \"default\" means it follows default_models.chat; \"follow_fast\" follows default_models.fast.")
+        add("Search services with key_card true take a key through connect_search_service; other kinds are set up on their settings page.")
         add("Models are referred to as {provider_id, model_id}; only the first $CATALOG_MODELS_PER_PROVIDER of a provider are listed.")
     }
 }

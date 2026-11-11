@@ -13,6 +13,11 @@ import kotlinx.serialization.json.jsonPrimitive
 import me.ayuilos.miffan.data.appsettings.AppSettingsPlan
 import me.ayuilos.miffan.data.appsettings.CHANGE_APP_SETTINGS_TOOL
 import me.ayuilos.miffan.data.appsettings.CONNECT_PROVIDER_TOOL
+import me.ayuilos.miffan.data.appsettings.CONNECT_SEARCH_TOOL
+import me.ayuilos.miffan.data.appsettings.SET_SECRET_HEADER_TOOL
+import me.ayuilos.miffan.data.appsettings.SearchKeyService
+import me.ayuilos.miffan.data.appsettings.resolveHeaderTarget
+import me.ayuilos.miffan.data.appsettings.resolveSearchTarget
 import me.ayuilos.miffan.data.appsettings.DefaultModelRole
 import me.ayuilos.miffan.data.appsettings.MAX_CHANGES
 import me.ayuilos.miffan.data.appsettings.appSettingsResultJson
@@ -109,10 +114,61 @@ internal fun buildAppSettingsTools(
         },
     ),
     Tool(
+        name = CONNECT_SEARCH_TOOL,
+        description = """
+            Set up a web search service's API key for the owner when they ask. Like connect_provider, the app shows the
+            owner a secure card for the key; you never see it, and must never ask for it in the chat.
+            Give service_id (from app_settings_catalog search_services, for one with key_card true) or type (to add one).
+            The app runs one test search with the key. The result says whether it is the search service in use.
+        """.trimIndent().replace("\n", " "),
+        parameters = {
+            InputSchema.Obj(
+                properties = buildJsonObject {
+                    put("service_id", buildJsonObject { put("type", "string") })
+                    put("type", buildJsonObject {
+                        put("type", "string")
+                        put("enum", buildJsonArray { SearchKeyService.entries.forEach { add(it.id) } })
+                    })
+                    put("reason", buildJsonObject { put("type", "string"); put("description", "Why, in the owner's language") })
+                },
+            )
+        },
+        needsApproval = { input -> resolveSearchTarget(input, settingsStore.settingsFlow.value) is ConnectTargetResult.Ok },
+        execute = { input -> listOf(UIMessagePart.Text(secretCardFallback(resolveSearchTarget(input, settingsStore.settingsFlow.value)))) },
+    ),
+    Tool(
+        name = SET_SECRET_HEADER_TOOL,
+        description = """
+            Set a secret request header (an access token) for an MCP server, or for one model of a provider, when the owner
+            asks. The owner types the value into a secure card you never see; never ask for it in the chat.
+            Give mcp_server_id, or provider_id with model_id (from app_settings_catalog). header defaults to Authorization;
+            scheme "bearer" sends "Bearer <value>" (the default for Authorization), "raw" sends the value as typed.
+            A header of the same name is replaced. The value is not checked: tell the owner to try the server or model.
+        """.trimIndent().replace("\n", " "),
+        parameters = {
+            InputSchema.Obj(
+                properties = buildJsonObject {
+                    put("mcp_server_id", buildJsonObject { put("type", "string") })
+                    put("provider_id", buildJsonObject { put("type", "string") })
+                    put("model_id", buildJsonObject { put("type", "string") })
+                    put("header", buildJsonObject { put("type", "string"); put("description", "Header name, e.g. Authorization or X-Api-Key") })
+                    put("scheme", buildJsonObject {
+                        put("type", "string")
+                        put("enum", buildJsonArray { add("bearer"); add("raw") })
+                    })
+                    put("reason", buildJsonObject { put("type", "string"); put("description", "Why, in the owner's language") })
+                },
+            )
+        },
+        needsApproval = { input -> resolveHeaderTarget(input, settingsStore.settingsFlow.value) is ConnectTargetResult.Ok },
+        execute = { input -> listOf(UIMessagePart.Text(secretCardFallback(resolveHeaderTarget(input, settingsStore.settingsFlow.value)))) },
+    ),
+    Tool(
         name = CHANGE_APP_SETTINGS_TOOL,
         description = """
             Change the AI service setup when the owner asks: switch services on or off, rename them, move a custom service
-            to another address, add, remove or adjust models, choose the model a partner uses, and set the default models.
+            to another address, add, remove or adjust models, choose the model a partner uses, set the default models, and
+            choose the web search service in use.
             The owner confirms on a card listing every change; the changes apply together, in order, or not at all.
             Use ids and model_ids from app_settings_catalog (or the models a connect_provider result listed). Refer to a
             model as {provider_id, model_id}; a model added earlier in the same changes can be used right after.
@@ -176,13 +232,14 @@ private fun appSettingsChangeSchema() = buildJsonObject {
         "add_models = provider_id, models [{model_id, name?, tools?, reasoning?, image_input?}]; " +
         "remove_models = provider_id, model_ids; update_model = provider_id, model_id, and name / tools / reasoning / image_input; " +
         "set_partner_model = partner_id, model ({provider_id, model_id} or \"default\"); " +
-        "set_default_model = role, model ({provider_id, model_id}, or \"follow_fast\" for title and suggestion).")
+        "set_default_model = role, model ({provider_id, model_id}, or \"follow_fast\" for title and suggestion); " +
+        "select_search_service = service_id (the web search service in use).")
     put("properties", buildJsonObject {
         put("type", buildJsonObject {
             put("type", "string")
             put("enum", buildJsonArray {
                 listOf("set_provider_enabled", "rename_provider", "set_provider_address", "add_models", "remove_models",
-                    "update_model", "set_partner_model", "set_default_model").forEach { add(it) }
+                    "update_model", "set_partner_model", "set_default_model", "select_search_service").forEach { add(it) }
             })
         })
         put("provider_id", buildJsonObject { put("type", "string") })
@@ -209,6 +266,7 @@ private fun appSettingsChangeSchema() = buildJsonObject {
         put("reasoning", buildJsonObject { put("type", "boolean") })
         put("image_input", buildJsonObject { put("type", "boolean") })
         put("partner_id", buildJsonObject { put("type", "string") })
+        put("service_id", buildJsonObject { put("type", "string") })
         put("role", buildJsonObject {
             put("type", "string")
             put("enum", buildJsonArray { DefaultModelRole.entries.forEach { add(it.id) } })
@@ -219,3 +277,12 @@ private fun appSettingsChangeSchema() = buildJsonObject {
     })
     put("required", buildJsonArray { add("type") })
 }
+
+/** What a secure card call returns when it runs at all: it was invalid, or the owner did not complete the card. */
+private fun secretCardFallback(target: ConnectTargetResult): String = buildJsonObject {
+    put("success", false)
+    put("error", when (target) {
+        is ConnectTargetResult.Invalid -> target.reason
+        is ConnectTargetResult.Ok -> "The owner did not complete the card."
+    })
+}.toString()

@@ -29,7 +29,8 @@ const val AI_SERVICES_SUBJECT_ID = "app"
  */
 class AiServicesRevisionRecorder(private val revisions: RevisionRepository) {
     suspend fun onSettingsChanged(old: Settings, new: Settings) {
-        if (old.providers == new.providers && DefaultModelRole.entries.all { it.get(old) == it.get(new) }) return
+        if (old.providers == new.providers && DefaultModelRole.entries.all { it.get(old) == it.get(new) } &&
+            old.selectedSearchId() == new.selectedSearchId()) return
         val before = aiServicesSnapshot(old)
         val after = aiServicesSnapshot(new)
         if (before == after) return
@@ -60,7 +61,10 @@ fun aiServicesSnapshot(settings: Settings): String = JsonObject(buildMap {
         }))
     }
     DefaultModelRole.entries.forEach { role -> put("default:${role.id}", role.get(settings)?.let { JsonPrimitive(it.toString()) } ?: JsonNull) }
+    put("search:selected", settings.selectedSearchId()?.let { JsonPrimitive(it.toString()) } ?: JsonNull)
 }).toString()
+
+private fun Settings.selectedSearchId(): Uuid? = searchServices.getOrNull(searchServiceSelected)?.id
 
 /**
  * Brings the AI services back to [snapshot], keeping today's keys, headers and overrides. A provider that would send
@@ -80,6 +84,10 @@ fun Settings.restoreAiServices(snapshot: String): Settings {
         val value = values["default:${role.id}"] ?: return@forEach
         val id = (value as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { runCatching { Uuid.parse(it) }.getOrNull() }
         if (id != null || role.optional) restored = role.set(restored, id)
+    }
+    (values["search:selected"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { id ->
+        val index = restored.searchServices.indexOfFirst { it.id.toString() == id }
+        if (index >= 0) restored = restored.copy(searchServiceSelected = index)
     }
     return restored
 }

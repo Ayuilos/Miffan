@@ -4369,5 +4369,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_key_guard_to_card">填进安全卡片</string>
   <string name="im_key_guard_keep">不发了</string>
   <string name="im_key_guard_send_anyway">仍然发送</string>
+  <string name="im_settings_search_in_use">联网搜索改用 %1$s</string>
+  <string name="im_secret_header_title">填写 %1$s 的凭据</string>
+  <string name="im_secret_header_privacy">只会作为 %2$s 请求头发往上面这个地址，存在这台手机上。%1$s 看不到。</string>
+  <string name="im_secret_header_hint">粘贴令牌</string>
+  <string name="im_secret_save">保存</string>
+  <string name="im_secret_header_saved">%1$s 的 %2$s 已保存</string>
   <string name="notification_approval_connect">等你填写 API Key</string>
 </resources>

@@ -369,8 +369,8 @@ fun AgentThreadPage(
             timeline.asReversed().firstNotNullOfOrNull { item ->
                 (item as? TimelineItem.Message)?.message?.parts?.asReversed()?.firstNotNullOfOrNull { part ->
                     val tool = part as? UIMessagePart.Tool
-                    if (tool == null || !tool.isPending || tool.toolName != me.ayuilos.miffan.data.appsettings.CONNECT_PROVIDER_TOOL) null
-                    else (me.ayuilos.miffan.data.appsettings.resolveConnectTarget(tool.inputAsJson(), keyCardSettings)
+                    if (tool == null || !tool.isPending || tool.toolName !in me.ayuilos.miffan.data.appsettings.SECRET_CARD_TOOLS) null
+                    else (me.ayuilos.miffan.data.appsettings.resolveSecretTarget(tool.toolName, tool.inputAsJson(), keyCardSettings)
                         as? me.ayuilos.miffan.data.appsettings.ConnectTargetResult.Ok)?.let { tool to it.target.name }
                 }
             }

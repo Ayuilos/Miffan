@@ -52,6 +52,13 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.appsettings.CONNECT_PROVIDER_TOOL
+import me.ayuilos.miffan.data.appsettings.HeaderTarget
+import me.ayuilos.miffan.data.appsettings.SECRET_CARD_TOOLS
+import me.ayuilos.miffan.data.appsettings.SearchTarget
+import me.ayuilos.miffan.data.appsettings.resolveSecretTarget
+import me.ayuilos.miffan.data.appsettings.searchApiKey
+import me.rerere.hugeicons.stroke.Key01
+import me.rerere.hugeicons.stroke.Search01
 import me.ayuilos.miffan.data.appsettings.ConnectTarget
 import me.ayuilos.miffan.data.appsettings.ConnectTargetResult
 import me.ayuilos.miffan.data.appsettings.ProviderConnectCards
@@ -87,7 +94,7 @@ import kotlin.uuid.Uuid
 internal fun connectProviderName(tool: UIMessagePart.Tool): String {
     val settings = LocalSettings.current
     return remember(tool.input, settings.providers) {
-        when (val resolved = resolveConnectTarget(tool.inputAsJson(), settings)) {
+        when (val resolved = resolveSecretTarget(tool.toolName, tool.inputAsJson(), settings)) {
             is ConnectTargetResult.Ok -> resolved.target.name
             is ConnectTargetResult.Invalid -> null
         }
@@ -111,7 +118,7 @@ internal fun ThreadConnectProviderCard(
     val phases by cards.phases.collectAsStateWithLifecycle()
     val phase = phases[tool.toolCallId]
     // Fixed when the card first shows: saving checks the service still matches what the owner saw.
-    val resolved = remember(tool.toolCallId) { resolveConnectTarget(tool.inputAsJson(), settings) }
+    val resolved = remember(tool.toolCallId) { resolveSecretTarget(tool.toolName, tool.inputAsJson(), settings) }
     val target = (resolved as? ConnectTargetResult.Ok)?.target
     val partner = if (assistant != null) partnerName(assistant) else stringResource(R.string.im_connect_partner_fallback)
     val conversation = remember(conversationId) { conversationId?.let { runCatching { Uuid.parse(it) }.getOrNull() } }
@@ -138,13 +145,18 @@ internal fun ThreadConnectProviderCard(
         if (handedOff) cards.takeHandoff(tool.toolCallId)?.let { handed -> key = handed; connect(handed) }
     }
 
-    val rekey = (target as? ConnectTarget.Existing)?.hasKey == true
+    val rekey = (target as? ConnectTarget.Existing)?.hasKey == true || (target as? SearchTarget)?.hasKey == true
     ImActionCard(
-        title = target?.let { stringResource(if (rekey) R.string.im_connect_title_rekey else R.string.im_connect_title, it.name) }
-            ?: stringResource(R.string.im_connect_title_unknown),
+        title = when (target) {
+            null -> stringResource(R.string.im_connect_title_unknown)
+            is HeaderTarget -> stringResource(R.string.im_secret_header_title, target.name)
+            else -> stringResource(if (rekey) R.string.im_connect_title_rekey else R.string.im_connect_title, target.name)
+        },
         leading = {
             when (target) {
                 is ConnectTarget.Existing -> AutoAIIcon(target.name, Modifier.size(40.dp))
+                is SearchTarget -> ImCardIcon(HugeIcons.Search01)
+                is HeaderTarget -> ImCardIcon(HugeIcons.Key01)
                 else -> ImCardIcon(HugeIcons.CloudServer)
             }
         },
@@ -155,11 +167,12 @@ internal fun ThreadConnectProviderCard(
             return@ImActionCard
         }
         OriginBadge(target.origin)
-        CardNote(HugeIcons.Shield01, MaterialTheme.colorScheme.primary, stringResource(when {
-            target is ConnectTarget.Custom -> R.string.im_connect_privacy_custom
-            rekey -> R.string.im_connect_privacy_rekey
-            else -> R.string.im_connect_privacy
-        }, partner))
+        CardNote(HugeIcons.Shield01, MaterialTheme.colorScheme.primary, when {
+            target is HeaderTarget -> stringResource(R.string.im_secret_header_privacy, partner, target.header)
+            target is ConnectTarget.Custom -> stringResource(R.string.im_connect_privacy_custom, partner)
+            rekey -> stringResource(R.string.im_connect_privacy_rekey, partner)
+            else -> stringResource(R.string.im_connect_privacy, partner)
+        })
         if (conversation == null) {
             CardNote(HugeIcons.LockPassword, MaterialTheme.colorScheme.onSurfaceVariant, stringResource(R.string.im_connect_phone_only))
             ImCardButtons { ImCardOutlinedButton(stringResource(R.string.im_connect_cancel), onClick = { cancel() }) }
@@ -183,7 +196,7 @@ internal fun ThreadConnectProviderCard(
                 singleLine = true,
                 isError = phase == ProviderConnectCards.Phase.KeyRejected,
                 shape = MaterialTheme.shapes.medium,
-                placeholder = { Text(stringResource(R.string.im_connect_key_hint)) },
+                placeholder = { Text(stringResource(if (target is HeaderTarget) R.string.im_secret_header_hint else R.string.im_connect_key_hint)) },
                 textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
                 visualTransformation = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
                 // A password field: keyboards neither suggest nor learn what is typed.
@@ -211,7 +224,11 @@ internal fun ThreadConnectProviderCard(
                     CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                     Spacer8()
                     Text(stringResource(R.string.im_connect_checking))
-                } else Text(stringResource(if (key.isBlank()) R.string.onboarding_key_paste else R.string.onboarding_key_connect))
+                } else Text(stringResource(when {
+                    key.isBlank() -> R.string.onboarding_key_paste
+                    target is HeaderTarget -> R.string.im_secret_save
+                    else -> R.string.onboarding_key_connect
+                }))
             }
         }
         when (phase) {
@@ -230,7 +247,7 @@ internal fun ThreadConnectProviderCard(
             else -> Unit
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            val keyUrl = (target as? ConnectTarget.Existing)?.keyUrl
+            val keyUrl = (target as? ConnectTarget.Existing)?.keyUrl ?: (target as? SearchTarget)?.service?.keyUrl
             when {
                 target is ConnectTarget.Custom -> {
                     val wrong = stringResource(R.string.im_connect_wrong_address)
@@ -260,20 +277,30 @@ internal fun ThreadConnectRecord(tool: UIMessagePart.Tool) {
     val result = remember(answered.answer) { runCatching { Json.parseToJsonElement(answered.answer).jsonObject }.getOrNull() } ?: return
     val providerId = result["provider_id"]?.jsonPrimitive?.contentOrNull
     val provider = remember(settings.providers, providerId) { settings.providers.firstOrNull { it.id.toString() == providerId } }
-    val name = provider?.name ?: result["provider_name"]?.jsonPrimitive?.contentOrNull.orEmpty()
+    val searchId = result["search_service_id"]?.jsonPrimitive?.contentOrNull
+    val search = remember(settings.searchServices, searchId) { settings.searchServices.firstOrNull { it.id.toString() == searchId } }
+    val header = result["header"]?.jsonPrimitive?.contentOrNull
+    val name = provider?.name ?: search?.displayName
+        ?: (result["provider_name"] ?: result["name"])?.jsonPrimitive?.contentOrNull.orEmpty()
     val checked = result["status"]?.jsonPrimitive?.contentOrNull == "connected"
     val models = result["model_count"]?.jsonPrimitive?.intOrNull
+    val currentKey = provider?.currentKey() ?: search?.searchApiKey()
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            AutoAIIcon(name, Modifier.size(32.dp))
+            when {
+                header != null -> Icon(HugeIcons.Key01, null, Modifier.size(32.dp).padding(4.dp))
+                searchId != null -> Icon(HugeIcons.Search01, null, Modifier.size(32.dp).padding(4.dp))
+                else -> AutoAIIcon(name, Modifier.size(32.dp))
+            }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(stringResource(if (checked) R.string.im_connect_done else R.string.im_connect_saved_unchecked, name),
+                    Text(if (header != null) stringResource(R.string.im_secret_header_saved, name, header)
+                        else stringResource(if (checked) R.string.im_connect_done else R.string.im_connect_saved_unchecked, name),
                         style = MaterialTheme.typography.bodyMedium)
-                    if (checked) Icon(HugeIcons.Tick01, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                    if (checked || header != null) Icon(HugeIcons.Tick01, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                 }
-                provider?.currentKey()?.takeIf { it.isNotBlank() }?.let {
+                currentKey?.takeIf { it.isNotBlank() }?.let {
                     Text(maskedKey(it), style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -287,7 +314,7 @@ internal fun ThreadConnectRecord(tool: UIMessagePart.Tool) {
 }
 
 internal fun UIMessagePart.Tool.isConnectRecord(): Boolean =
-    toolName == CONNECT_PROVIDER_TOOL && approvalState is ToolApprovalState.Answered
+    toolName in SECRET_CARD_TOOLS && approvalState is ToolApprovalState.Answered
 
 private fun ProviderSetting.currentKey(): String = when (this) {
     is ProviderSetting.OpenAI -> apiKey

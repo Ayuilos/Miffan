@@ -115,7 +115,7 @@ internal fun ThreadToolPrompt(
 ) {
     when {
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == ASK_USER -> ThreadQuestionCard(tool, onAnswer)
-        tool.approvalState is ToolApprovalState.Pending && tool.toolName == me.ayuilos.miffan.data.appsettings.CONNECT_PROVIDER_TOOL ->
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName in me.ayuilos.miffan.data.appsettings.SECRET_CARD_TOOLS ->
             ThreadConnectProviderCard(tool, assistant, conversationId, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == WORKSPACE_TERMINAL_TOOL_NAME ->
             ThreadTerminalCard(tool, conversationId, onApproval, onAnswer)
@@ -336,7 +336,9 @@ internal fun toolRecordTitle(tool: UIMessagePart.Tool): String {
     val context = remember(tool) { ToolUIContext(tool, tool.inputAsJson(), tool.outputJsonOrNull(), false) }
     return when {
         tool.toolName == REQUEST_WEB_SEARCH -> webSearchReason(tool) ?: stringResource(R.string.im_p5_web)
-        tool.toolName == me.ayuilos.miffan.data.appsettings.CONNECT_PROVIDER_TOOL ->
+        tool.toolName == me.ayuilos.miffan.data.appsettings.SET_SECRET_HEADER_TOOL ->
+            stringResource(R.string.im_secret_header_title, connectProviderName(tool))
+        tool.toolName in me.ayuilos.miffan.data.appsettings.SECRET_CARD_TOOLS ->
             stringResource(R.string.im_connect_title, connectProviderName(tool))
         tool.toolName == REQUEST_ABILITY -> PartnerAbility.of(toolArg(tool, "ability"))
             ?.let { stringResource(R.string.notification_approval_ability, stringResource(it.title)) } ?: tool.toolName

@@ -351,6 +351,7 @@ class SettingsStore(
                 networkSetting = JsonInstant.decodeFromString(preferences[NETWORK_SETTING] ?: "{}"),
                 searchServices = preferences[SEARCH_SERVICES]?.let {
                     JsonInstant.decodeFromJsonElement<List<SearchServiceOptions>>(searchServicesJson)
+                        .transformSearchServiceSecrets(providerSecretCipher::decrypt)
                         .ifEmpty { listOf(SearchServiceOptions.DEFAULT) }
                 } ?: listOf(SearchServiceOptions.DEFAULT),
                 searchCommonOptions = preferences[SEARCH_COMMON]?.let {
@@ -358,7 +359,8 @@ class SettingsStore(
                 } ?: SearchCommonOptions(),
                 searchServiceSelected = searchServiceSelected,
                 mcpServers = preferences[MCP_SERVERS]?.let {
-                    JsonInstant.decodeFromString(it)
+                    JsonInstant.decodeFromString<List<me.ayuilos.miffan.data.ai.mcp.McpServerConfig>>(it)
+                        .transformMcpSecrets(providerSecretCipher::decrypt)
                 } ?: emptyList(),
                 agentTools = preferences[AGENT_TOOLS]?.let {
                     runCatching { JsonInstant.decodeFromString<List<me.ayuilos.miffan.data.remotetask.AgentToolDefinition>>(it) }.getOrNull()
@@ -579,11 +581,12 @@ class SettingsStore(
             preferences[PARTNER_CONTACT_GRANTS] = JsonInstant.encodeToString(settings.partnerContactGrants)
             preferences[MIFFAN_HELP_ENABLED] = settings.miffanHelpEnabled
 
-            preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(settings.searchServices)
+            preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(
+                settings.searchServices.transformSearchServiceSecrets(providerSecretCipher::encrypt))
             preferences[SEARCH_COMMON] = JsonInstant.encodeToString(settings.searchCommonOptions)
             preferences[SEARCH_SELECTED] = settings.searchServiceSelected.coerceIn(0, settings.searchServices.size - 1)
 
-            preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
+            preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers.transformMcpSecrets(providerSecretCipher::encrypt))
             preferences[AGENT_TOOLS] = JsonInstant.encodeToString(settings.agentTools)
             preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
             preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
