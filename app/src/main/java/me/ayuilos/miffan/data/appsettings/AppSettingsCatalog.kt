@@ -95,6 +95,16 @@ fun buildAppSettingsCatalog(settings: Settings, appearance: Appearance? = null):
                 put("id", assistant.id.toString())
                 put("name", assistant.name)
                 put("model", assistant.chatModelId?.let { settings.modelRef(it) } ?: JsonPrimitive("default"))
+                putJsonObject("settings") {
+                    settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
+                        ?.takeIf { ModelAbility.REASONING in it.abilities }
+                        ?.let { put("thinking", ThinkTier.of(assistant.reasoningLevel, it).id) }
+                    put("reply_limit", assistant.maxTokens?.let { JsonPrimitive(it) } ?: JsonPrimitive("none"))
+                    put("context_messages", assistant.contextMessageLimit.takeIf { it > 0 }?.let { JsonPrimitive(it) } ?: JsonPrimitive("all"))
+                    put("temperature", assistant.temperature?.let { JsonPrimitive(it) } ?: JsonPrimitive("default"))
+                    put("memory", assistant.enableMemory)
+                    put("shared_memory", assistant.useGlobalMemory)
+                }
             }
         }
     }
@@ -126,6 +136,10 @@ fun buildAppSettingsCatalog(settings: Settings, appearance: Appearance? = null):
     putJsonArray("notes") {
         add("key is set, unset, signed_in or signed_out; the key itself is never readable.")
         add("A partner's model \"default\" means it follows default_models.chat; \"follow_fast\" follows default_models.fast.")
+        add("partners[].settings: thinking is how long it thinks before replying (absent when its model cannot think); " +
+            "reply_limit caps a reply in tokens and cuts it off mid-way, so for shorter answers change how you reply instead; " +
+            "context_messages is how many recent messages it is sent; temperature \"default\" leaves it to the model; " +
+            "shared_memory means it uses the memory all partners share instead of its own.")
         add("Search services with key_card true take a key through connect_search_service; other kinds are set up on their settings page.")
         add("Models are referred to as {provider_id, model_id}; only the first $CATALOG_MODELS_PER_PROVIDER of a provider are listed.")
     }

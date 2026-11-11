@@ -23,10 +23,16 @@ internal fun imRevisionChanges(revision: Revision, parent: Revision?): List<ImRe
                 if (current.learnedPreferences != previous.learnedPreferences) add(ImRevisionChange(R.string.im_p5_preferences))
                 if (current.enableWebSearch != previous.enableWebSearch) add(ImRevisionChange(R.string.im_p5_web))
                 if (current.enableMemory != previous.enableMemory || current.useGlobalMemory != previous.useGlobalMemory) add(ImRevisionChange(R.string.im_p5_remember))
+                if (current.chatModelId != previous.chatModelId) add(ImRevisionChange(R.string.im_p5_model))
+                if (current.reasoningLevel != previous.reasoningLevel) add(ImRevisionChange(R.string.im_think_title))
+                if (current.maxTokens != previous.maxTokens || current.contextMessageLimit != previous.contextMessageLimit ||
+                    current.temperature != previous.temperature) add(ImRevisionChange(R.string.im_revision_reply_settings))
                 addAll(permissionChanges(previous, current))
                 if (current.copy(name = previous.name, avatar = previous.avatar, systemPrompt = previous.systemPrompt,
                         learnedPreferences = previous.learnedPreferences, enableWebSearch = previous.enableWebSearch,
                         enableMemory = previous.enableMemory, useGlobalMemory = previous.useGlobalMemory,
+                        chatModelId = previous.chatModelId, reasoningLevel = previous.reasoningLevel, maxTokens = previous.maxTokens,
+                        contextMessageLimit = previous.contextMessageLimit, temperature = previous.temperature,
                         workspaceId = previous.workspaceId, workspaceScopeId = previous.workspaceScopeId,
                         workspaceShellEnabled = previous.workspaceShellEnabled,
                         workspaceShellApprovalRequired = previous.workspaceShellApprovalRequired,

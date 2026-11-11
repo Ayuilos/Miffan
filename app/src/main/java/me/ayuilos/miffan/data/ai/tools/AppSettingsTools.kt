@@ -13,6 +13,10 @@ import kotlinx.serialization.json.jsonPrimitive
 import me.ayuilos.miffan.data.appsettings.AppSettingsPlan
 import me.ayuilos.miffan.data.appsettings.Appearance
 import me.ayuilos.miffan.data.appsettings.CHANGE_APP_SETTINGS_TOOL
+import me.ayuilos.miffan.data.appsettings.MAX_CONTEXT_MESSAGES
+import me.ayuilos.miffan.data.appsettings.MAX_REPLY_LIMIT
+import me.ayuilos.miffan.data.appsettings.MIN_CONTEXT_MESSAGES
+import me.ayuilos.miffan.data.appsettings.MIN_REPLY_LIMIT
 import me.ayuilos.miffan.data.appsettings.CONNECT_PROVIDER_TOOL
 import me.ayuilos.miffan.data.appsettings.CONNECT_SEARCH_TOOL
 import me.ayuilos.miffan.data.appsettings.SET_SECRET_HEADER_TOOL
@@ -184,7 +188,8 @@ internal fun buildAppSettingsTools(
             Change the AI service setup when the owner asks: switch services on or off, rename them, move a custom service
             to another address, add, remove or adjust models, choose the model a partner uses, set the default models, and
             choose the web search service in use, and adjust how the app looks and notifies: font size, theme, light or dark,
-            notifications, and what partners call the owner.
+            notifications, and what partners call the owner, and a partner's reply settings (yours or another partner's):
+            how long it thinks, how long a reply may get, how much of the chat it is sent, temperature, and memory.
             The owner confirms on a card listing every change; the changes apply together, in order, or not at all.
             Use ids and model_ids from app_settings_catalog (or the models a connect_provider result listed). Refer to a
             model as {provider_id, model_id}; a model added earlier in the same changes can be used right after.
@@ -267,14 +272,16 @@ private fun appSettingsChangeSchema() = buildJsonObject {
         "set_theme = any of theme (wallpaper or an id from catalog theme.choices), color_mode (system, light, dark), pure_black; " +
         "set_notifications = reply_done and/or live_progress; set_owner_name = name (what partners call the owner, empty clears); " +
         "set_fast_thinking = level (quick, auto, more, deep) for the fast model; set_default_model role image = a model that can " +
-        "draw, or \"none\".")
+        "draw, or \"none\"; set_partner_settings = partner_id and any of thinking (quick, auto, more, deep), reply_limit " +
+        "($MIN_REPLY_LIMIT–$MAX_REPLY_LIMIT tokens or \"none\"), context_messages ($MIN_CONTEXT_MESSAGES–$MAX_CONTEXT_MESSAGES or \"all\"), " +
+        "temperature (0–2 or \"default\"), memory, shared_memory; nothing else, permissions are the owner's.")
     put("properties", buildJsonObject {
         put("type", buildJsonObject {
             put("type", "string")
             put("enum", buildJsonArray {
                 listOf("set_provider_enabled", "rename_provider", "set_provider_address", "add_models", "remove_models",
                     "update_model", "set_partner_model", "set_default_model", "select_search_service", "set_display", "set_theme",
-                    "set_notifications", "set_owner_name", "set_fast_thinking").forEach { add(it) }
+                    "set_notifications", "set_owner_name", "set_fast_thinking", "set_partner_settings").forEach { add(it) }
             })
         })
         put("provider_id", buildJsonObject { put("type", "string") })

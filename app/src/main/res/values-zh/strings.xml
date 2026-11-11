@@ -1929,6 +1929,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_p5_origin_baseline">初始状态</string>
   <string name="im_p5_preferences">学到的偏好</string>
   <string name="im_p5_other_settings">其他设定</string>
+  <string name="im_revision_reply_settings">回复长度、参考消息条数和温度</string>
   <string name="im_p5_changed">修改了：%1$s</string>
   <string name="im_p5_memory_added">新增：%1$s</string>
   <string name="im_p5_memory_changed">修改：%1$s</string>
@@ -4395,6 +4396,16 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_settings_owner_name">伙伴怎么称呼你</string>
   <string name="im_settings_cleared">不设置</string>
   <string name="im_settings_fast_thinking">快速模型想多久再回</string>
+  <string name="im_settings_tag_partner">伙伴</string>
+  <string name="im_settings_reply_limit">回复最长</string>
+  <string name="im_settings_tokens">%1$s tokens</string>
+  <string name="im_settings_no_limit">不限</string>
+  <string name="im_settings_context">参考最近的消息</string>
+  <string name="im_settings_messages">%1$s 条</string>
+  <string name="im_settings_all">全部</string>
+  <string name="im_settings_temperature">温度</string>
+  <string name="im_settings_temperature_default">模型默认</string>
+  <string name="im_settings_shared_memory">和其他伙伴共用记忆</string>
   <string name="im_settings_image_model">画图模型</string>
   <string name="im_settings_image_none">不设置（不能画图）</string>
   <string name="notification_approval_connect">等你填写 API Key</string>

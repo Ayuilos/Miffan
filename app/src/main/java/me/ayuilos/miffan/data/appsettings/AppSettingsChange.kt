@@ -119,6 +119,13 @@ sealed interface AppSettingsLine {
     @Serializable @SerialName("setting")
     data class SettingChanged(val key: String, val value: String, val label: String? = null) : AppSettingsLine
 
+    /**
+     * One of a partner's reply settings: [key] is thinking, reply_limit, context_messages, temperature, memory or
+     * shared_memory; [value] is the new value as the tool takes it ("none" / "all" / "default" for no setting of its own).
+     */
+    @Serializable @SerialName("partner_setting")
+    data class PartnerSetting(val partnerId: String, val partner: String, val key: String, val value: String) : AppSettingsLine
+
     @Serializable @SerialName("search_selected")
     data class SearchSelected(val service: String) : AppSettingsLine
 
@@ -223,9 +230,7 @@ private fun applyOne(change: JsonObject, settings: Settings, catalog: ModelCatal
         }
         "update_model" -> updateModel(change, settings)
         "set_partner_model" -> {
-            val partnerId = change.text("partner_id")?.let { runCatching { Uuid.parse(it.trim()) }.getOrNull() }
-            val partner = partnerId?.let { id -> settings.assistants.firstOrNull { it.id == id } }
-                ?: fail("No partner has this partner_id. Call app_settings_catalog for the ids.")
+            val partner = settings.partner(change)
             val ref = modelRef(change, allowNull = "default")
             val model = ref?.let { settings.chatModel(it) }
             if (partner.chatModelId == model?.second?.id) return Step(settings, null)
@@ -252,6 +257,7 @@ private fun applyOne(change: JsonObject, settings: Settings, catalog: ModelCatal
             else Step(settings.copy(searchServiceSelected = index), AppSettingsLine.SearchSelected(options.displayName))
         }
         "set_display" -> setDisplay(change, settings)
+        "set_partner_settings" -> setPartnerSettings(change, settings)
         "set_notifications" -> {
             val display = settings.displaySetting
             val replyDone = change.bool("reply_done") ?: display.enableNotificationOnMessageGeneration
@@ -282,6 +288,81 @@ private fun applyOne(change: JsonObject, settings: Settings, catalog: ModelCatal
         else -> fail("Unknown type \"$type\".")
     }
 }
+
+internal const val MIN_REPLY_LIMIT = 1024
+internal const val MAX_REPLY_LIMIT = 200_000
+internal const val MIN_CONTEXT_MESSAGES = 20
+internal const val MAX_CONTEXT_MESSAGES = 10_000
+private val PARTNER_SETTING_FIELDS = setOf("thinking", "reply_limit", "context_messages", "temperature", "memory", "shared_memory")
+
+/**
+ * A partner's reply settings, its own or another partner's. Only what works the same in easy mode is here: permissions
+ * (workspace, Shell, computer use, standing approvals), tools, headers and the personality are the owner's.
+ */
+private fun setPartnerSettings(change: JsonObject, settings: Settings): Step {
+    val partner = settings.partner(change)
+    val unknown = change.keys - PARTNER_SETTING_FIELDS - "type" - "partner_id"
+    if (unknown.isNotEmpty()) {
+        fail("set_partner_settings takes only ${PARTNER_SETTING_FIELDS.joinToString()}; ${unknown.joinToString()} cannot be changed " +
+            "here. Permissions (workspace, Shell, computer use, standing approvals), tools and headers are only for the owner to set.")
+    }
+    if (change.keys.none { it in PARTNER_SETTING_FIELDS }) fail("Give at least one of ${PARTNER_SETTING_FIELDS.joinToString()}.")
+    var updated = partner
+    val lines = mutableListOf<AppSettingsLine>()
+    fun line(key: String, value: String) { lines += AppSettingsLine.PartnerSetting(partner.id.toString(), partner.name, key, value) }
+
+    change.text("thinking")?.let { id ->
+        val tier = ThinkTier.of(id) ?: fail("thinking must be one of ${ThinkTier.entries.joinToString { it.id }}.")
+        val model = settings.findModelById(partner.chatModelId ?: settings.chatModelId)
+            ?.takeIf { ModelAbility.REASONING in it.abilities }
+            ?: fail("${partner.name}'s model cannot think, so thinking does not apply to it.")
+        val level = tier.levelFor(model) ?: fail("${partner.name}'s model has no \"${tier.id}\" tier.")
+        if (level != partner.reasoningLevel) { updated = updated.copy(reasoningLevel = level); line("thinking", tier.id) }
+    } ?: change["thinking"]?.let { fail("thinking must be one of ${ThinkTier.entries.joinToString { it.id }}.") }
+
+    change["reply_limit"]?.let { value ->
+        val limit = if (value.word() == "none") null else value.integer()?.takeIf { it in MIN_REPLY_LIMIT..MAX_REPLY_LIMIT }
+            ?: fail("reply_limit must be a number of tokens from $MIN_REPLY_LIMIT to $MAX_REPLY_LIMIT, or \"none\".")
+        if (limit != partner.maxTokens) { updated = updated.copy(maxTokens = limit); line("reply_limit", limit?.toString() ?: "none") }
+    }
+    change["context_messages"]?.let { value ->
+        val count = if (value.word() == "all") 0 else value.integer()?.takeIf { it in MIN_CONTEXT_MESSAGES..MAX_CONTEXT_MESSAGES }
+            ?: fail("context_messages must be from $MIN_CONTEXT_MESSAGES to $MAX_CONTEXT_MESSAGES, or \"all\".")
+        if (count != partner.contextMessageLimit) {
+            updated = updated.copy(contextMessageLimit = count); line("context_messages", if (count == 0) "all" else count.toString())
+        }
+    }
+    change["temperature"]?.let { value ->
+        val temperature = if (value.word() == "default") null
+            else (value as? JsonPrimitive)?.takeUnless { it.isString }?.content?.toFloatOrNull()?.takeIf { it in 0f..2f }
+                ?.let { kotlin.math.round(it * 100) / 100 }
+                ?: fail("temperature must be a number from 0 to 2, or \"default\" for the model's own.")
+        if (temperature != partner.temperature) {
+            updated = updated.copy(temperature = temperature); line("temperature", temperature?.toString() ?: "default")
+        }
+    }
+    change["memory"]?.let {
+        val on = change.bool("memory") ?: fail("memory must be true or false.")
+        if (on != partner.enableMemory) { updated = updated.copy(enableMemory = on); line("memory", onOff(on)) }
+    }
+    change["shared_memory"]?.let {
+        val on = change.bool("shared_memory") ?: fail("shared_memory must be true or false.")
+        if (on != partner.useGlobalMemory) { updated = updated.copy(useGlobalMemory = on); line("shared_memory", onOff(on)) }
+    }
+    if (updated == partner) return Step(settings, null)
+    return Step(settings.copy(assistants = settings.assistants.map { if (it.id == partner.id) updated else it }), null, extra = lines)
+}
+
+private fun Settings.partner(change: JsonObject): me.ayuilos.miffan.data.model.Assistant {
+    val id = change.text("partner_id")?.let { runCatching { Uuid.parse(it.trim()) }.getOrNull() }
+    return id?.let { assistants.firstOrNull { it.id == id } } ?: fail("No partner has this partner_id. Call app_settings_catalog for the ids.")
+}
+
+private fun JsonElement.word(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.lowercase()
+
+/** A whole number, written as a number or as a string of digits. */
+private fun JsonElement.integer(): Int? = (this as? JsonPrimitive)?.content?.trim()?.toDoubleOrNull()
+    ?.takeIf { it == kotlin.math.floor(it) && it in 0.0..Int.MAX_VALUE.toDouble() }?.toInt()
 
 private fun setAddress(change: JsonObject, settings: Settings): Step {
     val provider = settings.provider(change)

@@ -111,6 +111,7 @@ private fun appSettingsLine(line: AppSettingsLine): ExtensionLine = when (line) 
             line.provider?.let { stringResource(R.string.im_settings_from, it) })
     }
     is AppSettingsLine.SettingChanged -> settingLine(line)
+    is AppSettingsLine.PartnerSetting -> partnerSettingLine(line)
     is AppSettingsLine.SearchSelected -> ExtensionLine(R.string.im_extension_tag_switch, false,
         stringResource(R.string.im_settings_search_in_use, line.service), null)
     is AppSettingsLine.DefaultModel -> ExtensionLine(R.string.im_settings_tag_default, false,
@@ -165,6 +166,33 @@ private fun settingLine(line: AppSettingsLine.SettingChanged): ExtensionLine {
         else -> Triple(R.string.im_extension_tag_update, line.key, line.value)
     }
     return ExtensionLine(tag, line.value == "off", stringResource(R.string.im_settings_arrow, name, value), null)
+}
+
+/** "How long it thinks → Quick", with the partner it is about underneath: the change may be for another partner. */
+@Composable
+private fun partnerSettingLine(line: AppSettingsLine.PartnerSetting): ExtensionLine {
+    val partner = LocalSettings.current.assistants.firstOrNull { it.id.toString() == line.partnerId }
+    val (name, value) = when (line.key) {
+        "thinking" -> stringResource(R.string.im_think_title) to stringResource(when (line.value) {
+            "quick" -> R.string.im_think_quick
+            "more" -> R.string.im_think_more
+            "deep" -> R.string.im_think_deep
+            else -> R.string.im_think_auto
+        })
+        "reply_limit" -> stringResource(R.string.im_settings_reply_limit) to
+            if (line.value == "none") stringResource(R.string.im_settings_no_limit) else stringResource(R.string.im_settings_tokens, line.value)
+        "context_messages" -> stringResource(R.string.im_settings_context) to
+            if (line.value == "all") stringResource(R.string.im_settings_all) else stringResource(R.string.im_settings_messages, line.value)
+        "temperature" -> stringResource(R.string.im_settings_temperature) to
+            if (line.value == "default") stringResource(R.string.im_settings_temperature_default) else line.value
+        "memory" -> stringResource(R.string.im_p5_remember) to
+            stringResource(if (line.value == "on") R.string.im_settings_on else R.string.im_settings_off)
+        "shared_memory" -> stringResource(R.string.im_settings_shared_memory) to
+            stringResource(if (line.value == "on") R.string.im_settings_on else R.string.im_settings_off)
+        else -> line.key to line.value
+    }
+    return ExtensionLine(R.string.im_settings_tag_partner, line.value == "off", stringResource(R.string.im_settings_arrow, name, value),
+        if (partner != null) partnerName(partner) else line.partner)
 }
 
 @Composable
