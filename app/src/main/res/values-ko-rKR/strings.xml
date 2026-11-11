@@ -4325,7 +4325,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_connect_service_error">%1$s에서 오류를 반환했어요: %2$s</string>
   <string name="im_connect_target_changed">카드가 표시된 후 이 서비스가 변경되거나 삭제되어 API Key를 저장하지 않았어요.</string>
   <string name="im_connect_invalid">%1$s의 요청 정보가 완전하지 않아 연결할 수 없어요.</string>
-  <string name="im_connect_phone_only">휴폰의 이 채팅에서 API Key를 입력해 주세요.</string>
+  <string name="im_connect_phone_only">휴대폰의 이 채팅에서 API Key를 입력해 주세요.</string>
   <string name="im_connect_done">%1$s 연결 완료</string>
   <string name="im_connect_saved_unchecked">%1$s 저장 완료, 아직 확인하지 않았어요</string>
   <plurals name="im_connect_models">
