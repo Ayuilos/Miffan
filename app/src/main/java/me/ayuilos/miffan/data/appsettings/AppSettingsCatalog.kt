@@ -133,6 +133,8 @@ fun buildAppSettingsCatalog(settings: Settings, appearance: Appearance? = null, 
                         put("in_use", service.id == settings.selectedTTSProviderId)
                         put("key_card", TtsKeyService.of(service) != null)
                         service.ttsModel()?.let { put("model", it) }
+                        service.ttsFormat()?.let { put("format", it) }
+                        ttsFormatsFor(service).takeIf { it.isNotEmpty() }?.let { formats -> putJsonArray("formats") { formats.forEach { add(it) } } }
                         service.voice()?.let { put("voice", it) }
                         if (service is me.rerere.tts.provider.TTSProviderSetting.SystemTTS) put("pitch", service.pitch)
                         voicesFor(service).takeIf { it.isNotEmpty() }?.let { voices ->

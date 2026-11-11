@@ -175,6 +175,7 @@ private fun settingLine(line: AppSettingsLine.SettingChanged): ExtensionLine {
         }))
         "tts_service" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_tts_service), line.value)
         "tts_model" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_tts_model), line.value)
+        "tts_format" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_tts_format), line.value)
         "asr_service" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_asr_service), line.value)
         "tts_speed" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_tts_speed),
             stringResource(R.string.im_settings_times, line.value))

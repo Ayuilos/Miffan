@@ -104,12 +104,16 @@ internal fun buildOpenRouterTTSRequestBody(
  * The format [setting]'s model can return: Gemini and HeyGen only return pcm and MiniMax only mp3, and each answers the
  * other with a 400; other models take what was chosen.
  */
-internal fun openRouterResponseFormat(setting: TTSProviderSetting.OpenRouter): String {
-    val model = setting.model.trim().lowercase()
+internal fun openRouterResponseFormat(setting: TTSProviderSetting.OpenRouter): String =
+    openRouterFixedFormat(setting.model) ?: setting.responseFormat
+
+/** The only format [model] returns on OpenRouter, or null when it returns either. */
+fun openRouterFixedFormat(model: String): String? {
+    val id = model.trim().lowercase()
     return when {
-        model.startsWith("google/") || model.startsWith("heygen/") -> "pcm"
-        model.startsWith("minimax/") -> "mp3"
-        else -> setting.responseFormat
+        id.startsWith("google/") || id.startsWith("heygen/") -> "pcm"
+        id.startsWith("minimax/") -> "mp3"
+        else -> null
     }
 }
 

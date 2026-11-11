@@ -354,12 +354,13 @@ private fun setTtsVoice(change: JsonObject, settings: Settings): Step {
         if (service !is me.rerere.tts.provider.TTSProviderSetting.OpenRouter) fail("tts_model only applies to an OpenRouter read-aloud service.")
         if (!validTtsModelId(model)) fail("tts_model must be an OpenRouter speech model id, like fish-audio/s2-pro.")
     }
+    val format = change.text("tts_format")?.trim()?.lowercase()
     val pitch = change["pitch"]?.let { value ->
         if (service !is me.rerere.tts.provider.TTSProviderSetting.SystemTTS) fail("pitch only applies to the phone's own voice (type system).")
         (value as? JsonPrimitive)?.takeUnless { it.isString }?.content?.toFloatOrNull()?.takeIf { it in 0.5f..2f }
             ?.let { kotlin.math.round(it * 100) / 100 } ?: fail("pitch must be a number from 0.5 to 2.")
     }
-    if (voice == null && pitch == null && model == null) {
+    if (voice == null && pitch == null && model == null && format == null) {
         fail("Give voice${if (service is me.rerere.tts.provider.TTSProviderSetting.SystemTTS) " or pitch" else ""}" +
             "${if (service is me.rerere.tts.provider.TTSProviderSetting.OpenRouter) " or tts_model" else ""}.")
     }
@@ -368,6 +369,15 @@ private fun setTtsVoice(change: JsonObject, settings: Settings): Step {
     if (model != null && model != service.ttsModel()) {
         updated = updated.withTtsModel(model)
         lines += AppSettingsLine.SettingChanged("tts_model", model)
+    }
+    if (format != null) {
+        val formats = ttsFormatsFor(updated)
+        if (formats.isEmpty()) fail("${service.displayName()} has no audio format to pick${if (updated.ttsFormat() != null) " on this model (it returns ${updated.ttsFormat()} only)" else ""}.")
+        if (format !in formats) fail("tts_format must be one of ${formats.joinToString()}.")
+        if (format != updated.ttsFormat()) {
+            updated = updated.withTtsFormat(format)
+            lines += AppSettingsLine.SettingChanged("tts_format", format)
+        }
     }
     if (voice != null) {
         if (service.voice() == null) fail("${service.displayName()} has no voice to pick here; the speech settings page sets it up.")

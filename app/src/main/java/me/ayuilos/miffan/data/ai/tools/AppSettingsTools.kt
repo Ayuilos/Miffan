@@ -163,6 +163,8 @@ internal fun buildAppSettingsTools(
             fish-audio/s2-pro); the sample is read with them, so a wrong one shows up right away. Voices belong to the
             model: on a model other than the default Gemini one, give the voice id that model's provider uses (for Fish
             Audio, the id of a voice from the owner's Fish Audio library), or none for the model's default voice.
+            format picks the audio format where the service has a choice (catalog voice.tts formats): prefer mp3; pcm is
+            raw audio played as 24 kHz, so on a model with another rate it sounds too fast or slow.
             Connecting does not put the service in use: propose select_tts_service / select_asr_service with
             $CHANGE_APP_SETTINGS_TOOL for that.
         """.trimIndent().replace("\n", " "),
@@ -177,6 +179,7 @@ internal fun buildAppSettingsTools(
                     })
                     put("model", buildJsonObject { put("type", "string"); put("description", "openrouter tts only: a speech model id") })
                     put("voice", buildJsonObject { put("type", "string"); put("description", "tts only: a voice id of the service or model") })
+                    put("format", buildJsonObject { put("type", "string"); put("description", "tts only: mp3, pcm or wav where offered") })
                     put("reason", buildJsonObject { put("type", "string"); put("description", "Why, in the owner's language") })
                 },
                 required = listOf("kind"),
@@ -310,7 +313,8 @@ private fun appSettingsChangeSchema() = buildJsonObject {
         "select_tts_service = service_id (a read-aloud service from catalog voice.tts, with a key); " +
         "set_tts_voice = service_id (default: the one in use), voice (an id from its voices, or for an OpenRouter model " +
         "without a list the id its provider uses), pitch (0.5–2, system only), tts_model (OpenRouter only: a speech model id; " +
-        "give voice with it, as voices belong to the model); " +
+        "give voice with it, as voices belong to the model), tts_format (an audio format from the service's formats; " +
+        "prefer mp3: pcm is played as 24 kHz and sounds wrong from a model with another rate); " +
         "set_read_aloud = any of auto_read (read each reply aloud while the chat is open), speed (0.5–2, 1 is normal), only_quoted, " +
         "skip_brackets; " +
         "select_asr_service = service_id (a voice input service from catalog voice.asr, with a key); " +
@@ -370,6 +374,7 @@ private fun appSettingsChangeSchema() = buildJsonObject {
         put("shared_memory", buildJsonObject { put("type", "boolean") })
         put("voice", buildJsonObject { put("type", "string") })
         put("tts_model", buildJsonObject { put("type", "string") })
+        put("tts_format", buildJsonObject { put("type", "string") })
         put("speed", buildJsonObject { put("type", "number") })
         put("pitch", buildJsonObject { put("type", "number") })
         put("only_quoted", buildJsonObject { put("type", "boolean") })

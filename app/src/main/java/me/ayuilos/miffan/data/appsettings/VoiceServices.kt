@@ -2,6 +2,7 @@ package me.ayuilos.miffan.data.appsettings
 
 import me.rerere.asr.ASRProviderSetting
 import me.rerere.tts.provider.TTSProviderSetting
+import me.rerere.tts.provider.providers.openRouterFixedFormat
 import kotlin.uuid.Uuid
 
 /**
@@ -239,8 +240,29 @@ fun TTSProviderSetting.ttsModel(): String? = (this as? TTSProviderSetting.OpenRo
  */
 fun TTSProviderSetting.withTtsModel(model: String): TTSProviderSetting {
     if (this !is TTSProviderSetting.OpenRouter || model == this.model) return this
-    val moved = copy(model = model)
+    // pcm carries no sample rate and the player assumes 24 kHz, so a model free to choose gets mp3, which says its own.
+    val moved = copy(model = model, responseFormat = openRouterFixedFormat(model) ?: "mp3")
     return if (voicesFor(moved).any { it.first == voice }) moved else moved.copy(voice = "")
+}
+
+/** The audio format a read-aloud service asks for, where it has a choice to make. */
+fun TTSProviderSetting.ttsFormat(): String? = when (this) {
+    is TTSProviderSetting.OpenRouter -> openRouterFixedFormat(model) ?: responseFormat
+    is TTSProviderSetting.Step -> responseFormat
+    else -> null
+}
+
+/** Formats a partner may pick for [setting]; empty when it has no choice (or its model allows only one). */
+fun ttsFormatsFor(setting: TTSProviderSetting): List<String> = when (setting) {
+    is TTSProviderSetting.OpenRouter -> if (openRouterFixedFormat(setting.model) != null) emptyList() else listOf("mp3", "pcm")
+    is TTSProviderSetting.Step -> listOf("mp3", "wav")
+    else -> emptyList()
+}
+
+fun TTSProviderSetting.withTtsFormat(format: String): TTSProviderSetting = when (this) {
+    is TTSProviderSetting.OpenRouter -> copy(responseFormat = format)
+    is TTSProviderSetting.Step -> copy(responseFormat = format)
+    else -> this
 }
 
 /** Whether [voice] is one [setting] offers; null when there is no list to check it against. */

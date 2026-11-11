@@ -87,6 +87,8 @@ class VoiceSettingsTest {
         assertEquals("fish-audio/s2-pro", moved.model)
         assertEquals("8ef4a238714b45718ce04243307c57a7", moved.voice)
         assertEquals("or-key", moved.apiKey)
+        // pcm would be played at the wrong rate for Fish Audio; a model free to choose starts on mp3.
+        assertEquals("mp3", moved.responseFormat)
         // There is no list for Fish Audio voices, so the card does not call the owner's own voice unknown.
         assertEquals(listOf(
             AppSettingsLine.SettingChanged("tts_model", "fish-audio/s2-pro"),
@@ -98,6 +100,14 @@ class VoiceSettingsTest {
         // On the default Gemini model the list is known.
         val odd = ok(planAppSettingsChange(changes("""{"type":"set_tts_voice","service_id":"${router.id}","voice":"alloy"}"""), withRouter))
         assertEquals(true, (odd.lines.single() as AppSettingsLine.TtsVoice).unlisted)
+        val pcm = ok(planAppSettingsChange(changes("""{"type":"set_tts_voice","service_id":"${router.id}","tts_format":"pcm"}"""), fish.settings))
+        assertEquals("pcm", (pcm.settings.ttsProviders.single { it.id == router.id } as TTSProviderSetting.OpenRouter).responseFormat)
+        assertEquals(listOf(AppSettingsLine.SettingChanged("tts_format", "pcm")), pcm.lines)
+        // The default Gemini model only returns pcm: nothing to pick.
+        assertTrue("no audio format" in invalid(planAppSettingsChange(changes(
+            """{"type":"set_tts_voice","service_id":"${router.id}","tts_format":"mp3"}"""), withRouter)))
+        assertTrue("mp3, pcm" in invalid(planAppSettingsChange(changes(
+            """{"type":"set_tts_voice","service_id":"${router.id}","tts_format":"flac"}"""), fish.settings)))
         assertTrue("OpenRouter" in invalid(planAppSettingsChange(changes(
             """{"type":"set_tts_voice","service_id":"${eleven.id}","tts_model":"fish-audio/s2-pro"}"""), withRouter)))
         assertTrue("speech model id" in invalid(planAppSettingsChange(changes(
@@ -106,7 +116,10 @@ class VoiceSettingsTest {
 
     @Test
     fun anOpenRouterKeyCardCanBringItsModelAndVoice() = runBlocking {
-        val card = target("""{"kind":"tts","type":"openrouter","model":"fish-audio/s2-pro","voice":"abc123"}""")!!
+        val card = target("""{"kind":"tts","type":"openrouter","model":"fish-audio/s2-pro","voice":"abc123","format":"mp3"}""")!!
+        assertEquals("mp3", card.format)
+        assertTrue("one of" in refused("""{"kind":"tts","type":"openrouter","model":"fish-audio/s2-pro","format":"flac"}"""))
+        assertTrue("no audio format" in refused("""{"kind":"tts","type":"openrouter","format":"mp3"}"""))
         assertEquals("fish-audio/s2-pro", card.model)
         assertEquals("abc123", card.voice)
         assertTrue("only for openrouter" in refused("""{"kind":"tts","type":"elevenlabs","model":"fish-audio/s2-pro"}"""))

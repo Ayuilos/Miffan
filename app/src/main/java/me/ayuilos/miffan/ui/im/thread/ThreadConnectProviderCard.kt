@@ -192,6 +192,7 @@ internal fun ThreadConnectProviderCard(
             val setup = listOfNotNull(
                 target.model?.let { stringResource(R.string.im_voice_setup_model, it) },
                 target.voice?.let { stringResource(R.string.im_voice_setup_voice, it) },
+                target.format?.let { stringResource(R.string.im_voice_setup_format, it) },
             )
             if (setup.isNotEmpty()) CardNote(HugeIcons.Settings03, MaterialTheme.colorScheme.onSurfaceVariant, setup.joinToString(" · "))
             CardNote(HugeIcons.VolumeHigh, MaterialTheme.colorScheme.onSurfaceVariant, stringResource(R.string.im_voice_sample_note))
