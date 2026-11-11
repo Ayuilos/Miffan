@@ -1356,6 +1356,7 @@ class ChatService(
                     add(templateTransformer)
                     add(workspaceReminderTransformer)
                     add(me.ayuilos.miffan.data.ai.transformers.PartnerMentionTransformer(turnConversation, settings))
+                    add(me.ayuilos.miffan.data.ai.transformers.UndoneChangesTransformer(getKoin().get<me.ayuilos.miffan.data.revision.RevisionService>()))
                 },
                 outputTransformers = outputTransformers,
                 dynamicTools = {

@@ -91,6 +91,12 @@ class RevisionService(
             }
         }
 
+    /** Which of [toolCallIds] the owner has undone, so the partner can be told its change is no longer in effect. */
+    suspend fun undoneToolCalls(toolCallIds: List<String>): Set<String> =
+        revisions.toolCallsWithRevisions(toolCallIds).filterTo(mutableSetOf()) {
+            observeToolCallChange(it).first()?.state == ToolCallChangeState.Undone
+        }
+
     /** Reverts every reversible subject changed by the call, after checking all subject heads. */
     suspend fun undoToolCall(toolCallId: String): RestoreResult = restoreToolCall(toolCallId, redo = false)
 

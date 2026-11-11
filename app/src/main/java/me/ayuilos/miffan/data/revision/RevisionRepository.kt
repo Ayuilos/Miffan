@@ -3,6 +3,7 @@ package me.ayuilos.miffan.data.revision
 import androidx.room.withTransaction
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -21,6 +22,9 @@ interface RevisionStore {
     fun byAuthor(author: RevisionAuthor, subjectIds: List<String>): Flow<List<Revision>>
     /** Revisions attributed to one tool call, oldest first. */
     fun byToolCallId(toolCallId: String): Flow<List<Revision>>
+    /** Which of [toolCallIds] changed anything. */
+    suspend fun toolCallsWithRevisions(toolCallIds: List<String>): Set<String> =
+        toolCallIds.filterTo(mutableSetOf()) { byToolCallId(it).first().isNotEmpty() }
 }
 
 class RoomRevisionStore(private val database: AppDatabase, private val dao: RevisionDAO) : RevisionStore {
@@ -34,6 +38,9 @@ class RoomRevisionStore(private val database: AppDatabase, private val dao: Revi
         dao.observeByAuthor(author.name, subjectIds).map { list -> list.map { it.toRevision() } }
     override fun byToolCallId(toolCallId: String) =
         dao.byToolCallId(toolCallId).map { list -> list.map { it.toRevision() } }
+    // Chunked to stay under SQLite's limit on bound parameters.
+    override suspend fun toolCallsWithRevisions(toolCallIds: List<String>) =
+        toolCallIds.distinct().chunked(500).flatMapTo(mutableSetOf()) { dao.toolCallIdsAmong(it) }
 }
 
 /**
@@ -91,6 +98,10 @@ class RevisionRepository(
 
     /** Revisions attributed to one tool call, oldest first. */
     fun byToolCallId(toolCallId: String): Flow<List<Revision>> = store.byToolCallId(toolCallId)
+
+    /** Which of [toolCallIds] changed anything. */
+    suspend fun toolCallsWithRevisions(toolCallIds: List<String>): Set<String> =
+        if (toolCallIds.isEmpty()) emptySet() else store.toolCallsWithRevisions(toolCallIds)
 
     private fun newRevision(
         subject: RevisionSubject,

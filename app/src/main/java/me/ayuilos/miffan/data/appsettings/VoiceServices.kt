@@ -18,11 +18,7 @@ enum class TtsKeyService(
     val voices: List<Pair<String, String?>>,
 ) {
     OPENAI("openai", "api.openai.com", "https://platform.openai.com/api-keys", { TTSProviderSetting.OpenAI() }, OPENAI_VOICES),
-    GEMINI("gemini", "generativelanguage.googleapis.com", "https://aistudio.google.com/apikey", { TTSProviderSetting.Gemini() }, listOf(
-        "Kore" to "firm", "Puck" to "upbeat", "Zephyr" to "bright", "Charon" to "informative", "Fenrir" to "excitable",
-        "Leda" to "youthful", "Orus" to "firm", "Aoede" to "breezy", "Callirrhoe" to "easy-going", "Enceladus" to "breathy",
-        "Achernar" to "soft", "Sulafat" to "warm",
-    )),
+    GEMINI("gemini", "generativelanguage.googleapis.com", "https://aistudio.google.com/apikey", { TTSProviderSetting.Gemini() }, GEMINI_VOICES),
     MINIMAX("minimax", "api.minimaxi.com", "https://platform.minimaxi.com/user-center/basic-information/interface-key",
         { TTSProviderSetting.MiniMax() }, listOf(
             "female-shaonv" to "young woman", "female-yujie" to "mature woman", "female-chengshu" to "calm woman",
@@ -50,7 +46,7 @@ enum class TtsKeyService(
         "cixingnansheng" to "magnetic man", "wenrounansheng" to "soft man", "yuanqinansheng" to "energetic man",
         "boyinnansheng" to "announcer, male", "shenchennanyin" to "deep man",
     )),
-    OPENROUTER("openrouter", "openrouter.ai", "https://openrouter.ai/keys", { TTSProviderSetting.OpenRouter() }, OPENAI_VOICES);
+    OPENROUTER("openrouter", "openrouter.ai", "https://openrouter.ai/keys", { TTSProviderSetting.OpenRouter() }, GEMINI_VOICES);
 
     companion object {
         fun of(id: String?): TtsKeyService? = entries.firstOrNull { it.id == id?.trim()?.lowercase() }
@@ -73,6 +69,12 @@ enum class TtsKeyService(
         }
     }
 }
+
+private val GEMINI_VOICES = listOf(
+    "Kore" to "firm", "Puck" to "upbeat", "Zephyr" to "bright", "Charon" to "informative", "Fenrir" to "excitable",
+    "Leda" to "youthful", "Orus" to "firm", "Aoede" to "breezy", "Callirrhoe" to "easy-going", "Enceladus" to "breathy",
+    "Achernar" to "soft", "Sulafat" to "warm",
+)
 
 private val OPENAI_VOICES = listOf(
     "alloy" to "neutral", "echo" to "male", "fable" to "storyteller", "onyx" to "deep male", "nova" to "bright female",
@@ -221,8 +223,11 @@ fun TTSProviderSetting.typeId(): String = when (this) {
 fun ASRProviderSetting.typeId(): String = AsrKeyService.entries.first { it.create()::class == this::class }.id
 
 /** The voices offered for [setting]'s type; empty when there is nothing to pick. */
-fun voicesFor(setting: TTSProviderSetting): List<Pair<String, String?>> =
-    TtsKeyService.entries.firstOrNull { it.create()::class == setting::class }?.voices.orEmpty()
+fun voicesFor(setting: TTSProviderSetting): List<Pair<String, String?>> = when {
+    // OpenRouter's voices belong to the model; the list is the default Gemini model's, so another model gets none.
+    setting is TTSProviderSetting.OpenRouter && !setting.model.trim().startsWith("google/gemini") -> emptyList()
+    else -> TtsKeyService.entries.firstOrNull { it.create()::class == setting::class }?.voices.orEmpty()
+}
 
 /** A name for a service the owner left unnamed, as the speech settings page shows it. */
 fun TTSProviderSetting.displayName(): String = name.ifBlank { if (this is TTSProviderSetting.SystemTTS) "System" else typeId() }

@@ -209,7 +209,7 @@ private fun OpenRouterTTSConfiguration(
             value = setting.model,
             onValueChange = { onValueChange(setting.copy(model = it)) },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("openai/gpt-4o-mini-tts-2025-12-15") },
+            placeholder = { Text("google/gemini-3.8-flash-tts") },
         )
     }
 
@@ -221,7 +221,7 @@ private fun OpenRouterTTSConfiguration(
             value = setting.voice,
             onValueChange = { onValueChange(setting.copy(voice = it)) },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("alloy") },
+            placeholder = { Text("Kore") },
         )
     }
 

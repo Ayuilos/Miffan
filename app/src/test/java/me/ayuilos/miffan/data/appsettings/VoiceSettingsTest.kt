@@ -71,6 +71,12 @@ class VoiceSettingsTest {
     private fun refused(input: String) = (resolveVoiceTarget(json(input), settings()) as ConnectTargetResult.Invalid).reason
 
     @Test
+    fun openRouterOffersTheGeminiVoicesOnlyOnAGeminiModel() {
+        assertEquals("Kore", voicesFor(TTSProviderSetting.OpenRouter()).first().first)
+        assertTrue(voicesFor(TTSProviderSetting.OpenRouter(model = "elevenlabs/eleven-v3")).isEmpty())
+    }
+
+    @Test
     fun keyCardsOnlyGoToServicesWithAFixedAddress() {
         val new = target("""{"kind":"tts","type":"gemini"}""")!!
         assertNull(new.serviceId)

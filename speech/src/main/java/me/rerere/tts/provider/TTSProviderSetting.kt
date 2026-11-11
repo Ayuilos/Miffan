@@ -49,11 +49,22 @@ sealed class TTSProviderSetting {
         override var name: String = "OpenRouter TTS",
         val apiKey: String = "",
         val baseUrl: String = "https://openrouter.ai/api/v1",
-        val model: String = "openai/gpt-4o-mini-tts-2025-12-15",
-        val voice: String = "alloy",
-        val responseFormat: String = "mp3",
+        val model: String = OPENROUTER_TTS_DEFAULT_MODEL,
+        val voice: String = OPENROUTER_TTS_DEFAULT_VOICE,
+        val responseFormat: String = "pcm",
         val speed: Float = 1.0f,
     ) : TTSProviderSetting() {
+        /**
+         * The same service on a model OpenRouter still serves: OpenAI's speech models were taken off OpenRouter (their
+         * ids now answer 404), so a service saved with one moves to the current default, with that model's voice.
+         */
+        fun withCurrentModel(): OpenRouter =
+            if (model.trim() in RETIRED_OPENROUTER_TTS_MODELS) {
+                copy(model = OPENROUTER_TTS_DEFAULT_MODEL, voice = OPENROUTER_TTS_DEFAULT_VOICE, responseFormat = "pcm")
+            } else {
+                this
+            }
+
         override fun copyProvider(
             id: Uuid,
             name: String,
@@ -332,3 +343,9 @@ sealed class TTSProviderSetting {
         }
     }
 }
+
+const val OPENROUTER_TTS_DEFAULT_MODEL = "google/gemini-3.8-flash-tts"
+const val OPENROUTER_TTS_DEFAULT_VOICE = "Kore"
+
+/** OpenRouter speech models that are no longer served. */
+val RETIRED_OPENROUTER_TTS_MODELS = setOf("openai/gpt-4o-mini-tts-2025-12-15", "openai/gpt-4o-mini-tts")

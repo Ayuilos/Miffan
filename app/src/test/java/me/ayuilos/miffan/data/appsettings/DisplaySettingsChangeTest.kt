@@ -226,9 +226,12 @@ class DisplaySettingsChangeTest {
         assertEquals(COLOR_MODE_SYSTEM, appearance.value.colorMode)
         assertEquals(1.0f, state.value.displaySetting.fontSizeRatio)
         assertEquals(ToolCallChangeState.Undone, service.observeToolCallChange("c1").first()!!.state)
+        // The partner is told on its next turn; a call that changed nothing is never reported.
+        assertEquals(setOf("c1"), service.undoneToolCalls(listOf("c1", "read-only")))
 
         assertEquals(RestoreResult.Restored, service.redoToolCall("c1"))
         assertEquals(COLOR_MODE_DARK, appearance.value.colorMode)
+        assertEquals(emptySet<String>(), service.undoneToolCalls(listOf("c1")))
 
         // Switching back by hand on the appearance page is a later change: undo of the call no longer applies.
         appearance.value = Appearance()

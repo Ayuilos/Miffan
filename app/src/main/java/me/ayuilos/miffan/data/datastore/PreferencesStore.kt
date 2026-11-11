@@ -374,7 +374,10 @@ class SettingsStore(
                     JsonInstant.decodeFromString(it)
                 } ?: S3Config(),
                 ttsProviders = preferences[TTS_PROVIDERS]?.let {
-                    JsonInstant.decodeFromString<List<TTSProviderSetting>>(it).map { provider -> provider.transformTtsSecret(providerSecretCipher::decrypt) }
+                    JsonInstant.decodeFromString<List<TTSProviderSetting>>(it).map { provider ->
+                        val current = if (provider is TTSProviderSetting.OpenRouter) provider.withCurrentModel() else provider
+                        current.transformTtsSecret(providerSecretCipher::decrypt)
+                    }
                 } ?: emptyList(),
                 selectedTTSProviderId = preferences[SELECTED_TTS_PROVIDER]?.let { Uuid.parse(it) }
                     ?: DEFAULT_SYSTEM_TTS_ID,
