@@ -361,6 +361,21 @@ fun AgentThreadPage(
             )
         }
     }
+    // The newest secure key card still waiting, with its service: a key typed into the chat box can go there instead.
+    val connectCards = koinInject<me.ayuilos.miffan.data.appsettings.ProviderConnectCards>()
+    val keyCardSettings = me.ayuilos.miffan.ui.context.LocalSettings.current
+    val keyCard by remember(keyCardSettings) {
+        derivedStateOf {
+            timeline.asReversed().firstNotNullOfOrNull { item ->
+                (item as? TimelineItem.Message)?.message?.parts?.asReversed()?.firstNotNullOfOrNull { part ->
+                    val tool = part as? UIMessagePart.Tool
+                    if (tool == null || !tool.isPending || tool.toolName != me.ayuilos.miffan.data.appsettings.CONNECT_PROVIDER_TOOL) null
+                    else (me.ayuilos.miffan.data.appsettings.resolveConnectTarget(tool.inputAsJson(), keyCardSettings)
+                        as? me.ayuilos.miffan.data.appsettings.ConnectTargetResult.Ok)?.let { tool to it.target.name }
+                }
+            }
+        }
+    }
     // A request of the partner's waits for the owner.
     val waitingForOwner by remember {
         derivedStateOf { timeline.any { it is TimelineItem.Message && it.message.parts.any { part -> part is UIMessagePart.Tool && part.isPending } } }
@@ -569,7 +584,9 @@ fun AgentThreadPage(
                 onNewTopic = if (newTopicPending || startsFresh) null else { { followLatest = true; vm.requestNewTopic() } },
                 freshTopic = newTopicPending,
                 onThinkHarder = if (thinkingModel != null) vm::setThinkHarder else null,
-                thinkHarder = thinkHarder, thinksDeeply = thinksDeeply)
+                thinkHarder = thinkHarder, thinksDeeply = thinksDeeply,
+                keyCardService = keyCard?.second,
+                onKeyToCard = { key -> keyCard?.let { (tool, _) -> connectCards.handOff(tool.toolCallId, key) } })
         }
         mergeChoice?.let { (segmentId, targets) ->
             ThreadMergeSheet(targets, assistantName,

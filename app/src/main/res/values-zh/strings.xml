@@ -4363,5 +4363,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_settings_footnote_key">服务改了地址，原来的 Key 会清空；其余改动之后可以在记录里撤销。</string>
   <string name="im_settings_outdated">设置已经变了，这些改动对不上了。可以让伙伴重新整理一次。</string>
   <string name="im_revision_ai_services">AI 服务有改动</string>
+  <string name="im_key_guard_title">这像是 API Key</string>
+  <string name="im_key_guard_card">填进「%1$s」的安全卡片吧，那里的内容伙伴看不到。直接发在聊天里，它就能看到。</string>
+  <string name="im_key_guard_send">发出去伙伴就能看到这个 Key，它也会留在聊天记录里。</string>
+  <string name="im_key_guard_to_card">填进安全卡片</string>
+  <string name="im_key_guard_keep">不发了</string>
+  <string name="im_key_guard_send_anyway">仍然发送</string>
   <string name="notification_approval_connect">等你填写 API Key</string>
 </resources>

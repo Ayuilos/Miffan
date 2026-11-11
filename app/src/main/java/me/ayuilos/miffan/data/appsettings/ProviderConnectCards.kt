@@ -65,6 +65,22 @@ class ProviderConnectCards(
     val phases: StateFlow<Map<String, Phase>> = _phases.asStateFlow()
     private val jobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
 
+    /** Keys the owner typed into the chat box and moved to a card instead of sending; each card takes its own once. */
+    private val handoffKeys = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val _handoffs = MutableStateFlow<Set<String>>(emptySet())
+    /** The cards with a key waiting for them; never the keys themselves. */
+    val handoffs: StateFlow<Set<String>> = _handoffs.asStateFlow()
+
+    fun handOff(toolCallId: String, key: String) {
+        handoffKeys[toolCallId] = key.trim()
+        _handoffs.update { it + toolCallId }
+    }
+
+    fun takeHandoff(toolCallId: String): String? {
+        _handoffs.update { it - toolCallId }
+        return handoffKeys.remove(toolCallId)
+    }
+
     fun connect(conversationId: Uuid, toolCallId: String, target: ConnectTarget, key: String) {
         val trimmed = key.trim()
         if (trimmed.isEmpty() || _phases.value[toolCallId] == Phase.Checking) return
@@ -142,5 +158,8 @@ class ProviderConnectCards(
 
     private fun set(toolCallId: String, phase: Phase) = _phases.update { it + (toolCallId to phase) }
 
-    private fun clear(toolCallId: String) = _phases.update { it - toolCallId }
+    private fun clear(toolCallId: String) {
+        _phases.update { it - toolCallId }
+        takeHandoff(toolCallId)
+    }
 }

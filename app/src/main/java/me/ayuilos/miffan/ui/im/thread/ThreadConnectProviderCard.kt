@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -121,6 +122,9 @@ internal fun ThreadConnectProviderCard(
     val uriHandler = LocalUriHandler.current
 
     SecureWindowWhileShown()
+    // A key the owner typed into the chat box and moved here: fill it in and check it right away.
+    val handoffs by cards.handoffs.collectAsStateWithLifecycle()
+    val handedOff = tool.toolCallId in handoffs
 
     fun cancel(reason: String = "") {
         if (conversation != null) cards.cancel(conversation, tool.toolCallId, reason) else onApproval(tool.toolCallId, false)
@@ -128,6 +132,10 @@ internal fun ThreadConnectProviderCard(
 
     fun connect(value: String) {
         if (target != null && conversation != null && value.isNotBlank()) cards.connect(conversation, tool.toolCallId, target, value)
+    }
+
+    LaunchedEffect(handedOff) {
+        if (handedOff) cards.takeHandoff(tool.toolCallId)?.let { handed -> key = handed; connect(handed) }
     }
 
     val rekey = (target as? ConnectTarget.Existing)?.hasKey == true

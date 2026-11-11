@@ -93,6 +93,7 @@ import me.rerere.hugeicons.stroke.StopCircle
 import org.koin.compose.koinInject
 import java.io.File
 import kotlin.uuid.Uuid
+import me.ayuilos.miffan.data.appsettings.extractCredential
 
 @Composable
 internal fun ThreadComposer(
@@ -122,6 +123,10 @@ internal fun ThreadComposer(
     thinkHarder: Boolean = false,
     /** The partner already thinks deeply every time, so the entry has nothing to add. */
     thinksDeeply: Boolean = false,
+    /** The service of a secure key card waiting in this thread, or null when none waits. */
+    keyCardService: String? = null,
+    /** Moves a key typed here to that card instead of sending it. */
+    onKeyToCard: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val settings = LocalSettings.current
@@ -213,10 +218,35 @@ internal fun ThreadComposer(
         if (uris.size == 1 && !settings.displaySetting.skipCropImage) crop(uris.first()) else importUris(uris, true)
     }
     val documents = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { importUris(it, false) }
-    fun sendDraft() {
+    // A key typed into the chat box would reach the partner; ask before sending it.
+    var typedKey by remember { mutableStateOf<String?>(null) }
+    fun sendDraft(keyConfirmed: Boolean = false) {
         if (!loaded || importing || asrState.isRecording || (input.isBlank() && attachments.messageContent.isEmpty())) return
+        if (!keyConfirmed) extractCredential(input)?.let { typedKey = it; return }
         val parts = buildList { if (input.isNotBlank()) add(UIMessagePart.Text(input)); addAll(attachments.messageContent) }
         onSend(parts); onInput(""); attachments.clearInput(); menu = false
+    }
+    typedKey?.let { key ->
+        val toCard = onKeyToCard.takeIf { keyCardService != null }
+        AlertDialog(
+            onDismissRequest = { typedKey = null },
+            title = { Text(stringResource(R.string.im_key_guard_title)) },
+            text = {
+                Text(if (toCard != null) stringResource(R.string.im_key_guard_card, keyCardService.orEmpty())
+                    else stringResource(R.string.im_key_guard_send))
+            },
+            confirmButton = {
+                if (toCard != null) TextButton(onClick = { typedKey = null; toCard(key); onInput("") }) {
+                    Text(stringResource(R.string.im_key_guard_to_card))
+                } else TextButton(onClick = { typedKey = null }) { Text(stringResource(R.string.im_key_guard_keep)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { typedKey = null; sendDraft(keyConfirmed = true) },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+                    Text(stringResource(R.string.im_key_guard_send_anyway))
+                }
+            },
+        )
     }
     val capture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         cameraPath?.let { path ->

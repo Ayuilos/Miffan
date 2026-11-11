@@ -4396,5 +4396,11 @@
   <string name="im_settings_footnote_key">A key is removed when its service moves to another address. You can undo the rest from the record afterwards.</string>
   <string name="im_settings_outdated">The settings have changed since, so these changes no longer apply. Ask your partner to try again.</string>
   <string name="im_revision_ai_services">AI services changed</string>
+  <string name="im_key_guard_title">This looks like an API key</string>
+  <string name="im_key_guard_card">Put it in the secure card for %1$s instead: your partner can\'t see what goes there. Sent in the chat, your partner would see it.</string>
+  <string name="im_key_guard_send">If you send it, your partner can see this key, and it stays in the chat history.</string>
+  <string name="im_key_guard_to_card">Put it in the card</string>
+  <string name="im_key_guard_keep">Don\'t send</string>
+  <string name="im_key_guard_send_anyway">Send anyway</string>
   <string name="notification_approval_connect">Enter an API key</string>
 </resources>

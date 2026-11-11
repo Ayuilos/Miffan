@@ -255,4 +255,16 @@ class AppSettingsChangeTest {
             assertTrue(Json.parseToJsonElement(revision.snapshot) is JsonObject)
         }
     }
+
+    @Test
+    fun aKeyTypedIntoTheChatIsFoundInsideOtherWords() {
+        assertEquals(key, extractCredential("我的 key 是 $key 帮我连上"))
+        assertEquals("AIzaSyD-1234567890abcdefghijklmnopqrstu", extractCredential("gemini: AIzaSyD-1234567890abcdefghijklmnopqrstu"))
+        assertEquals("abcdefghijklmnopqrstuvwxyz012345", extractCredential("Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345"))
+        // The earliest one when there are several.
+        assertEquals(relayKey, extractCredential("$relayKey and $key"))
+        assertNull(extractCredential("帮我加个 DeepSeek，然后让小鲸用 DeepSeek V3"))
+        assertNull(extractCredential("commit 3f9a2b7c1d0e4f5a6b7c8d9e0f1a2b3c4d5e6f7a"))
+        assertNull(extractCredential("sk-short"))
+    }
 }

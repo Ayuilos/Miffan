@@ -17,5 +17,9 @@ private val CREDENTIAL_PATTERNS = listOf(
 /** True when [text] holds something that looks like an API key or access token. */
 fun looksLikeCredential(text: String): Boolean = CREDENTIAL_PATTERNS.any { it.containsMatchIn(text) }
 
+/** The first key-looking token in [text] (without a "Bearer" prefix), or null. */
+fun extractCredential(text: String): String? = CREDENTIAL_PATTERNS.mapNotNull { it.find(text) }.minByOrNull { it.range.first }
+    ?.value?.replace(Regex("(?i)^Bearer\\s+"), "")
+
 /** [text] with every key-looking token replaced by [REDACTED_CREDENTIAL]. */
 fun redactCredentials(text: String): String = CREDENTIAL_PATTERNS.fold(text) { acc, pattern -> pattern.replace(acc, REDACTED_CREDENTIAL) }
