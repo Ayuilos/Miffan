@@ -17,6 +17,7 @@ import me.ayuilos.miffan.data.appsettings.AsrKeyService
 import me.ayuilos.miffan.data.appsettings.CONNECT_VOICE_TOOL
 import me.ayuilos.miffan.data.appsettings.TtsKeyService
 import me.ayuilos.miffan.data.appsettings.resolveVoiceTarget
+import me.ayuilos.miffan.data.appsettings.MAX_BACKUP_INTERVAL
 import me.ayuilos.miffan.data.appsettings.MAX_CONTEXT_MESSAGES
 import me.ayuilos.miffan.data.appsettings.MAX_REPLY_LIMIT
 import me.ayuilos.miffan.data.appsettings.MIN_CONTEXT_MESSAGES
@@ -213,7 +214,8 @@ internal fun buildAppSettingsTools(
             choose the web search service in use, and adjust how the app looks and notifies: font size, theme, light or dark,
             notifications, and what partners call the owner, and a partner's reply settings (yours or another partner's):
             how long it thinks, how long a reply may get, how much of the chat it is sent, temperature, and memory; and voice:
-            which service reads replies aloud and with which voice, how fast, what it skips, and which service does voice input.
+            which service reads replies aloud and with which voice, how fast, what it skips, and which service does voice input;
+            and the backup reminder.
             The owner confirms on a card listing every change; the changes apply together, in order, or not at all.
             Use ids and model_ids from app_settings_catalog (or the models a connect_provider result listed). Refer to a
             model as {provider_id, model_id}; a model added earlier in the same changes can be used right after.
@@ -303,7 +305,9 @@ private fun appSettingsChangeSchema() = buildJsonObject {
         "set_tts_voice = service_id (default: the one in use), voice (an id from its voices), pitch (0.5–2, system only); " +
         "set_read_aloud = any of auto_read (read each reply aloud while the chat is open), speed (0.5–2, 1 is normal), only_quoted, " +
         "skip_brackets; " +
-        "select_asr_service = service_id (a voice input service from catalog voice.asr, with a key).")
+        "select_asr_service = service_id (a voice input service from catalog voice.asr, with a key); " +
+        "set_backup_reminder = enabled and/or interval_days (1–$MAX_BACKUP_INTERVAL: remind at the top of Chats after that many " +
+        "days without a backup). Where backups go is only for the owner to set.")
     put("properties", buildJsonObject {
         put("type", buildJsonObject {
             put("type", "string")
@@ -311,7 +315,7 @@ private fun appSettingsChangeSchema() = buildJsonObject {
                 listOf("set_provider_enabled", "rename_provider", "set_provider_address", "add_models", "remove_models",
                     "update_model", "set_partner_model", "set_default_model", "select_search_service", "set_display", "set_theme",
                     "set_notifications", "set_owner_name", "set_fast_thinking", "set_partner_settings", "select_tts_service", "set_tts_voice",
-                    "set_read_aloud", "select_asr_service").forEach { add(it) }
+                    "set_read_aloud", "select_asr_service", "set_backup_reminder").forEach { add(it) }
             })
         })
         put("provider_id", buildJsonObject { put("type", "string") })
@@ -361,6 +365,7 @@ private fun appSettingsChangeSchema() = buildJsonObject {
         put("pitch", buildJsonObject { put("type", "number") })
         put("only_quoted", buildJsonObject { put("type", "boolean") })
         put("auto_read", buildJsonObject { put("type", "boolean") })
+        put("interval_days", buildJsonObject { put("type", "integer") })
         put("skip_brackets", buildJsonObject { put("type", "boolean") })
         put("role", buildJsonObject {
             put("type", "string")

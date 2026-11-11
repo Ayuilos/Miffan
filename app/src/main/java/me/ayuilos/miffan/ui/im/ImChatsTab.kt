@@ -154,6 +154,9 @@ internal fun ImChatsTab(
         item("whatsNew") {
             UpdateWhatsNewCard(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         }
+        item("backupReminder") {
+            ImBackupReminderCard(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        }
         if (current != null && current.pinned.isEmpty() && current.ungrouped.isEmpty() && current.groups.isEmpty()) {
             item("empty") { ImChatsEmpty(onFindPartner) }
         }

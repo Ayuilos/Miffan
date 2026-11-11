@@ -100,6 +100,21 @@ class DisplaySettingsChangeTest {
     }
 
     @Test
+    fun theBackupReminderCanBeSwitchedOnAndUndone() {
+        val before = settings().copy(backupReminderConfig = me.ayuilos.miffan.data.datastore.BackupReminderConfig(snoozedUntil = 99L))
+        val plan = ok(planAppSettingsChange(changes("""{"type":"set_backup_reminder","enabled":true,"interval_days":14}"""), before))
+        assertTrue(plan.settings.backupReminderConfig.enabled)
+        assertEquals(14, plan.settings.backupReminderConfig.intervalDays)
+        // Switched on again, an old "not today" no longer holds it back.
+        assertEquals(0L, plan.settings.backupReminderConfig.snoozedUntil)
+        assertEquals(listOf(AppSettingsLine.SettingChanged("backup_reminder", "on"), AppSettingsLine.SettingChanged("backup_interval", "14")), plan.lines)
+        assertTrue("interval_days" in invalid(planAppSettingsChange(changes("""{"type":"set_backup_reminder","interval_days":365}"""), before)))
+        val restored = plan.settings.restoreAiServices(aiServicesSnapshot(before))
+        assertFalse(restored.backupReminderConfig.enabled)
+        assertEquals(7, restored.backupReminderConfig.intervalDays)
+    }
+
+    @Test
     fun drawingModelAndFastThinking() {
         val draw = ok(planAppSettingsChange(changes(
             """{"type":"set_default_model","role":"image","model":{"provider_id":"${provider.id}","model_id":"painter"}}""",

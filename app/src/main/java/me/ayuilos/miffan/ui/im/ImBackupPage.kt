@@ -1,5 +1,11 @@
 package me.ayuilos.miffan.ui.im
 
+import androidx.compose.material3.FilterChip
+
+import androidx.compose.foundation.rememberScrollState
+
+import androidx.compose.foundation.horizontalScroll
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -51,6 +57,13 @@ internal fun Settings.daysSinceBackup(now: Long = System.currentTimeMillis()): I
 /** Never backed up, or longer ago than the reminder interval. */
 internal fun Settings.backupOverdue(): Boolean =
     daysSinceBackup()?.let { it >= backupReminderConfig.intervalDays } ?: true
+
+/** The owner asked to be reminded, it is overdue, and the reminder was not put off. */
+internal fun Settings.backupReminderDue(now: Long = System.currentTimeMillis()): Boolean =
+    backupReminderConfig.enabled && backupOverdue() && now >= backupReminderConfig.snoozedUntil
+
+/** Intervals offered on the backup page; one set elsewhere (the full backup page, a partner) shows as well. */
+internal val BACKUP_INTERVALS = listOf(3, 7, 14, 30)
 
 private enum class ImportSource { BACKUP, CHATBOX, CHERRY }
 
@@ -177,8 +190,20 @@ fun ImBackupPage(vm: BackupVM = koinViewModel()) {
                     ImCardDivider(start = 16.dp)
                     val reminder = settings.backupReminderConfig
                     ImSwitchRow(stringResource(R.string.im_backup_remind), reminder.enabled, { on ->
-                        vm.updateSettings(settings.copy(backupReminderConfig = reminder.copy(enabled = on)))
-                    }, supporting = pluralStringResource(R.plurals.im_backup_remind_desc, reminder.intervalDays, reminder.intervalDays))
+                        vm.updateSettings(settings.copy(backupReminderConfig = reminder.copy(enabled = on, snoozedUntil = 0L)))
+                    }, supporting = if (reminder.enabled) stringResource(R.string.im_backup_remind_where)
+                        else pluralStringResource(R.plurals.im_backup_remind_desc, reminder.intervalDays, reminder.intervalDays))
+                    if (reminder.enabled) {
+                        // How long without a backup before the reminder shows, as chips rather than a number field.
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            (BACKUP_INTERVALS + reminder.intervalDays).distinct().sorted().forEach { days ->
+                                FilterChip(selected = days == reminder.intervalDays,
+                                    onClick = { vm.updateSettings(settings.copy(backupReminderConfig = reminder.copy(intervalDays = days))) },
+                                    label = { Text(pluralStringResource(R.plurals.im_backup_remind_desc, days, days)) })
+                            }
+                        }
+                    }
                 }
             }
             item("restore") {

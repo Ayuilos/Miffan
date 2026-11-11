@@ -89,6 +89,13 @@ fun buildAppSettingsCatalog(settings: Settings, appearance: Appearance? = null, 
         put("live_progress", settings.displaySetting.enableLiveUpdateNotification)
     }
     put("owner_name", settings.displaySetting.userNickname)
+    putJsonObject("backup_reminder") {
+        val config = settings.backupReminderConfig
+        put("enabled", config.enabled)
+        put("interval_days", config.intervalDays)
+        val days = config.lastBackupTime.takeIf { it > 0 }?.let { ((System.currentTimeMillis() - it) / 86_400_000L).coerceAtLeast(0) }
+        put("days_since_backup", days?.let { JsonPrimitive(it) } ?: JsonPrimitive("never"))
+    }
     putJsonArray("partners") {
         settings.assistants.forEach { assistant ->
             addJsonObject {

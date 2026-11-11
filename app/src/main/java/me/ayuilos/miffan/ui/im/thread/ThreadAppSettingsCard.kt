@@ -176,6 +176,9 @@ private fun settingLine(line: AppSettingsLine.SettingChanged): ExtensionLine {
         "tts_speed" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_tts_speed),
             stringResource(R.string.im_settings_times, line.value))
         "tts_pitch" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_tts_pitch), line.value)
+        "backup_reminder" -> Triple(R.string.im_settings_tag_backup, stringResource(R.string.im_backup_remind), onOff(line.value))
+        "backup_interval" -> Triple(R.string.im_settings_tag_backup, stringResource(R.string.im_settings_backup_interval),
+            line.value.toIntOrNull()?.let { pluralStringResource(R.plurals.im_backup_remind_desc, it, it) } ?: line.value)
         "auto_read" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_read_auto), onOff(line.value))
         "read_quoted" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_read_quoted), onOff(line.value))
         "skip_brackets" -> Triple(R.string.im_settings_tag_voice, stringResource(R.string.im_settings_skip_brackets), onOff(line.value))

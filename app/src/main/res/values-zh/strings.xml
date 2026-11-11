@@ -3496,6 +3496,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_backup_set">已设置</string>
   <string name="im_backup_not_set">未设置</string>
   <string name="im_backup_remind">太久没备份时提醒我</string>
+  <string name="im_backup_due_title">该备份一下了</string>
+  <string name="im_backup_due_never">还没备份过，点这里备份</string>
+  <string name="im_backup_due_later">今天先不提醒</string>
+  <string name="im_backup_remind_where">到时间会在「消息」顶部提醒你</string>
+  <string name="im_settings_tag_backup">备份</string>
+  <string name="im_settings_backup_interval">多久没备份就提醒</string>
   <string name="im_backup_restore_section">换手机或重装后</string>
   <string name="im_backup_restore">从备份恢复</string>
   <string name="im_backup_import_other">从其他 App 搬过来</string>

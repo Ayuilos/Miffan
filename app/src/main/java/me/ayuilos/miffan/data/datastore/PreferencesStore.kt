@@ -914,6 +914,8 @@ data class BackupReminderConfig(
     val enabled: Boolean = false,
     val intervalDays: Int = 7,
     val lastBackupTime: Long = 0L,
+    /** Easy chat's reminder was put off until then (epoch millis). */
+    val snoozedUntil: Long = 0L,
 )
 
 fun Settings.isNotConfigured() = providers.all { it.models.isEmpty() }

@@ -107,6 +107,7 @@ private fun Settings.trackedPart(): List<Any?> = listOf(
         it.enableNotificationOnMessageGeneration, it.enableLiveUpdateNotification, it.userNickname, it.ttsOnlyReadQuoted,
         it.ttsOnlyReadOutsideBrackets, it.autoPlayTTSAfterGeneration) },
     ttsProviders, selectedTTSProviderId, defaultTTSPlaybackSpeed, asrProviders, selectedASRProviderId,
+    backupReminderConfig.enabled, backupReminderConfig.intervalDays,
 )
 
 private val VOICE_SECRETS = setOf("apiKey")
@@ -140,6 +141,8 @@ fun aiServicesSnapshot(settings: Settings, appearance: Appearance? = null): Stri
     put("theme:dynamic", JsonPrimitive(settings.dynamicColor))
     put("fast:thinking", JsonPrimitive(settings.fastModelReasoningLevel.name))
     put("display:tts_auto", JsonPrimitive(display.autoPlayTTSAfterGeneration))
+    put("backup:remind", JsonPrimitive(settings.backupReminderConfig.enabled))
+    put("backup:interval", JsonPrimitive(settings.backupReminderConfig.intervalDays))
     put("display:tts_quoted", JsonPrimitive(display.ttsOnlyReadQuoted))
     put("display:tts_brackets", JsonPrimitive(display.ttsOnlyReadOutsideBrackets))
     put("tts:selected", JsonPrimitive(settings.selectedTTSProviderId.toString()))
@@ -197,6 +200,12 @@ fun Settings.restoreAiServices(snapshot: String): Settings {
         ))
     }
     restored = restored.restoreVoice(values)
+    restored.backupReminderConfig.let { config ->
+        restored = restored.copy(backupReminderConfig = config.copy(
+            enabled = bool("backup:remind") ?: config.enabled,
+            intervalDays = (values["backup:interval"] as? JsonPrimitive)?.takeUnless { it.isString }?.content?.toIntOrNull() ?: config.intervalDays,
+        ))
+    }
     text("theme:id")?.let { restored = restored.copy(themeId = it) }
     bool("theme:dynamic")?.let { restored = restored.copy(dynamicColor = it) }
     text("fast:thinking")?.let { name ->

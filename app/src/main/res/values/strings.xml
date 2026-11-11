@@ -3517,6 +3517,12 @@
   <string name="im_backup_set">set up</string>
   <string name="im_backup_not_set">not set up</string>
   <string name="im_backup_remind">Remind me when it has been too long</string>
+  <string name="im_backup_due_title">Time to back up</string>
+  <string name="im_backup_due_never">No backup yet, tap to make one</string>
+  <string name="im_backup_due_later">Not today</string>
+  <string name="im_backup_remind_where">A reminder shows at the top of Chats</string>
+  <string name="im_settings_tag_backup">Backup</string>
+  <string name="im_settings_backup_interval">Remind after</string>
   <string name="im_backup_restore_section">After a new phone or a reinstall</string>
   <string name="im_backup_restore">Restore from a backup</string>
   <string name="im_backup_import_other">Move over from another app</string>

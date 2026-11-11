@@ -269,6 +269,23 @@ private fun applyOne(change: JsonObject, settings: Settings, catalog: ModelCatal
             else Step(settings.copy(selectedTTSProviderId = service.id), AppSettingsLine.SettingChanged("tts_service", service.displayName()))
         }
         "set_tts_voice" -> setTtsVoice(change, settings)
+        "set_backup_reminder" -> {
+            val config = settings.backupReminderConfig
+            val enabled = change["enabled"]?.let { change.bool("enabled") ?: fail("enabled must be true or false.") }
+            val days = change["interval_days"]?.let { value ->
+                (value as? JsonPrimitive)?.content?.trim()?.toIntOrNull()?.takeIf { it in 1..MAX_BACKUP_INTERVAL }
+                    ?: fail("interval_days must be a whole number from 1 to $MAX_BACKUP_INTERVAL.")
+            }
+            if (enabled == null && days == null) fail("Give enabled or interval_days.")
+            val lines = buildList {
+                if (enabled != null && enabled != config.enabled) add(AppSettingsLine.SettingChanged("backup_reminder", onOff(enabled)))
+                if (days != null && days != config.intervalDays) add(AppSettingsLine.SettingChanged("backup_interval", days.toString()))
+            }
+            // Turned on (again), it should show when due rather than stay put off from before.
+            val snoozed = if (enabled == true && !config.enabled) 0L else config.snoozedUntil
+            Step(settings.copy(backupReminderConfig = config.copy(enabled = enabled ?: config.enabled,
+                intervalDays = days ?: config.intervalDays, snoozedUntil = snoozed)), null, extra = lines)
+        }
         "set_read_aloud" -> setReadAloud(change, settings)
         "select_asr_service" -> {
             val id = change.text("service_id")?.let { runCatching { Uuid.parse(it.trim()) }.getOrNull() }
@@ -310,6 +327,7 @@ private fun applyOne(change: JsonObject, settings: Settings, catalog: ModelCatal
 }
 
 private const val MAX_VOICE_ID = 100
+internal const val MAX_BACKUP_INTERVAL = 90
 
 /** A read-aloud service by service_id, or the one in use when none is given. */
 private fun Settings.ttsService(change: JsonObject, defaultToSelected: Boolean = false): me.rerere.tts.provider.TTSProviderSetting {
