@@ -4331,7 +4331,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <plurals name="im_connect_models">
     <item quantity="other">%1$d個のモデル</item>
   </plurals>
-  <string name="im_change_app_settings">AIサービスを変更</string>
+  <string name="im_change_app_settings">設定を変更</string>
   <string name="im_settings_tag_rename">名前を変更</string>
   <string name="im_settings_tag_address">アドレスを変更</string>
   <string name="im_settings_tag_add">追加</string>
@@ -4371,5 +4371,26 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_secret_save">保存</string>
   <string name="im_secret_header_saved">%1$sの%2$sを保存しました</string>
   <string name="im_secret_cancel">入力しない</string>
+  <string name="im_settings_tag_display">表示</string>
+  <string name="im_settings_tag_look">外観</string>
+  <string name="im_settings_tag_notify">通知</string>
+  <string name="im_settings_tag_name">呼び名</string>
+  <string name="im_settings_on">オン</string>
+  <string name="im_settings_off">オフ</string>
+  <string name="im_settings_font_size">文字サイズ</string>
+  <string name="im_settings_font_small">小</string>
+  <string name="im_settings_font_default">標準</string>
+  <string name="im_settings_font_large">大</string>
+  <string name="im_settings_font_larger">特大</string>
+  <string name="im_settings_latex">数式</string>
+  <string name="im_settings_code_wrap">長いコード行を折り返す</string>
+  <string name="im_settings_code_collapse">長いコードを折りたたむ</string>
+  <string name="im_settings_crop">送信前に写真を切り抜く</string>
+  <string name="im_settings_color_mode">ライト・ダーク</string>
+  <string name="im_settings_owner_name">パートナーからの呼び名</string>
+  <string name="im_settings_cleared">設定しない</string>
+  <string name="im_settings_fast_thinking">高速モデルの考える時間</string>
+  <string name="im_settings_image_model">画像生成モデル</string>
+  <string name="im_settings_image_none">設定しない（画像生成オフ）</string>
   <string name="notification_approval_connect">API Keyを入力</string>
 </resources>
