@@ -4416,6 +4416,15 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_voice_sample_play">들어보기</string>
   <string name="im_voice_sample_failed">재생하지 못했어요</string>
   <string name="im_voice_asr_saved">%1$s API Key를 저장했어요. 음성 입력을 사용해 보세요</string>
+  <string name="im_me_read_aloud">읽어주기</string>
+  <string name="im_read_auto">답변 완료 후 자동으로 읽기</string>
+  <string name="im_read_auto_desc">채팅을 열어 두는 동안 답변이 완료되면 바로 읽어 드려요</string>
+  <string name="im_read_quoted_desc">롤플레잉에 유용해요. 서술은 읽지 않아요</string>
+  <string name="im_read_brackets_desc">괄호 안의 동작과 표정 묘사는 읽지 않아요</string>
+  <string name="im_read_voice">읽어줄 목소리</string>
+  <string name="im_read_voice_system">휴대폰 기본 음성</string>
+  <string name="im_read_voice_input">음성 입력</string>
+  <string name="im_read_voice_input_none">설정 안 함</string>
   <string name="im_settings_image_model">이미지 생성 모델</string>
   <string name="im_settings_image_none">설정 안 함(이미지 생성 끔)</string>
   <string name="notification_approval_connect">API Key 입력</string>

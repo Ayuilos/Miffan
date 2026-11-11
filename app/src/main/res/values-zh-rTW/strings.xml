@@ -4414,6 +4414,15 @@
   <string name="im_voice_sample_play">試聽</string>
   <string name="im_voice_sample_failed">播放失敗</string>
   <string name="im_voice_asr_saved">%1$s 的 API Key 已儲存，試試語音輸入吧</string>
+  <string name="im_me_read_aloud">朗讀</string>
+  <string name="im_read_auto">回覆完自動朗讀</string>
+  <string name="im_read_auto_desc">聊天開著的時候，夥伴一回覆完就朗讀出來</string>
+  <string name="im_read_quoted_desc">適合角色扮演，旁白不朗讀</string>
+  <string name="im_read_brackets_desc">括號內的動作、神態描寫不朗讀</string>
+  <string name="im_read_voice">朗讀的聲音</string>
+  <string name="im_read_voice_system">手機內建</string>
+  <string name="im_read_voice_input">語音輸入</string>
+  <string name="im_read_voice_input_none">未設定</string>
   <string name="im_settings_image_model">畫圖模型</string>
   <string name="im_settings_image_none">不設定（不能畫圖）</string>
   <string name="notification_approval_connect">等你填寫 API Key</string>

@@ -4491,6 +4491,15 @@
   <string name="im_voice_sample_play">Прослушать</string>
   <string name="im_voice_sample_failed">Не удалось воспроизвести</string>
   <string name="im_voice_asr_saved">API Key для %1$s сохранён. Попробуйте голосовой ввод</string>
+  <string name="im_me_read_aloud">Чтение вслух</string>
+  <string name="im_read_auto">Автоматически озвучивать ответы</string>
+  <string name="im_read_auto_desc">Пока чат открыт, каждый ответ озвучивается сразу после завершения</string>
+  <string name="im_read_quoted_desc">Подходит для ролевой игры: повествование не озвучивается</string>
+  <string name="im_read_brackets_desc">Действия и описания эмоций в скобках не озвучиваются</string>
+  <string name="im_read_voice">Голос для озвучивания</string>
+  <string name="im_read_voice_system">Встроенный в телефон</string>
+  <string name="im_read_voice_input">Голосовой ввод</string>
+  <string name="im_read_voice_input_none">Не задано</string>
   <string name="im_settings_image_model">Модель рисования</string>
   <string name="im_settings_image_none">Не задано (рисование выключено)</string>
   <string name="notification_approval_connect">Введите API Key</string>
