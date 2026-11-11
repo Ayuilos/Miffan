@@ -4368,7 +4368,7 @@
     <item quantity="one">%1$d model</item>
     <item quantity="other">%1$d models</item>
   </plurals>
-  <string name="im_change_app_settings">Change AI services</string>
+  <string name="im_change_app_settings">Change settings</string>
   <string name="im_settings_tag_rename">Rename</string>
   <string name="im_settings_tag_address">Address</string>
   <string name="im_settings_tag_add">Add</string>

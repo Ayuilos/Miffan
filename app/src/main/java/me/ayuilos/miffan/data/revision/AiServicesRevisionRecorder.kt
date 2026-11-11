@@ -51,6 +51,12 @@ class AiServicesRevisionRecorder(
      */
     suspend fun record(before: String?, after: String) {
         try {
+            // A head written before the snapshots kept some setting cannot tell what this change did to it: bring the
+            // history up to the current format first, with the state before the change, outside the change itself.
+            val head = revisions.head(RevisionSubject.AI_SERVICES, AI_SERVICES_SUBJECT_ID)
+            if (head != null && before != null && head.snapshot != before && missesKeysOf(head.snapshot, before)) {
+                revisions.record(RevisionSubject.AI_SERVICES, AI_SERVICES_SUBJECT_ID, before = null, after = before, standalone = true)
+            }
             revisions.record(RevisionSubject.AI_SERVICES, AI_SERVICES_SUBJECT_ID, before = before, after = after)
         } catch (e: CancellationException) {
             throw e
@@ -69,6 +75,14 @@ class AiServicesRevisionRecorder(
                 record(null, aiServicesSnapshot(current, now))
             }
         }
+    }
+}
+
+/** True when [snapshot] lacks a fixed setting [current] has: it was written by an older format. */
+private fun missesKeysOf(snapshot: String, current: String): Boolean {
+    val old = JsonInstant.parseToJsonElement(snapshot).jsonObject.keys
+    return JsonInstant.parseToJsonElement(current).jsonObject.keys.any { key ->
+        key !in old && !key.startsWith("provider:") && !key.startsWith("models:")
     }
 }
 

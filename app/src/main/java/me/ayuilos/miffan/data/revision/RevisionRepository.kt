@@ -58,9 +58,12 @@ class RevisionRepository(
         before: String?,
         after: String,
         defaultSummary: String = "",
+        /** A version that belongs to no change (a history brought up to a newer snapshot format): baseline, no tool call. */
+        standalone: Boolean = false,
     ): Revision? {
-        val origin = currentCoroutineContext()[RevisionOrigin] ?: RevisionOrigin(RevisionAuthor.USER)
-        val toolCallId = origin.toolCallId ?: currentCoroutineContext()[CurrentToolCall]?.id
+        val origin = if (standalone) RevisionOrigin(RevisionAuthor.BASELINE)
+            else currentCoroutineContext()[RevisionOrigin] ?: RevisionOrigin(RevisionAuthor.USER)
+        val toolCallId = if (standalone) null else origin.toolCallId ?: currentCoroutineContext()[CurrentToolCall]?.id
         return mutex.withLock {
             store.transaction {
                 var head = store.head(subject, subjectId)

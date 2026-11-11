@@ -4336,7 +4336,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <plurals name="im_connect_models">
     <item quantity="other">%1$d 个模型</item>
   </plurals>
-  <string name="im_change_app_settings">调整 AI 服务</string>
+  <string name="im_change_app_settings">调整设置</string>
   <string name="im_settings_tag_rename">改名</string>
   <string name="im_settings_tag_address">改地址</string>
   <string name="im_settings_tag_add">添加</string>

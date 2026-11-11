@@ -155,6 +155,36 @@ class DisplaySettingsChangeTest {
     }
 
     @Test
+    fun aChangeRightAfterAnUpgradeCanStillBeUndone() = runBlocking {
+        val revisions = RevisionRepository(FakeStore())
+        val appearance = FakeAppearance()
+        val recorder = AiServicesRevisionRecorder(revisions, appearance)
+        val state = MutableStateFlow(settings())
+        val store = mockk<SettingsStore>()
+        every { store.settingsFlow } returns state
+        coEvery { store.update(any<(Settings) -> Settings>()) } coAnswers {
+            val old = state.value
+            val next = firstArg<(Settings) -> Settings>()(old)
+            state.value = next
+            recorder.onSettingsChanged(old, next)
+        }
+        // The last version was written by a release whose snapshots did not keep display, theme or light / dark.
+        val older = (Json.parseToJsonElement(aiServicesSnapshot(state.value, appearance.value)) as kotlinx.serialization.json.JsonObject)
+            .filterKeys { !it.startsWith("display:") && !it.startsWith("theme:") && !it.startsWith("appearance:") && !it.startsWith("owner:") &&
+                !it.startsWith("notify:") && !it.startsWith("fast:") }
+        revisions.record(RevisionSubject.AI_SERVICES, "app", before = null, after = kotlinx.serialization.json.JsonObject(older).toString())
+        val service = RevisionService(revisions, store, mockk<MemoryRepository>(relaxed = true), appearance)
+        val tool = buildAppSettingsTools(store, appearancePrefs = appearance, recorder = recorder).first { it.name == CHANGE_APP_SETTINGS_TOOL }
+        withContext(CurrentToolCall("c1", approved = true) + RevisionOrigin(RevisionAuthor.AGENT)) {
+            tool.execute(changes("""{"type":"set_theme","color_mode":"dark"}""", """{"type":"set_display","font_size":"large"}"""))
+        }
+        assertEquals(ToolCallChangeState.Undoable, service.observeToolCallChange("c1").first()!!.state)
+        assertEquals(RestoreResult.Restored, service.undoToolCall("c1"))
+        assertEquals(COLOR_MODE_SYSTEM, appearance.value.colorMode)
+        assertEquals(1.0f, state.value.displaySetting.fontSizeRatio)
+    }
+
+    @Test
     fun theToolSwitchesToDarkAndUndoBringsLightBackWithTheRest() = runBlocking {
         val revisions = RevisionRepository(FakeStore())
         val appearance = FakeAppearance()

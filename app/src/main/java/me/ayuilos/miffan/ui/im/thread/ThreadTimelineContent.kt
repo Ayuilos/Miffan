@@ -208,9 +208,9 @@ internal fun ThreadMessageBubble(
                             // The owner's own words with @partners in them read as typed, the mentions colored as in the input.
                             else if (user && hasPartnerMention(part.text, partners)) Text(
                                 mentionText(part.text, partners, SpanStyle(fontWeight = FontWeight.SemiBold)),
-                                style = MaterialTheme.typography.bodyLarge, inlineContent = mentionAvatars(partners))
+                                style = messageTextStyle(), inlineContent = mentionAvatars(partners))
                             else CompositionLocalProvider(me.ayuilos.miffan.ui.components.richtext.LocalCompactMarkdownHeadings provides true) { MarkdownBlock(part.text.withWorkspaceFiles(imageContext),
-                                style = MaterialTheme.typography.bodyLarge) }
+                                style = messageTextStyle()) }
                             is UIMessagePart.Image -> ZoomableAsyncImage(part.url, stringResource(R.string.im_thread_photo), Modifier.heightIn(max = 200.dp))
                             is UIMessagePart.Document -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Icon(HugeIcons.File01, null, Modifier.size(18.dp))
@@ -317,4 +317,12 @@ private fun ThreadBatchApprovalHeader(count: Int, onAllowAll: () -> Unit) {
             Text(stringResource(R.string.im_approval_allow_all))
         }
     }
+}
+
+/** Message text at the owner's chosen size (Settings › display, or a partner's change card). */
+@Composable
+private fun messageTextStyle(): androidx.compose.ui.text.TextStyle {
+    val base = MaterialTheme.typography.bodyLarge
+    val ratio = me.ayuilos.miffan.ui.context.LocalSettings.current.displaySetting.fontSizeRatio
+    return if (ratio == 1f) base else base.copy(fontSize = base.fontSize * ratio, lineHeight = base.lineHeight * ratio)
 }
