@@ -3422,6 +3422,12 @@
   <string name="im_backup_set">已設定</string>
   <string name="im_backup_not_set">未設定</string>
   <string name="im_backup_remind">太久沒備份時提醒我</string>
+  <string name="im_backup_due_title">該備份一下了</string>
+  <string name="im_backup_due_never">還沒備份過，點這裡備份</string>
+  <string name="im_backup_due_later">今天先不提醒</string>
+  <string name="im_backup_remind_where">到時間會在「訊息」頂部提醒你</string>
+  <string name="im_settings_tag_backup">備份</string>
+  <string name="im_settings_backup_interval">多久沒備份就提醒</string>
   <string name="im_backup_restore_section">換手機或重裝後</string>
   <string name="im_backup_restore">從備份還原</string>
   <string name="im_backup_import_other">從其他 App 搬過來</string>

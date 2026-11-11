@@ -3463,6 +3463,12 @@
   <string name="im_backup_set">настроено</string>
   <string name="im_backup_not_set">не настроено</string>
   <string name="im_backup_remind">Напоминать, если давно не было копии</string>
+  <string name="im_backup_due_title">Пора сделать резервную копию</string>
+  <string name="im_backup_due_never">Копии ещё нет — нажмите, чтобы создать</string>
+  <string name="im_backup_due_later">Не сегодня</string>
+  <string name="im_backup_remind_where">Напоминание появится вверху раздела «Чаты»</string>
+  <string name="im_settings_tag_backup">Копия</string>
+  <string name="im_settings_backup_interval">Напоминать через</string>
   <string name="im_backup_restore_section">После покупки нового телефона или переустановки</string>
   <string name="im_backup_restore">Восстановить из копии</string>
   <string name="im_backup_import_other">Перенести из другого приложения</string>
