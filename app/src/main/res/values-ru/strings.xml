@@ -4377,8 +4377,8 @@
   <string name="im_nickname_title">Как к вам обращаются партнёры</string>
   <string name="im_nickname_hint">Новое имя партнёры начнут использовать со следующего ответа</string>
   <string name="im_sheet_done">Готово</string>
-  <string name="im_ability_app_settings">Настройка AI-сервисов</string>
-  <string name="im_ability_app_settings_desc">Помогает подключить AI-сервисы и настроить модели. Ключ вы вводите в защищённую карточку, которую партнёр не видит</string>
+  <string name="im_ability_app_settings">Настройка приложения</string>
+  <string name="im_ability_app_settings_desc">Помогает настроить приложение: подключить AI-сервисы, сменить модель, изменить тему и размер шрифта. Ключ вы вводите в защищённую карточку, которую партнёр не видит</string>
   <string name="im_connect_title">Подключить %1$s</string>
   <string name="im_connect_title_rekey">Заменить ключ для %1$s</string>
   <string name="im_connect_title_unknown">Подключить сервис</string>
