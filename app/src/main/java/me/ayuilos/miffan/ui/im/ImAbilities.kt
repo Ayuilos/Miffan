@@ -18,11 +18,11 @@ import me.ayuilos.miffan.ui.components.ui.permission.rememberPermissionState
 import me.ayuilos.miffan.utils.hasUsageStatsPermission
 import me.ayuilos.miffan.utils.openUsageAccessSettings
 import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.AiBrain02
 import me.rerere.hugeicons.stroke.BubbleChatQuestion
 import me.rerere.hugeicons.stroke.Calendar03
 import me.rerere.hugeicons.stroke.Clipboard
 import me.rerere.hugeicons.stroke.Hourglass
+import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.VolumeHigh
 
 @get:StringRes
@@ -54,7 +54,7 @@ internal val PartnerAbility.icon: ImageVector
         PartnerAbility.CLIPBOARD -> HugeIcons.Clipboard
         PartnerAbility.SCREEN_TIME -> HugeIcons.Hourglass
         PartnerAbility.READ_ALOUD -> HugeIcons.VolumeHigh
-        PartnerAbility.APP_SETTINGS -> HugeIcons.AiBrain02
+        PartnerAbility.APP_SETTINGS -> HugeIcons.Settings03
     }
 
 /**

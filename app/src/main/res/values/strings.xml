@@ -4344,8 +4344,8 @@
   <string name="im_nickname_title">What partners call you</string>
   <string name="im_nickname_hint">Partners use the new name from their next reply</string>
   <string name="im_sheet_done">Done</string>
-  <string name="im_ability_app_settings">Set up AI services</string>
-  <string name="im_ability_app_settings_desc">Connects AI services and sets up models for you; you type keys into a secure card it can\'t see</string>
+  <string name="im_ability_app_settings">Adjust settings</string>
+  <string name="im_ability_app_settings_desc">Adjusts the app\'s settings for you: connects AI services, switches models, changes the theme and font size, and more. You type keys into a secure card it can\'t see</string>
   <string name="im_connect_title">Connect %1$s</string>
   <string name="im_connect_title_rekey">Replace the key for %1$s</string>
   <string name="im_connect_title_unknown">Connect a service</string>

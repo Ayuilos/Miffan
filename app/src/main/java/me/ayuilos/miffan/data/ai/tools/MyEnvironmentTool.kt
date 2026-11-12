@@ -150,11 +150,13 @@ private val imAbilityNames = linkedMapOf(
     "view_chat_list" to "查看聊天列表",
     "organize_chat_list" to "整理聊天列表",
     "request_web_search" to "申请打开联网搜索（需主人同意）",
-    "app_settings_catalog" to "查看 AI 服务和模型的配置（看不到 Key）",
+    "app_settings_catalog" to "查看 App 的设置（看不到 Key）",
     "connect_provider" to "帮主人连接 AI 服务（Key 由主人填进安全卡片）",
     "connect_search_service" to "帮主人设置搜索服务的 Key（由主人填进安全卡片）",
+    "connect_voice_service" to "帮主人连接朗读或语音输入服务（Key 由主人填进安全卡片）",
     "set_secret_header" to "帮主人给 MCP 服务器或模型设置鉴权请求头（由主人填进安全卡片）",
-    "change_app_settings" to "调整 AI 服务、模型、伙伴用的模型和默认模型（主人在卡片上确认）",
+    "change_app_settings" to "调整 AI 服务、模型、伙伴参数、外观、通知、语音和备份提醒（主人在卡片上确认）",
+    "my_records" to "查看自己的授权记录和资料改动记录",
 )
 
 private val offAbilityNames = mapOf(
@@ -163,5 +165,5 @@ private val offAbilityNames = mapOf(
     PartnerAbility.CLIPBOARD to "读写剪贴板",
     PartnerAbility.SCREEN_TIME to "查询屏幕使用时间",
     PartnerAbility.READ_ALOUD to "朗读",
-    PartnerAbility.APP_SETTINGS to "帮主人配置 AI 服务",
+    PartnerAbility.APP_SETTINGS to "帮主人调整 App 的设置（AI 服务、模型、外观、语音等）",
 )

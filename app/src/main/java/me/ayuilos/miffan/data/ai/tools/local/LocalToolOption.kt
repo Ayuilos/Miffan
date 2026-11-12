@@ -41,7 +41,7 @@ sealed class LocalToolOption {
     @SerialName("extension_management")
     data object ExtensionManagement : LocalToolOption()
 
-    /** Set up AI services for the owner; keys go through a secure card the partner never sees. */
+    /** Adjust the owner's app settings; keys go through a secure card the partner never sees. */
     @Serializable
     @SerialName("app_settings")
     data object AppSettings : LocalToolOption()

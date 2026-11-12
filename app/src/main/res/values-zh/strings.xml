@@ -4313,8 +4313,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_nickname_title">伙伴们怎么称呼你</string>
   <string name="im_nickname_hint">改了之后，下一句就会用新的称呼</string>
   <string name="im_sheet_done">好了</string>
-  <string name="im_ability_app_settings">配置 AI 服务</string>
-  <string name="im_ability_app_settings_desc">帮你连接 AI 服务、配好模型，Key 由你填进它看不到的安全卡片</string>
+  <string name="im_ability_app_settings">调整设置</string>
+  <string name="im_ability_app_settings_desc">帮你调 App 的设置：连接 AI 服务、换模型、改主题和字号等。Key 由你填进它看不到的安全卡片</string>
   <string name="im_connect_title">连接 %1$s</string>
   <string name="im_connect_title_rekey">更换 %1$s 的 Key</string>
   <string name="im_connect_title_unknown">连接服务</string>
