@@ -14,6 +14,10 @@ enum class PartnerAbility(val id: String, val option: LocalToolOption, val meani
     CLIPBOARD("clipboard", LocalToolOption.Clipboard, "read and write the clipboard"),
     SCREEN_TIME("screen_time", LocalToolOption.ScreenTime, "read how long the owner used each app"),
     READ_ALOUD("read_aloud", LocalToolOption.Tts, "read text aloud on the phone"),
+    APP_SETTINGS("app_settings", LocalToolOption.AppSettings,
+        "adjust the owner's app settings: read the setup, connect an AI, web search or voice service or set a secret header (the owner types the key " +
+            "into a secure card you never see), and change services, models, partner models, default models, partners' reply settings, how the app " +
+            "looks and notifies, voice and the backup reminder (the owner confirms on a card)"),
     ;
 
     companion object {

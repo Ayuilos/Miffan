@@ -52,6 +52,7 @@ class RevisionService(
     private val revisions: RevisionRepository,
     private val settingsStore: SettingsStore,
     private val memoryRepository: MemoryRepository,
+    private val appearancePrefs: me.ayuilos.miffan.data.appsettings.AppearanceStore? = null,
 ) {
     private val restoreMutex = Mutex()
 
@@ -90,6 +91,27 @@ class RevisionService(
             }
         }
 
+    /** Which of [toolCallIds] the owner has undone, so the partner can be told its change is no longer in effect. */
+    suspend fun undoneToolCalls(toolCallIds: List<String>): Set<String> =
+        revisions.toolCallsWithRevisions(toolCallIds).filterTo(mutableSetOf()) {
+            observeToolCallChange(it).first()?.state == ToolCallChangeState.Undone
+        }
+
+    /**
+     * When the owner undid [toolCallId], while it stays undone. An undo restores the version before the call, so it is
+     * the latest restore pointing back at that version; restores of other calls on the same subject do not count.
+     * Null when the call changed nothing undoable or is in effect (again).
+     */
+    suspend fun undoneAt(toolCallId: String): java.time.Instant? {
+        val change = observeToolCallChange(toolCallId).first()?.takeIf { it.state == ToolCallChangeState.Undone } ?: return null
+        return change.revisions.groupBy { it.subject to it.subjectId }.mapNotNull { (key, group) ->
+            val before = group.minBy { it.createdAt }.parentId ?: return@mapNotNull null
+            revisions.history(key.first, key.second).first()
+                .filter { it.author == RevisionAuthor.RESTORE && it.revertOf == before }
+                .maxOfOrNull { it.createdAt }
+        }.maxOrNull()
+    }
+
     /** Reverts every reversible subject changed by the call, after checking all subject heads. */
     suspend fun undoToolCall(toolCallId: String): RestoreResult = restoreToolCall(toolCallId, redo = false)
 
@@ -117,6 +139,7 @@ class RevisionService(
                     AssistantRevisionRecorder.restore(merged)
                 }
                 RevisionSubject.MEMORY -> MemoryRepository.restore(merged)
+                RevisionSubject.AI_SERVICES -> JsonInstant.parseToJsonElement(merged).jsonObject
             }
         }
         if (observeToolCallChange(toolCallId).first()?.state != expected) return@withLock RestoreResult.Conflict
@@ -168,6 +191,12 @@ class RevisionService(
                     memoryRepository.replaceAll(target.subjectId, MemoryRepository.restore(target.snapshot))
                     RestoreResult.Restored
                 }
+                RevisionSubject.AI_SERVICES -> {
+                    // Light / dark first, so the version the settings write records already holds it.
+                    appearanceIn(target.snapshot)?.let { appearancePrefs?.write(it) }
+                    settingsStore.update { it.restoreAiServices(target.snapshot) }
+                    RestoreResult.Restored
+                }
             }
             // Permission preservation can make an assistant restore a no-op. Retain an explicit
             // restore revision so the call still has an observable undo/redo state.
@@ -177,6 +206,7 @@ class RevisionService(
                         .assistants.find { it.id.toString() == target.subjectId }
                         ?.let { AssistantRevisionRecorder.snapshot(it) } ?: return@withContext RestoreResult.NotFound
                     RevisionSubject.MEMORY -> target.snapshot
+                    RevisionSubject.AI_SERVICES -> aiServicesSnapshot(settingsStore.settingsFlow.first(), appearancePrefs?.current())
                 }
                 revisions.record(target.subject, target.subjectId, before = head.snapshot, after = snapshot)
             }
@@ -220,6 +250,18 @@ private fun toolCallGroup(group: List<Revision>, before: Revision): ToolCallGrou
         read = { MemoryRepository.restore(it).associateBy { item -> item.id } },
         write = { JsonInstant.encodeToString(it.values.sortedBy { item -> item.id }) },
     )
+    RevisionSubject.AI_SERVICES -> {
+        // Providers and model lists come and go; the fixed slots (default models, search service in use) are always
+        // there in the current format, so one missing from either side only means an older snapshot, not a change.
+        val beforeKeys = JsonInstant.parseToJsonElement(before.snapshot).jsonObject.keys
+        val afterKeys = JsonInstant.parseToJsonElement(group.last().snapshot).jsonObject.keys
+        ToolCallGroup(
+            group, before,
+            read = { JsonInstant.parseToJsonElement(it).jsonObject },
+            write = { JsonObject(it).toString() },
+            ignored = { key -> !isListedKey(key) && (key !in beforeKeys || key !in afterKeys) },
+        )
+    }
 }
 
 /** Null map lookups represent absence, distinct from any present value (including JSON null). */
@@ -307,6 +349,7 @@ class RevisionNoticeSource(
                         } else {
                             ThreadNoticeKind.MEMORY
                         }
+                        RevisionSubject.AI_SERVICES -> ThreadNoticeKind.SETTINGS
                     },
                     summary = revision.summary,
                     trigger = trigger,

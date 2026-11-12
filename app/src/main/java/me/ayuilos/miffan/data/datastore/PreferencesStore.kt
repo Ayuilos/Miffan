@@ -69,6 +69,8 @@ import me.ayuilos.miffan.utils.toMutableStateFlow
 import me.rerere.search.SearchCommonOptions
 import me.rerere.search.SearchServiceOptions
 import me.rerere.tts.provider.TTSProviderSetting
+import me.ayuilos.miffan.data.appsettings.transformAsrSecret
+import me.ayuilos.miffan.data.appsettings.transformTtsSecret
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 import kotlin.uuid.Uuid
@@ -273,6 +275,9 @@ class SettingsStore(
     private val dataStore = context.settingsStore
     private val updateMutex = Mutex()
     private val assistantRevisions by lazy { runCatching { get<AssistantRevisionRecorder>() }.getOrNull() }
+    private val aiServicesRevisions by lazy {
+        runCatching { get<me.ayuilos.miffan.data.revision.AiServicesRevisionRecorder>() }.getOrNull()
+    }
     private val providerSecretCipher = ProviderSecretCipher()
 
     private val preferencesFlow = dataStore.data
@@ -348,6 +353,7 @@ class SettingsStore(
                 networkSetting = JsonInstant.decodeFromString(preferences[NETWORK_SETTING] ?: "{}"),
                 searchServices = preferences[SEARCH_SERVICES]?.let {
                     JsonInstant.decodeFromJsonElement<List<SearchServiceOptions>>(searchServicesJson)
+                        .transformSearchServiceSecrets(providerSecretCipher::decrypt)
                         .ifEmpty { listOf(SearchServiceOptions.DEFAULT) }
                 } ?: listOf(SearchServiceOptions.DEFAULT),
                 searchCommonOptions = preferences[SEARCH_COMMON]?.let {
@@ -355,7 +361,8 @@ class SettingsStore(
                 } ?: SearchCommonOptions(),
                 searchServiceSelected = searchServiceSelected,
                 mcpServers = preferences[MCP_SERVERS]?.let {
-                    JsonInstant.decodeFromString(it)
+                    JsonInstant.decodeFromString<List<me.ayuilos.miffan.data.ai.mcp.McpServerConfig>>(it)
+                        .transformMcpSecrets(providerSecretCipher::decrypt)
                 } ?: emptyList(),
                 agentTools = preferences[AGENT_TOOLS]?.let {
                     runCatching { JsonInstant.decodeFromString<List<me.ayuilos.miffan.data.remotetask.AgentToolDefinition>>(it) }.getOrNull()
@@ -367,13 +374,16 @@ class SettingsStore(
                     JsonInstant.decodeFromString(it)
                 } ?: S3Config(),
                 ttsProviders = preferences[TTS_PROVIDERS]?.let {
-                    JsonInstant.decodeFromString(it)
+                    JsonInstant.decodeFromString<List<TTSProviderSetting>>(it).map { provider ->
+                        val current = if (provider is TTSProviderSetting.OpenRouter) provider.withCurrentModel() else provider
+                        current.transformTtsSecret(providerSecretCipher::decrypt)
+                    }
                 } ?: emptyList(),
                 selectedTTSProviderId = preferences[SELECTED_TTS_PROVIDER]?.let { Uuid.parse(it) }
                     ?: DEFAULT_SYSTEM_TTS_ID,
                 defaultTTSPlaybackSpeed = preferences[DEFAULT_TTS_PLAYBACK_SPEED]?.coerceIn(0.5f, 2.0f) ?: 1.0f,
                 asrProviders = preferences[ASR_PROVIDERS]?.let {
-                    JsonInstant.decodeFromString(it)
+                    JsonInstant.decodeFromString<List<ASRProviderSetting>>(it).map { provider -> provider.transformAsrSecret(providerSecretCipher::decrypt) }
                 } ?: emptyList(),
                 selectedASRProviderId = preferences[SELECTED_ASR_PROVIDER]?.let { Uuid.parse(it) },
                 modeInjections = preferences[MODE_INJECTIONS]?.let {
@@ -526,7 +536,8 @@ class SettingsStore(
             Log.w(TAG, "Cannot update dummy settings")
             return false
         }
-        val previousAssistants = settingsFlow.value.takeUnless { it.init }?.assistants
+        val previousSettings = settingsFlow.value.takeUnless { it.init }
+        val previousAssistants = previousSettings?.assistants
         dataStore.edit { preferences ->
             preferences[DYNAMIC_COLOR] = settings.dynamicColor
             preferences[THEME_ID] = settings.themeId
@@ -575,20 +586,21 @@ class SettingsStore(
             preferences[PARTNER_CONTACT_GRANTS] = JsonInstant.encodeToString(settings.partnerContactGrants)
             preferences[MIFFAN_HELP_ENABLED] = settings.miffanHelpEnabled
 
-            preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(settings.searchServices)
+            preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(
+                settings.searchServices.transformSearchServiceSecrets(providerSecretCipher::encrypt))
             preferences[SEARCH_COMMON] = JsonInstant.encodeToString(settings.searchCommonOptions)
             preferences[SEARCH_SELECTED] = settings.searchServiceSelected.coerceIn(0, settings.searchServices.size - 1)
 
-            preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
+            preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers.transformMcpSecrets(providerSecretCipher::encrypt))
             preferences[AGENT_TOOLS] = JsonInstant.encodeToString(settings.agentTools)
             preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
             preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
-            preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders)
+            preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders.map { it.transformTtsSecret(providerSecretCipher::encrypt) })
             settings.selectedTTSProviderId?.let {
                 preferences[SELECTED_TTS_PROVIDER] = it.toString()
             } ?: preferences.remove(SELECTED_TTS_PROVIDER)
             preferences[DEFAULT_TTS_PLAYBACK_SPEED] = settings.defaultTTSPlaybackSpeed.coerceIn(0.5f, 2.0f)
-            preferences[ASR_PROVIDERS] = JsonInstant.encodeToString(settings.asrProviders)
+            preferences[ASR_PROVIDERS] = JsonInstant.encodeToString(settings.asrProviders.map { it.transformAsrSecret(providerSecretCipher::encrypt) })
             settings.selectedASRProviderId?.let {
                 preferences[SELECTED_ASR_PROVIDER] = it.toString()
             } ?: preferences.remove(SELECTED_ASR_PROVIDER)
@@ -609,6 +621,7 @@ class SettingsStore(
         if (previousAssistants != null) {
             assistantRevisions?.onAssistantsChanged(previousAssistants, settings.assistants)
         }
+        if (previousSettings != null) aiServicesRevisions?.onSettingsChanged(previousSettings, settings)
         return true
     }
 
@@ -904,6 +917,8 @@ data class BackupReminderConfig(
     val enabled: Boolean = false,
     val intervalDays: Int = 7,
     val lastBackupTime: Long = 0L,
+    /** Easy chat's reminder was put off until then (epoch millis). */
+    val snoozedUntil: Long = 0L,
 )
 
 fun Settings.isNotConfigured() = providers.all { it.models.isEmpty() }

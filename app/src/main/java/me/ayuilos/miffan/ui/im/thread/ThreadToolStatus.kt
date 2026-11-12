@@ -88,6 +88,7 @@ private fun toolStatus(name: String): Int =
  */
 internal fun UIMessagePart.Tool.isThreadPrompt(): Boolean =
     approvalState is ToolApprovalState.Pending || (toolName == ASK_USER && approvalState is ToolApprovalState.Answered) ||
+        isConnectRecord() ||
         isQuestionRepliedInChat() ||
         (isSettledPermission() && !isImageGeneration()) || isPartnerMessage()
 
@@ -114,6 +115,8 @@ internal fun ThreadToolPrompt(
 ) {
     when {
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == ASK_USER -> ThreadQuestionCard(tool, onAnswer)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName in me.ayuilos.miffan.data.appsettings.SECRET_CARD_TOOLS ->
+            ThreadConnectProviderCard(tool, assistant, conversationId, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == WORKSPACE_TERMINAL_TOOL_NAME ->
             ThreadTerminalCard(tool, conversationId, onApproval, onAnswer)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == UPDATE_MY_PROFILE ->
@@ -130,6 +133,8 @@ internal fun ThreadToolPrompt(
             ThreadDrawingSetupCard(tool, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == CALENDAR_CREATE ->
             ThreadCalendarCard(tool, assistant, onApproval)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == me.ayuilos.miffan.data.appsettings.CHANGE_APP_SETTINGS_TOOL ->
+            ThreadAppSettingsCard(tool, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == EXTENSIONS_APPLY ->
             ThreadExtensionCard(tool, assistant, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == SCHEDULE_TASK ->
@@ -141,6 +146,7 @@ internal fun ThreadToolPrompt(
         tool.approvalState is ToolApprovalState.Pending -> ThreadGenericApprovalCard(tool, assistant, onApproval)
         tool.isQuestionRepliedInChat() -> ThreadSkippedQuestions(tool)
         tool.toolName == ASK_USER -> ThreadAnsweredQuestions(tool)
+        tool.isConnectRecord() -> ThreadConnectRecord(tool)
         tool.toolName == DRAFT_BUG_REPORT && tool.isSettledPermission() -> ThreadBugReportRecord(tool)
         // The event itself says it was added; the decision stays one tap away in the record sheet.
         tool.addedCalendarEvent() != null -> ThreadCalendarEvent(tool.addedCalendarEvent()!!)
@@ -330,6 +336,10 @@ internal fun toolRecordTitle(tool: UIMessagePart.Tool): String {
     val context = remember(tool) { ToolUIContext(tool, tool.inputAsJson(), tool.outputJsonOrNull(), false) }
     return when {
         tool.toolName == REQUEST_WEB_SEARCH -> webSearchReason(tool) ?: stringResource(R.string.im_p5_web)
+        tool.toolName == me.ayuilos.miffan.data.appsettings.SET_SECRET_HEADER_TOOL ->
+            stringResource(R.string.im_secret_header_title, connectProviderName(tool))
+        tool.toolName in me.ayuilos.miffan.data.appsettings.SECRET_CARD_TOOLS ->
+            stringResource(R.string.im_connect_title, connectProviderName(tool))
         tool.toolName == REQUEST_ABILITY -> PartnerAbility.of(toolArg(tool, "ability"))
             ?.let { stringResource(R.string.notification_approval_ability, stringResource(it.title)) } ?: tool.toolName
         tool.toolName in AGENT_CHANGE_TOOLS -> toolArg(tool, "reason") ?: stringResource(agentChangeTitle(tool.toolName))

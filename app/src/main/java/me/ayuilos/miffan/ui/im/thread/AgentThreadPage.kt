@@ -16,7 +16,7 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -104,6 +104,11 @@ fun AgentThreadPage(
     val timeline by remember { derivedStateOf { timelineState.value.items } }
     val loaded by remember { derivedStateOf { timelineState.value.loaded } }
     val hasItems by remember { derivedStateOf { timelineState.value.items.isNotEmpty() } }
+    ThreadAutoRead { id ->
+        timelineState.value.items.firstNotNullOfOrNull { item ->
+            (item as? TimelineItem.Message)?.message?.takeIf { it.id == id && it.role == me.rerere.ai.core.MessageRole.ASSISTANT }
+        }?.previewText()
+    }
     val generating by vm.generatingSegmentIds.collectAsStateWithLifecycle()
     val errors by vm.errors.collectAsStateWithLifecycle()
     val filter by vm.topicFilter.collectAsStateWithLifecycle()
@@ -121,7 +126,6 @@ fun AgentThreadPage(
     val delivery: me.ayuilos.miffan.data.remotetask.RemoteTaskDelivery = org.koin.compose.koinInject()
     val deliveries by delivery.summaries.collectAsStateWithLifecycle()
     val taskDelivery = deliveries[assistantId]
-    val listState = rememberLazyListState()
     LaunchedEffect(loaded) { if (loaded) me.ayuilos.miffan.utils.ThreadOpenTrace.end() }
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -143,7 +147,13 @@ fun AgentThreadPage(
     // ends the welcome shrinks to a marker instead of taking the partner back.
     var partnerLeft by rememberSaveable { mutableStateOf(false) }
     var welcomeSettled by rememberSaveable { mutableStateOf(false) }
-    val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
+    // The welcome's partner flies into the status row as a shared element, which needs a lookahead scope, and
+    // inside one everything is measured twice. So the scope holds only the list, and only from a welcome until
+    // the partner has landed; the list keeps its rows as they are when it moves in and out.
+    var partnerLanded by rememberSaveable { mutableStateOf(false) }
+    val inFlightScope = welcomeCutoff != null && !partnerLanded
+    val listState = rememberLazyListStateAcross(inFlightScope)
+    val atBottom by remember(listState) { derivedStateOf { !listState.canScrollForward } }
     val dragging by listState.interactionSource.collectIsDraggedAsState()
     val visibleErrors = errors.filter { filter == null || it.conversationId == filter }
     // A topic without a title is called by its first words; kept per message, the timeline changes with every chunk.
@@ -361,6 +371,21 @@ fun AgentThreadPage(
             )
         }
     }
+    // The newest secure key card still waiting, with its service: a key typed into the chat box can go there instead.
+    val connectCards = koinInject<me.ayuilos.miffan.data.appsettings.ProviderConnectCards>()
+    val keyCardSettings = me.ayuilos.miffan.ui.context.LocalSettings.current
+    val keyCard by remember(keyCardSettings) {
+        derivedStateOf {
+            timeline.asReversed().firstNotNullOfOrNull { item ->
+                (item as? TimelineItem.Message)?.message?.parts?.asReversed()?.firstNotNullOfOrNull { part ->
+                    val tool = part as? UIMessagePart.Tool
+                    if (tool == null || !tool.isPending || tool.toolName !in me.ayuilos.miffan.data.appsettings.SECRET_CARD_TOOLS) null
+                    else (me.ayuilos.miffan.data.appsettings.resolveSecretTarget(tool.toolName, tool.inputAsJson(), keyCardSettings)
+                        as? me.ayuilos.miffan.data.appsettings.ConnectTargetResult.Ok)?.let { tool to it.target.name }
+                }
+            }
+        }
+    }
     // A request of the partner's waits for the owner.
     val waitingForOwner by remember {
         derivedStateOf { timeline.any { it is TimelineItem.Message && it.message.parts.any { part -> part is UIMessagePart.Tool && part.isPending } } }
@@ -448,17 +473,13 @@ fun AgentThreadPage(
             }
         }
     }
-    // The welcome's partner flies into the status row as a shared element, which needs a lookahead scope, and
-    // inside one everything is measured twice. So the scope holds only the list, and only from a welcome until
-    // the partner has landed; the list keeps its rows as they are when it moves in and out.
-    var partnerLanded by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(welcomeSettled) {
         // Until the welcome's place for the partner has closed, it still belongs to the flight.
         if (welcomeSettled && !partnerLanded) { delay(1_000); partnerLanded = true }
     }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         assistant?.let { AssistantBackground(it, Modifier.fillMaxSize().hazeSource(hazeState, zIndex = -1f)) }
-        SharedElementScope(enabled = welcomeCutoff != null && !partnerLanded, Modifier.fillMaxSize()) { flight ->
+        SharedElementScope(enabled = inFlightScope, Modifier.fillMaxSize()) { flight ->
             // During a welcome the big partner moves into the live status row when the partner starts working.
             CompositionLocalProvider(LocalThreadPartnerTransition provides flight?.let {
                 ThreadPartnerTransition(it, handOff = welcome != null && welcomeDecided && (status != null || partnerLeft))
@@ -569,7 +590,9 @@ fun AgentThreadPage(
                 onNewTopic = if (newTopicPending || startsFresh) null else { { followLatest = true; vm.requestNewTopic() } },
                 freshTopic = newTopicPending,
                 onThinkHarder = if (thinkingModel != null) vm::setThinkHarder else null,
-                thinkHarder = thinkHarder, thinksDeeply = thinksDeeply)
+                thinkHarder = thinkHarder, thinksDeeply = thinksDeeply,
+                keyCardService = keyCard?.second,
+                onKeyToCard = { key -> keyCard?.let { (tool, _) -> connectCards.handOff(tool.toolCallId, key) } })
         }
         mergeChoice?.let { (segmentId, targets) ->
             ThreadMergeSheet(targets, assistantName,
@@ -586,3 +609,16 @@ fun AgentThreadPage(
 
 /** Rows of one kind reuse each other's compositions while scrolling; a message bubble never becomes a date line. */
 private fun timelineContentType(item: TimelineItem): Any = item::class
+
+/**
+ * A list state that starts over, where the last one was, whenever [scope] changes. A LazyListState measured inside a
+ * lookahead scope (the welcome's SharedTransitionLayout) keeps reading its lookahead layout after the list moves out
+ * of it: the list stopped scrolling past the rows it had when the partner landed, until the thread was reopened.
+ */
+@Composable
+private fun rememberLazyListStateAcross(scope: Boolean): LazyListState {
+    val last = remember { arrayOfNulls<LazyListState>(1) }
+    return rememberSaveable(scope, saver = LazyListState.Saver) {
+        LazyListState(last[0]?.firstVisibleItemIndex ?: 0, last[0]?.firstVisibleItemScrollOffset ?: 0)
+    }.also { last[0] = it }
+}

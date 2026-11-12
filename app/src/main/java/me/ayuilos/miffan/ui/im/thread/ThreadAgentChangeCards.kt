@@ -63,7 +63,8 @@ internal const val ORGANIZE_CHAT_LIST = "organize_chat_list"
 internal const val VIEW_CHAT_LIST = "view_chat_list"
 
 /** Changes a partner proposes to the app itself; each has its own card that shows the result in plain words. */
-internal val AGENT_CHANGE_TOOLS = setOf(UPDATE_MY_PROFILE, CREATE_PARTNER, CREATE_GROUP_CHAT, INVITE_TO_GROUP_CHAT, ORGANIZE_CHAT_LIST)
+internal val AGENT_CHANGE_TOOLS = setOf(UPDATE_MY_PROFILE, CREATE_PARTNER, CREATE_GROUP_CHAT, INVITE_TO_GROUP_CHAT, ORGANIZE_CHAT_LIST,
+    me.ayuilos.miffan.data.appsettings.CHANGE_APP_SETTINGS_TOOL)
 
 @StringRes
 internal fun agentChangeTitle(toolName: String): Int = when (toolName) {
@@ -71,6 +72,7 @@ internal fun agentChangeTitle(toolName: String): Int = when (toolName) {
     CREATE_PARTNER -> R.string.im_change_create_partner
     CREATE_GROUP_CHAT -> R.string.im_change_create_group_chat
     INVITE_TO_GROUP_CHAT -> R.string.im_change_invite
+    me.ayuilos.miffan.data.appsettings.CHANGE_APP_SETTINGS_TOOL -> R.string.im_change_app_settings
     else -> R.string.im_change_organize
 }
 

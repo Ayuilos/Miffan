@@ -41,7 +41,7 @@ internal val LocalToolCardSiblings = compositionLocalOf<List<UIMessagePart>> { e
 private val previewJson = Json { ignoreUnknownKeys = true }
 
 /** One change as a line the owner can read: what happens, to what, and for whom. */
-private data class ExtensionLine(@StringRes val tag: Int, val removes: Boolean, val text: String, val detail: String?)
+internal data class ExtensionLine(@StringRes val tag: Int, val removes: Boolean, val text: String, val detail: String?)
 
 /**
  * The partner asks to apply an extension preview. The app's own preview of the same id lists the
@@ -144,7 +144,7 @@ private fun localToolLabel(id: String): String = when (id) {
 }
 
 @Composable
-private fun ExtensionLineRow(line: ExtensionLine) {
+internal fun ExtensionLineRow(line: ExtensionLine) {
     Row(Modifier.padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
         val (container, content) = if (line.removes) MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
             else MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer

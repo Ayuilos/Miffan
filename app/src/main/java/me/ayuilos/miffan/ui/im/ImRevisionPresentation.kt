@@ -5,6 +5,7 @@ import me.ayuilos.miffan.data.model.Assistant
 import me.ayuilos.miffan.data.model.ComputerUseMode
 import me.ayuilos.miffan.data.repository.MemoryRepository
 import me.ayuilos.miffan.data.revision.*
+import me.ayuilos.miffan.utils.textLines
 
 /** [label] is a whole sentence, or a format taking [detail] (or the string [detailRes]) as its argument. */
 internal data class ImRevisionChange(val label: Int, val detail: String? = null, val detailRes: Int? = null)
@@ -23,10 +24,16 @@ internal fun imRevisionChanges(revision: Revision, parent: Revision?): List<ImRe
                 if (current.learnedPreferences != previous.learnedPreferences) add(ImRevisionChange(R.string.im_p5_preferences))
                 if (current.enableWebSearch != previous.enableWebSearch) add(ImRevisionChange(R.string.im_p5_web))
                 if (current.enableMemory != previous.enableMemory || current.useGlobalMemory != previous.useGlobalMemory) add(ImRevisionChange(R.string.im_p5_remember))
+                if (current.chatModelId != previous.chatModelId) add(ImRevisionChange(R.string.im_p5_model))
+                if (current.reasoningLevel != previous.reasoningLevel) add(ImRevisionChange(R.string.im_think_title))
+                if (current.maxTokens != previous.maxTokens || current.contextMessageLimit != previous.contextMessageLimit ||
+                    current.temperature != previous.temperature) add(ImRevisionChange(R.string.im_revision_reply_settings))
                 addAll(permissionChanges(previous, current))
                 if (current.copy(name = previous.name, avatar = previous.avatar, systemPrompt = previous.systemPrompt,
                         learnedPreferences = previous.learnedPreferences, enableWebSearch = previous.enableWebSearch,
                         enableMemory = previous.enableMemory, useGlobalMemory = previous.useGlobalMemory,
+                        chatModelId = previous.chatModelId, reasoningLevel = previous.reasoningLevel, maxTokens = previous.maxTokens,
+                        contextMessageLimit = previous.contextMessageLimit, temperature = previous.temperature,
                         workspaceId = previous.workspaceId, workspaceScopeId = previous.workspaceScopeId,
                         workspaceShellEnabled = previous.workspaceShellEnabled,
                         workspaceShellApprovalRequired = previous.workspaceShellApprovalRequired,
@@ -47,6 +54,7 @@ internal fun imRevisionChanges(revision: Revision, parent: Revision?): List<ImRe
                 previous.values.filter { it.id !in current }.forEach { add(ImRevisionChange(R.string.im_p5_memory_removed, it.content)) }
             }
         }
+        RevisionSubject.AI_SERVICES -> listOf(ImRevisionChange(R.string.im_revision_ai_services))
     }
 }
 
@@ -81,30 +89,9 @@ internal fun imRevisionDiff(revision: Revision, parent: Revision?): List<ImDiffL
             parent?.let { MemoryRepository.restore(it.snapshot).map { memory -> "#${memory.id} ${memory.content}" } }.orEmpty(),
             MemoryRepository.restore(revision.snapshot).map { memory -> "#${memory.id} ${memory.content}" },
         )
+        RevisionSubject.AI_SERVICES -> emptyList()
     }
 }
 
-/** Blank text has no lines, so an empty field never shows as a removed or added blank line. */
-private fun String?.textLines(): List<String> = if (isNullOrBlank()) emptyList() else lines()
-
-private fun imCompareLines(before: List<String>, after: List<String>): List<ImDiffLine> {
-    // A bounded LCS avoids excessive UI work with unusually long prompts; the tail is shown verbatim.
-    val a = before.take(500)
-    val b = after.take(500)
-    val lengths = Array(a.size + 1) { IntArray(b.size + 1) }
-    for (i in a.indices.reversed()) for (j in b.indices.reversed()) {
-        lengths[i][j] = if (a[i] == b[j]) lengths[i + 1][j + 1] + 1 else maxOf(lengths[i + 1][j], lengths[i][j + 1])
-    }
-    return buildList {
-        var i = 0; var j = 0
-        while (i < a.size || j < b.size) {
-            when {
-                i < a.size && j < b.size && a[i] == b[j] -> { i++; j++ }
-                i < a.size && (j == b.size || lengths[i + 1][j] >= lengths[i][j + 1]) -> add(ImDiffLine(a[i++], false))
-                else -> add(ImDiffLine(b[j++], true))
-            }
-        }
-        before.drop(500).forEach { add(ImDiffLine(it, false)) }
-        after.drop(500).forEach { add(ImDiffLine(it, true)) }
-    }
-}
+private fun imCompareLines(before: List<String>, after: List<String>): List<ImDiffLine> =
+    me.ayuilos.miffan.utils.diffLines(before, after).map { (text, added) -> ImDiffLine(text, added) }

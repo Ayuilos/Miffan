@@ -40,6 +40,11 @@ sealed class LocalToolOption {
     @Serializable
     @SerialName("extension_management")
     data object ExtensionManagement : LocalToolOption()
+
+    /** Adjust the owner's app settings; keys go through a secure card the partner never sees. */
+    @Serializable
+    @SerialName("app_settings")
+    data object AppSettings : LocalToolOption()
 }
 
 /** What every new partner can do without asking: tell the time, and ask the owner a question on a card. */

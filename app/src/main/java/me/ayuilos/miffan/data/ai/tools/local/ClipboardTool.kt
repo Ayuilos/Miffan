@@ -48,8 +48,12 @@ internal fun buildClipboardTool(context: Context): Tool = Tool(
         val action = params["action"]?.jsonPrimitive?.contentOrNull ?: error("action is required")
         when (action) {
             "read" -> {
+                // Keys copied to paste into a secure card must not reach the partner this way.
+                val text = context.readClipboardText()
+                val safe = me.ayuilos.miffan.data.appsettings.redactCredentials(text)
                 val payload = buildJsonObject {
-                    put("text", context.readClipboardText())
+                    put("text", safe)
+                    if (safe != text) put("note", "Something that looks like a key was hidden. Keys can only be entered on a secure card.")
                 }
                 listOf(UIMessagePart.Text(payload.toString()))
             }

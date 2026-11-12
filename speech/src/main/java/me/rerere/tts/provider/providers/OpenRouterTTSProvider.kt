@@ -31,18 +31,19 @@ class OpenRouterTTSProvider : TTSProvider<TTSProviderSetting.OpenRouter> {
         providerSetting: TTSProviderSetting.OpenRouter,
         request: TTSRequest,
     ): Flow<AudioChunk> = flow {
-        val requestBody = buildOpenRouterTTSRequestBody(providerSetting, request.text)
-        val responseFormat = openRouterAudioFormat(providerSetting.responseFormat)
+        val setting = providerSetting.withCurrentModel()
+        val requestBody = buildOpenRouterTTSRequestBody(setting, request.text)
+        val responseFormat = openRouterAudioFormat(openRouterResponseFormat(setting))
 
         Log.i(
             TAG,
-            "generateSpeech: model=${providerSetting.model} voice=${providerSetting.voice} " +
-                "format=${providerSetting.responseFormat}",
+            "generateSpeech: model=${setting.model} voice=${setting.voice} " +
+                "format=${setting.responseFormat}",
         )
 
         val httpRequest = Request.Builder()
-            .url("${providerSetting.baseUrl.trimEnd('/')}/audio/speech")
-            .addHeader("Authorization", "Bearer ${providerSetting.apiKey}")
+            .url("${setting.baseUrl.trimEnd('/')}/audio/speech")
+            .addHeader("Authorization", "Bearer ${setting.apiKey}")
             .addHeader("Content-Type", "application/json")
             .addHeader("Accept", responseFormat.mimeType)
             .addHeader("X-OpenRouter-Title", "Miffan")
@@ -68,12 +69,14 @@ class OpenRouterTTSProvider : TTSProvider<TTSProviderSetting.OpenRouter> {
                 AudioChunk(
                     data = audioData,
                     format = responseFormat.audioFormat,
+                    // OpenRouter documents its pcm as 24 kHz 16-bit mono, the rate the player also assumes.
+                    sampleRate = if (responseFormat.audioFormat == AudioFormat.PCM) 24_000 else null,
                     isLast = true,
                     metadata = mapOf(
                         "provider" to "openrouter",
-                        "model" to providerSetting.model,
-                        "voice" to providerSetting.voice,
-                        "responseFormat" to providerSetting.responseFormat,
+                        "model" to setting.model,
+                        "voice" to setting.voice,
+                        "responseFormat" to setting.responseFormat,
                     ),
                 ),
             )
@@ -90,8 +93,28 @@ internal fun buildOpenRouterTTSRequestBody(
     if (setting.voice.isNotBlank()) {
         put("voice", setting.voice)
     }
-    put("response_format", openRouterAudioFormat(setting.responseFormat).apiValue)
-    put("speed", setting.speed)
+    put("response_format", openRouterAudioFormat(openRouterResponseFormat(setting)).apiValue)
+    // Models without speed control reject any value but the default, so leave it out unless it was changed.
+    if (setting.speed != 1.0f) {
+        put("speed", setting.speed)
+    }
+}
+
+/**
+ * The format [setting]'s model can return: Gemini and HeyGen only return pcm and MiniMax only mp3, and each answers the
+ * other with a 400; other models take what was chosen.
+ */
+internal fun openRouterResponseFormat(setting: TTSProviderSetting.OpenRouter): String =
+    openRouterFixedFormat(setting.model) ?: setting.responseFormat
+
+/** The only format [model] returns on OpenRouter, or null when it returns either. */
+fun openRouterFixedFormat(model: String): String? {
+    val id = model.trim().lowercase()
+    return when {
+        id.startsWith("google/") || id.startsWith("heygen/") -> "pcm"
+        id.startsWith("minimax/") -> "mp3"
+        else -> null
+    }
 }
 
 internal data class OpenRouterAudioFormat(

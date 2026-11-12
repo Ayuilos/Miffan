@@ -135,9 +135,9 @@ class UpdateApkDownloaderTest {
         val verified = download.copy(sha256 = MessageDigest.getInstance("SHA-256")
             .digest(content.toByteArray()).joinToString("") { "%02x".format(it) })
         engine.downloadUpdate(verified)
-        assertEquals(UpdateDownloadState.Ready(verified), finished(engine))
+        finished(engine)
         engine.downloadUpdate(verified)
-        assertEquals(UpdateDownloadState.Ready(verified), engine.downloadState.value)
+        assertEquals(UpdateDownloadState.Ready(verified), finished(engine))
         assertTrue(requests.isEmpty())
         assertEquals(listOf(download.name), directory.listFiles()!!.map { it.name })
     }

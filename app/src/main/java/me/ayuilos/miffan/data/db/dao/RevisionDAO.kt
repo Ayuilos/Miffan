@@ -25,6 +25,10 @@ interface RevisionDAO {
     @Query("SELECT * FROM revision WHERE trigger_tool_call_id = :toolCallId ORDER BY created_at ASC, rowid ASC")
     fun byToolCallId(toolCallId: String): Flow<List<RevisionEntity>>
 
+    /** Which of [toolCallIds] changed anything. */
+    @Query("SELECT DISTINCT trigger_tool_call_id FROM revision WHERE trigger_tool_call_id IN (:toolCallIds)")
+    suspend fun toolCallIdsAmong(toolCallIds: List<String>): List<String>
+
     @Insert
     suspend fun insert(revision: RevisionEntity)
 }

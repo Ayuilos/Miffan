@@ -59,8 +59,7 @@ import me.ayuilos.miffan.ui.components.ui.MiffanConfirmDialog
 import me.ayuilos.miffan.ui.context.LocalSettings
 import me.ayuilos.miffan.ui.context.LocalTTSState
 import me.ayuilos.miffan.utils.copyMessageToClipboard
-import me.ayuilos.miffan.utils.extractQuotedContentAsText
-import me.ayuilos.miffan.utils.removeBracketedContent
+import me.ayuilos.miffan.utils.forReadingAloud
 import me.ayuilos.miffan.utils.toLocalString
 import me.ayuilos.miffan.utils.toMessageTimeString
 import java.util.Locale
@@ -138,15 +137,8 @@ fun ColumnScope.ChatMessageActionButtons(
                         indication = LocalIndication.current,
                         onClick = {
                             if (!isSpeaking) {
-                                val text = message.toText()
-                                var textToSpeak = text
-                                if (settings.displaySetting.ttsOnlyReadQuoted) {
-                                    textToSpeak = textToSpeak.extractQuotedContentAsText() ?: textToSpeak
-                                }
-                                if (settings.displaySetting.ttsOnlyReadOutsideBrackets) {
-                                    textToSpeak = textToSpeak.removeBracketedContent() ?: textToSpeak
-                                }
-                                tts.speak(textToSpeak)
+                                val display = settings.displaySetting
+                                tts.speak(message.toText().forReadingAloud(display.ttsOnlyReadQuoted, display.ttsOnlyReadOutsideBrackets))
                             } else {
                                 tts.stop()
                             }

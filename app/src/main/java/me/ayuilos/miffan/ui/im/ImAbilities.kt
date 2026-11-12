@@ -22,6 +22,7 @@ import me.rerere.hugeicons.stroke.BubbleChatQuestion
 import me.rerere.hugeicons.stroke.Calendar03
 import me.rerere.hugeicons.stroke.Clipboard
 import me.rerere.hugeicons.stroke.Hourglass
+import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.VolumeHigh
 
 @get:StringRes
@@ -32,6 +33,7 @@ internal val PartnerAbility.title: Int
         PartnerAbility.CLIPBOARD -> R.string.im_ability_clipboard
         PartnerAbility.SCREEN_TIME -> R.string.im_ability_screen_time
         PartnerAbility.READ_ALOUD -> R.string.im_ability_read_aloud
+        PartnerAbility.APP_SETTINGS -> R.string.im_ability_app_settings
     }
 
 @get:StringRes
@@ -42,6 +44,7 @@ internal val PartnerAbility.description: Int
         PartnerAbility.CLIPBOARD -> R.string.im_ability_clipboard_desc
         PartnerAbility.SCREEN_TIME -> R.string.im_ability_screen_time_desc
         PartnerAbility.READ_ALOUD -> R.string.im_ability_read_aloud_desc
+        PartnerAbility.APP_SETTINGS -> R.string.im_ability_app_settings_desc
     }
 
 internal val PartnerAbility.icon: ImageVector
@@ -51,6 +54,7 @@ internal val PartnerAbility.icon: ImageVector
         PartnerAbility.CLIPBOARD -> HugeIcons.Clipboard
         PartnerAbility.SCREEN_TIME -> HugeIcons.Hourglass
         PartnerAbility.READ_ALOUD -> HugeIcons.VolumeHigh
+        PartnerAbility.APP_SETTINGS -> HugeIcons.Settings03
     }
 
 /**

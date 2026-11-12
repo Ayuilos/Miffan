@@ -47,7 +47,7 @@ GDI 输出 BGRA32，EndPaint 只复制裁剪后的 dirty rectangles 为不透明
 
 pause 发送 SuppressOutput PDU，并在本地停止画面 sink 上传；输入/通道仍可处理。close 幂等并关闭所拥有的 transport，唤醒 buffer 等待，native 在 worker 上断连并释放 FreeRDP、GDI、MediaCodec、event。scope 取消也会关闭连接。**上层传入的 Closeable 必须能中断对应 InputStream/OutputStream 的阻塞 IO**；sink 回调必须快速返回。不能靠此库强制终止任意不响应 close 的第三方流或阻塞 sink。
 
-支持 AUTO（同时提供 NLA/TLS）、TLS、NLA。默认 AUTO 由服务端协商；测试 KDE 指定 TLS，因为此 krdp 命令行账号未配置 NLA SAM，不能把 NLA 登录失败自动降级为 TLS。GNOME 使用 NLA。禁用传统 RDP security；TLS 证书始终经外部校验回调，计算真实 DER 证书 SHA-256。null pin 首次接受并暴露 fingerprint，已给 pin 必须恒时比较匹配，错误 pin 返回 SecurityException；不会无条件跳过证书检查，也不静默更新 pin。
+支持 AUTO（同时提供 NLA/TLS）、TLS、NLA。默认 AUTO 由服务端协商；测试 KDE 指定 TLS，因为此 krdp 命令行账号未配置 NLA SAM，不能把 NLA 登录失败自动降级为 TLS（krdp 6.8 起只接受 NLA，App 对 krdp 改用 AUTO，见 P5B_NOTES）。GNOME 使用 NLA。禁用传统 RDP security；TLS 证书始终经外部校验回调，计算真实 DER 证书 SHA-256。null pin 首次接受并暴露 fingerprint，已给 pin 必须恒时比较匹配，错误 pin 返回 SecurityException；不会无条件跳过证书检查，也不静默更新 pin。
 
 ## 实测与限制
 

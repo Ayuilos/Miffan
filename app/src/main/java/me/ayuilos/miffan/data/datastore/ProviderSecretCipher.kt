@@ -81,6 +81,8 @@ private fun ProviderSetting.transformProviderSecrets(
     val transformedModels = models.map { model ->
         model.copy(
             providerOverwrite = model.providerOverwrite?.transformProviderSecrets(transform),
+            // Custom headers often carry a token; their values are kept like keys.
+            customHeaders = model.customHeaders.map { it.copy(value = transform(it.value)) },
         )
     }
     return when (this) {

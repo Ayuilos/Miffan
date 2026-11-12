@@ -31,6 +31,7 @@ import me.ayuilos.miffan.Screen
 import kotlin.uuid.Uuid
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.context.LocalSettings
+import me.ayuilos.miffan.utils.forReadingAloud
 import me.ayuilos.miffan.ui.im.ImPressMenu
 import me.ayuilos.miffan.ui.im.ImPressMenuItem
 import me.ayuilos.miffan.ui.im.imLongPress
@@ -138,6 +139,7 @@ internal fun ThreadMessageBubble(
 
     val user = item.message.role == MessageRole.USER
     val partners = LocalSettings.current.assistants
+    val display = LocalSettings.current.displaySetting
     val parts = item.message.parts
     val liveComputer = computerWorkIsLive(parts, item.streaming)
     val steps = remember(parts) { if (user) emptyList() else threadSteps(parts) }
@@ -208,9 +210,9 @@ internal fun ThreadMessageBubble(
                             // The owner's own words with @partners in them read as typed, the mentions colored as in the input.
                             else if (user && hasPartnerMention(part.text, partners)) Text(
                                 mentionText(part.text, partners, SpanStyle(fontWeight = FontWeight.SemiBold)),
-                                style = MaterialTheme.typography.bodyLarge, inlineContent = mentionAvatars(partners))
+                                style = messageTextStyle(), inlineContent = mentionAvatars(partners))
                             else CompositionLocalProvider(me.ayuilos.miffan.ui.components.richtext.LocalCompactMarkdownHeadings provides true) { MarkdownBlock(part.text.withWorkspaceFiles(imageContext),
-                                style = MaterialTheme.typography.bodyLarge) }
+                                style = messageTextStyle()) }
                             is UIMessagePart.Image -> ZoomableAsyncImage(part.url, stringResource(R.string.im_thread_photo), Modifier.heightIn(max = 200.dp))
                             is UIMessagePart.Document -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Icon(HugeIcons.File01, null, Modifier.size(18.dp))
@@ -244,7 +246,8 @@ internal fun ThreadMessageBubble(
                     ImPressMenuItem(if (speaking) HugeIcons.VolumeOff else HugeIcons.VolumeHigh,
                         stringResource(if (speaking) R.string.im_thread_stop_reading else R.string.im_thread_read_aloud)) {
                         menu.close()
-                        if (speaking) tts.stop() else tts.speak(item.message.previewText())
+                        if (speaking) tts.stop()
+                        else tts.speak(item.message.previewText().forReadingAloud(display.ttsOnlyReadQuoted, display.ttsOnlyReadOutsideBrackets))
                     }
                 }
                 ImPressMenuItem(HugeIcons.Filter, stringResource(R.string.im_thread_filter)) { menu.close(); onFilter() }
@@ -302,6 +305,7 @@ internal fun ThreadErrorBubble(error: ChatError, canRetry: Boolean, onRetry: () 
  */
 private fun List<UIMessagePart>.batchApprovals(): List<UIMessagePart.Tool> = filterIsInstance<UIMessagePart.Tool>().filter {
     it.approvalState is me.rerere.ai.ui.ToolApprovalState.Pending && it.toolName != ASK_USER &&
+        it.toolName !in me.ayuilos.miffan.data.appsettings.SECRET_CARD_TOOLS &&
         it.toolName != me.ayuilos.miffan.data.ai.tools.WORKSPACE_TERMINAL_TOOL_NAME && !it.isImageGeneration() &&
         it.toolName != DRAFT_BUG_REPORT && !it.isComputerTool() && !it.isPartnerMessage()
 }
@@ -316,4 +320,12 @@ private fun ThreadBatchApprovalHeader(count: Int, onAllowAll: () -> Unit) {
             Text(stringResource(R.string.im_approval_allow_all))
         }
     }
+}
+
+/** Message text at the owner's chosen size (Settings › display, or a partner's change card). */
+@Composable
+private fun messageTextStyle(): androidx.compose.ui.text.TextStyle {
+    val base = MaterialTheme.typography.bodyLarge
+    val ratio = me.ayuilos.miffan.ui.context.LocalSettings.current.displaySetting.fontSizeRatio
+    return if (ratio == 1f) base else base.copy(fontSize = base.fontSize * ratio, lineHeight = base.lineHeight * ratio)
 }

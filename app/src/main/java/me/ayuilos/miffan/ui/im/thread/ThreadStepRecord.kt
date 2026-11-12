@@ -66,6 +66,7 @@ internal fun threadSteps(parts: List<UIMessagePart>): List<ThreadStep> = parts.m
     (part as? UIMessagePart.Tool)?.takeUnless {
         it.isComputerTool() || it.isPartnerMessage() || it.isImageGeneration() || it.addedCalendarEvent() != null ||
             it.toolName == ASK_USER || it.toolName == REQUEST_WEB_SEARCH || it.toolName == REQUEST_ABILITY ||
+            it.toolName in me.ayuilos.miffan.data.appsettings.SECRET_CARD_TOOLS ||
             it.isPending || it.approvalState is ToolApprovalState.Denied
     }?.let(::threadStep)
 }

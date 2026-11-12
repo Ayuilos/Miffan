@@ -8,10 +8,13 @@ import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlin.uuid.Uuid
 
-enum class RevisionSubject { ASSISTANT, MEMORY }
+enum class RevisionSubject { ASSISTANT, MEMORY, AI_SERVICES }
 
-/** Identifies the executing tool independently of the revision origin installed by each tool. */
-class CurrentToolCall(val id: String) : AbstractCoroutineContextElement(Key) {
+/**
+ * Identifies the executing tool independently of the revision origin installed by each tool. [approved]: the owner
+ * allowed this very call (not an automatic run), for tools that must never apply anything without that.
+ */
+class CurrentToolCall(val id: String, val approved: Boolean = false) : AbstractCoroutineContextElement(Key) {
     companion object Key : CoroutineContext.Key<CurrentToolCall>
 }
 
