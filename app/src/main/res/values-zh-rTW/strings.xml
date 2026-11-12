@@ -4306,8 +4306,8 @@
   <string name="im_nickname_title">夥伴們怎麼稱呼你</string>
   <string name="im_nickname_hint">改了之後，下一句就會用新的稱呼</string>
   <string name="im_sheet_done">好了</string>
-  <string name="im_ability_app_settings">設定 AI 服務</string>
-  <string name="im_ability_app_settings_desc">幫你連接 AI 服務、配好模型，Key 由你填進它看不到的安全卡片</string>
+  <string name="im_ability_app_settings">調整設定</string>
+  <string name="im_ability_app_settings_desc">幫你調整 App 的設定：連接 AI 服務、更換模型、更改主題和字體大小等。Key 由你填進它看不到的安全卡片</string>
   <string name="im_connect_title">連接 %1$s</string>
   <string name="im_connect_title_rekey">更換 %1$s 的 Key</string>
   <string name="im_connect_title_unknown">連接服務</string>

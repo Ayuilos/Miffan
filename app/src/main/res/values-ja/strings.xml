@@ -4308,8 +4308,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_nickname_title">パートナーからの呼び名</string>
   <string name="im_nickname_hint">変更すると、次の返事から新しい呼び名になります</string>
   <string name="im_sheet_done">完了</string>
-  <string name="im_ability_app_settings">AIサービスを設定</string>
-  <string name="im_ability_app_settings_desc">AIサービスへの接続とモデルの設定をお手伝いします。API Keyは、パートナーから見えない安全なカードに入力してください</string>
+  <string name="im_ability_app_settings">設定を調整</string>
+  <string name="im_ability_app_settings_desc">アプリの設定をお手伝いします：AIサービスへの接続、モデルの切り替え、テーマや文字サイズの変更など。API Keyは、パートナーから見えない安全なカードに入力してください</string>
   <string name="im_connect_title">%1$sに接続</string>
   <string name="im_connect_title_rekey">%1$sのAPI Keyを変更</string>
   <string name="im_connect_title_unknown">サービスに接続</string>
