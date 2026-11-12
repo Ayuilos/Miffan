@@ -31,6 +31,7 @@ Each AI partner is one ongoing chat. There's nothing to start and nothing you ha
 - **Quick answers or careful ones.** On a partner's page, choose how long it thinks before replying, from instant to thinking deeply. For one hard question, pick "Think hard this time" in the + menu.
 - **Abilities when they're needed.** When a partner needs your calendar, clipboard or screen time, it asks in the chat and carries on once you allow it.
 - **Change a partner by telling it.** "Keep your answers shorter" adjusts its preferences. With your approval a partner can also change its own name, avatar and instructions. Every change is linked to the message behind it, kept in a history and can be undone.
+- **Leave settings to your partners.** Say "connect DeepSeek for me" or "make the text bigger" and a partner lists what it will change; it takes effect once you confirm and can be undone at any time. When an API key is needed, you type it into a secure card the partner can't see.
 - **See what AI knows about you.** Each memory shows where it came from, and you can delete it at any time.
 - **Ask for a picture.** Pick a drawing model once and any partner can draw, or edit its last picture when you say "change it to…".
 - **Keep what matters.** Long-press a message to save it. The Discover tab gathers your saved messages and recent drawings, and lets you draw or translate without picking a partner.
@@ -144,6 +145,7 @@ Miffan started as a fork of [RikkaHub](https://github.com/rikkahub/rikkahub), an
 | Oct 2026 | 4.7 | A partner's own mini box, and a redesigned screen view. |
 | Nov 2026 | 4.8 | Using your computer away from home through Miffan's relay, without Tailscale. |
 | Nov 2026 | 4.9 | A smoother, faster easy chat: long replies stay in view, tabs keep their place, and errors in plain words. |
+| Nov 2026 | 4.10 | Leave settings to your partners: connect services, switch models, adjust looks and read-aloud in a chat, with keys typed only into a secure card partners can't see. |
 
 Miffan still takes in selected RikkaHub improvements. Each one is reviewed and listed separately in the release notes (see the [upstream sync policy](docs/upstream-sync.md)). Upstream copyright and attribution are kept as the license requires. Miffan is not an official RikkaHub release.
 
