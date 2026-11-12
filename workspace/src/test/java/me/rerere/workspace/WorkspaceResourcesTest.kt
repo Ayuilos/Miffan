@@ -146,7 +146,7 @@ class WorkspaceResourcesTest {
                     maxRootfsBytes = 100,
                     maxTempBytes = 100,
                     maxWorkspaceBytes = 100,
-                    minFreeSpaceBytes = workspaces.usableSpace + 1,
+                    minFreeSpaceBytes = Long.MAX_VALUE,
                     maxToolOutputBytes = 10,
                     maxToolOutputFileBytes = 5,
                     maxShellFileBytes = 10,
