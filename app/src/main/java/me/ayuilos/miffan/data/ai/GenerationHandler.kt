@@ -352,10 +352,14 @@ class GenerationHandler(
                                 executeToolWithTargetGuard(tool, toolDef, args)
                             }
                             val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }
+                            val annotatedResult = me.ayuilos.miffan.data.ai.tools.appendCardEditNoteToToolOutput(
+                                tool = tool,
+                                output = result,
+                            )
                             executedTools += tool.copy(
                                 output = maybeTruncateToolOutput(
                                     tool = tool,
-                                    output = result,
+                                    output = annotatedResult,
                                     hasShellAccess = hasShellAccess,
                                     workspaceRoot = localToolOutputRoot,
                                 )

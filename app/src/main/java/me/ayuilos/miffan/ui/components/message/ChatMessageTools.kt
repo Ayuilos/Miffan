@@ -14,6 +14,9 @@ import me.ayuilos.miffan.ui.im.thread.ThreadComputerApprovalCard
 import me.ayuilos.miffan.ui.im.thread.ThreadQuestionCard
 import me.ayuilos.miffan.ui.im.thread.ThreadToolPrompt
 import me.ayuilos.miffan.ui.im.thread.computerTargetName
+import me.ayuilos.miffan.ui.im.thread.extractSettledQuestionAnswers
+import me.ayuilos.miffan.ui.im.thread.formatSettledQuestionSummary
+import me.ayuilos.miffan.ui.im.thread.userQuestionSpec
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -72,6 +75,7 @@ import me.rerere.hugeicons.stroke.Tools
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.tools.COMPUTER_TOOL_PREFIX
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_TOOL_NAMES
+import me.ayuilos.miffan.data.ai.tools.isEditedOnCard
 import me.ayuilos.miffan.ui.components.message.tools.DefaultToolPreview
 import me.ayuilos.miffan.ui.components.message.tools.ToolUIContext
 import me.ayuilos.miffan.ui.components.message.tools.ToolUIRegistry
@@ -209,7 +213,9 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
         tool.toolName !in WORKSPACE_TOOL_NAMES
     val record = tool.approvalRecord?.takeIf { it.decision != null && it.decidedAt != null }
     val approvalCard = isPending && onToolApproval != null
-    val hasExtraContent = isWorkspaceTool || renderer.hasSummary(context) || isDenied || record != null || images.isNotEmpty() || approvalCard
+    val editedOnCard = tool.isEditedOnCard()
+    val hasExtraContent = isWorkspaceTool || renderer.hasSummary(context) || isDenied || record != null || images.isNotEmpty() ||
+        approvalCard || editedOnCard
 
     ControlledChainOfThoughtStep(
         expanded = expanded,
@@ -312,6 +318,13 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                             color = MaterialTheme.colorScheme.error,
                         )
                     }
+                    if (editedOnCard) {
+                        Text(
+                            text = "Edited by you before approving",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
             }
         } else {
@@ -364,26 +377,18 @@ private fun ChainOfThoughtScope.AskUserToolStep(
 ) {
     val isPending = tool.approvalState is ToolApprovalState.Pending
     val isAnswered = tool.approvalState is ToolApprovalState.Answered
-    val arguments = tool.inputAsJson()
-
-    // Parse questions from arguments
-    val questions = remember(arguments) {
-        runCatching {
-            arguments.jsonObject["questions"]?.jsonArray?.map { q ->
-                val obj = q.jsonObject
-                AskUserQuestion(
-                    id = obj["id"]?.jsonPrimitive?.contentOrNull ?: "",
-                    question = obj["question"]?.jsonPrimitive?.contentOrNull ?: "",
-                    options = obj["options"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList(),
-                    selectionType = obj["selection_type"]?.jsonPrimitive?.contentOrNull ?: "text"
-                )
-            } ?: emptyList()
-        }.getOrElse { emptyList() }
+    val spec = remember(tool.input) { tool.userQuestionSpec() }
+    val questions = spec.questions
+    val settledPairs = remember(tool.input, tool.approvalState, tool.output) {
+        extractSettledQuestionAnswers(tool, spec)
+    }
+    val settledSummary = remember(spec, settledPairs) {
+        formatSettledQuestionSummary(spec, settledPairs)
     }
 
-    val firstQuestion = questions.firstOrNull()?.question ?: "..."
+    val firstQuestion = spec.title ?: questions.firstOrNull()?.question ?: "..."
 
-    var expanded by remember { mutableStateOf(true) }
+    var expanded by remember(isPending) { mutableStateOf(isPending) }
 
     ControlledChainOfThoughtStep(
         expanded = expanded,
@@ -402,10 +407,15 @@ private fun ChainOfThoughtScope.AskUserToolStep(
         },
         label = {
             Text(
-                text = if (questions.size <= 1) firstQuestion else stringResource(
-                    R.string.chat_message_tool_ask_questions,
-                    questions.size
-                ),
+                text = when {
+                    !isPending && settledPairs.any { it.second.isNotBlank() } -> settledSummary
+                    !spec.title.isNullOrBlank() -> spec.title
+                    questions.size <= 1 -> firstQuestion
+                    else -> stringResource(
+                        R.string.chat_message_tool_ask_questions,
+                        questions.size
+                    )
+                },
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.shimmer(isLoading = loading),
@@ -417,24 +427,16 @@ private fun ChainOfThoughtScope.AskUserToolStep(
             // Waiting for an answer: the same question card as easy mode.
             if (isPending && onToolAnswer != null) ThreadQuestionCard(tool, onToolAnswer)
             else Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                questions.forEach { q ->
+                settledPairs.forEach { (q, formattedAnswer) ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             text = q.question,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
-                        if (isAnswered) {
-                            // Show the user's answer
-                            val answeredState = tool.approvalState as ToolApprovalState.Answered
-                            val answerJson = runCatching {
-                                JsonInstant.parseToJsonElement(answeredState.answer)
-                            }.getOrNull()
-                            val answerText = answerJson?.jsonObject?.get("answers")
-                                ?.jsonObject?.get(q.id)?.jsonPrimitive?.contentOrNull
-                                ?: answeredState.answer
+                        if (isAnswered || formattedAnswer.isNotBlank()) {
                             Text(
-                                text = answerText,
+                                text = formattedAnswer.ifBlank { "—" },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary,
                             )
@@ -445,13 +447,6 @@ private fun ChainOfThoughtScope.AskUserToolStep(
         },
     )
 }
-
-private data class AskUserQuestion(
-    val id: String,
-    val question: String,
-    val options: List<String>,
-    val selectionType: String = "text", // "text" | "single" | "multi"
-)
 
 @Composable
 private fun ToolDenyReasonDialog(
