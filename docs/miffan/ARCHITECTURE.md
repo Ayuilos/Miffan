@@ -163,6 +163,56 @@ Stopping or failing a turn pauses the queue without deleting it; the user can re
 specific item immediately, or remove an item. Conversation deletion discards the queue and
 awaits generation cleanup before deleting history. REST sends retain their immediate behavior.
 
+## Interactive tool cards
+
+Question and approval cards are built from behavior primitives, not one-off layouts per question.
+The partner chooses what to ask; Miffan owns how each primitive looks, validates, and reports back.
+
+### `ask_user` primitives
+
+- `selection_type` picks one of eight primitives: `single`, `multi`, `slider`, `stepper`, `datetime`,
+  `toggle`, `reorder`, `text`. `option_items` (`value`, `label`, `supporting`, `tag`) enrich choices;
+  plain `options` stays supported.
+- `layout` is `paged` or `stacked`. `visible_when` (`equals`, `not_equals`, `in`) hides a question
+  until an earlier answer matches.
+- The answer returns as `ToolApprovalState.Answered` and becomes the tool output, so the partner
+  sees the chosen values directly. Settled cards fold into one summary line
+  (`formatSettledQuestionSummary`) and expand to a read-only view.
+- Unknown primitives fall back to a supported one; older saved calls keep rendering.
+
+### Editable approval schema
+
+`EditableApprovalSchema.kt` is the only place that decides which tool arguments an approval card
+may edit (`editableApprovalFields`) and whether an edited input is acceptable
+(`isValidEditedToolInput`). `ChatService.approveToolWithInput` re-validates every edit before it
+runs, so card UI is never trusted alone.
+
+- Editing is disabled for `SECRET_CARD_TOOLS`, workspace shell/terminal, `workspace_edit_file`,
+  `workspace_read_file`, `request_ability`, `request_web_search`, `extensions_apply_changes`,
+  `ask_user`, and every `computer_*` tool. Their existing target snapshots, owner checks, and
+  approval frames are unchanged.
+- `calendar_create`: title, all-day, start, end, location, and notes. `workspace_write_file`: path
+  and text. `workspace_fetch_url`: only `destination_path`; the URL stays locked. `mcp__*`: up to six
+  primitive arguments, never IDs, URLs, hosts, credentials, actions, types, or methods.
+- Workspace paths reject `..` segments and NUL characters. Non-editable keys must stay identical.
+- New tools are not editable until they are added to the schema explicitly.
+
+### Card draft state
+
+`PrimitiveCardStateStore` holds question answers and approval edits that are not yet submitted,
+keyed by tool call ID, so scrolling or recomposition does not lose them. A draft is removed when
+the call is answered, allowed, or no longer pending. It is in-memory state; process termination
+discards unfinished drafts.
+
+### Edit attribution
+
+When the user edits arguments before allowing a call, `withEditedCardInput` replaces the input and
+stores a plain-language note under `miffan_card_edited_note` in the tool metadata, keeping existing
+provider metadata such as thought signatures. `GenerationHandler` attaches that note to the tool
+output (`user_modified_on_card` in JSON output, otherwise an appended note), so the partner treats
+the new values as the user's intent instead of its own mistake. Settled records show
+"Edited by you" through `isEditedOnCard()` in both easy and professional mode.
+
 ## Compatibility rules
 
 - Decoding legacy `dummy` avatars must continue to succeed.
