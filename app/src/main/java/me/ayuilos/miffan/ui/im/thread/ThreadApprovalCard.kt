@@ -10,11 +10,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.standingApprovalKey
+import me.ayuilos.miffan.data.ai.tools.EditableParamKind
+import me.ayuilos.miffan.data.ai.tools.EditableParamSpec
 import me.ayuilos.miffan.data.ai.tools.PartnerAbility
 import me.ayuilos.miffan.data.ai.tools.REQUEST_ABILITY
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
@@ -33,6 +37,7 @@ import me.ayuilos.miffan.ui.im.icon
 import me.ayuilos.miffan.ui.im.partnerName
 import me.ayuilos.miffan.ui.im.rememberAbilityGate
 import me.ayuilos.miffan.ui.im.title
+import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ComputerTerminal01
@@ -200,9 +205,37 @@ internal fun mcpToolParts(toolName: String): Pair<String, String> {
 internal fun ThreadGenericApprovalCard(tool: UIMessagePart.Tool, assistant: Assistant?, onApproval: (String, Boolean) -> Unit) {
     val who = assistant?.let { partnerName(it) } ?: stringResource(R.string.im_approval_partner)
     val professional = LocalToolCardProfessional.current
+    val actions = LocalToolCardActions.current
+    val originalObj = remember(tool.input) { tool.inputAsJson() as? JsonObject ?: JsonObject(emptyMap()) }
+    val draft = remember(tool.toolCallId, tool.toolName, originalObj) {
+        PrimitiveCardStateStore.approvalDraft(tool.toolCallId, tool.toolName, originalObj)
+    }
+    LaunchedEffect(tool.approvalState) {
+        if (tool.approvalState != ToolApprovalState.Pending) {
+            PrimitiveCardStateStore.remove(tool.toolCallId)
+        }
+    }
+
+    val canEditInline = actions != null && draft.specs.isNotEmpty()
+    val standingKey = remember(tool.toolName) { standingApprovalKey(tool.toolName) }
+
+    fun handleAllow(always: Boolean) {
+        val editedJson = draft.buildEditedJson()
+        val modified = draft.isModified
+        PrimitiveCardStateStore.remove(tool.toolCallId)
+        when {
+            modified && actions != null -> {
+                if (always && standingKey != null) actions.grantStanding(standingKey)
+                actions.approveWithInput(tool.toolCallId, editedJson)
+            }
+            always && actions != null -> actions.alwaysAllow(tool.toolCallId)
+            else -> onApproval(tool.toolCallId, true)
+        }
+    }
+
     val context = remember(tool) { ToolUIContext(tool, tool.inputAsJson(), null, false) }
     val renderer = remember(tool.toolName) { ToolUIRegistry.resolve(tool.toolName) }
-    val path = toolArg(tool, "path")
+    val path = if (canEditInline && "path" in originalObj) draft.value("path") else toolArg(tool, "path")
     when (tool.toolName) {
         REQUEST_ABILITY -> ThreadAbilityRequestCard(tool, who, onApproval)
         REQUEST_WEB_SEARCH -> ApprovalCardFrame(tool, stringResource(R.string.im_approval_web_search, who), onApproval,
@@ -212,16 +245,31 @@ internal fun ThreadGenericApprovalCard(tool: UIMessagePart.Tool, assistant: Assi
         "workspace_fetch_url" -> {
             val url = toolArg(tool, "url").orEmpty()
             val uri = remember(url) { runCatching { java.net.URI(url) }.getOrNull() }
-            ApprovalCardFrame(tool, stringResource(R.string.im_approval_fetch, who), onApproval, icon = HugeIcons.Download01,
-                footnote = stringResource(R.string.im_approval_fetch_note)) {
+            val destPath = if (canEditInline && "destination_path" in originalObj) {
+                draft.value("destination_path")
+            } else {
+                toolArg(tool, "destination_path")
+            }
+            ApprovalCardFrame(
+                tool = tool,
+                title = stringResource(R.string.im_approval_fetch, who),
+                onApproval = onApproval,
+                icon = HugeIcons.Download01,
+                allowEnabled = !draft.isModified || draft.isValid,
+                onAllow = if (canEditInline) ::handleAllow else null,
+                footnote = stringResource(R.string.im_approval_fetch_note),
+            ) {
                 ApprovalFields(listOfNotNull(
                     stringResource(R.string.im_approval_field_source) to @Composable {
                         FieldText(uri?.host ?: url, detail = uri?.rawPath?.takeIf { it.isNotBlank() && it != "/" })
                     },
-                    toolArg(tool, "destination_path")?.let { dest ->
+                    destPath?.let { dest ->
                         stringResource(R.string.im_approval_field_save_to) to @Composable { FieldText(readablePath(dest)) }
                     },
                 ))
+                if (canEditInline) {
+                    ApprovalInlineEditorSection(draft = draft)
+                }
                 if (professional) renderer.Summary(context)
             }
         }
@@ -231,12 +279,27 @@ internal fun ThreadGenericApprovalCard(tool: UIMessagePart.Tool, assistant: Assi
                 "workspace_edit_file" -> R.string.im_approval_edit_file to HugeIcons.FileEdit
                 else -> R.string.im_approval_read_file to HugeIcons.FileView
             }
-            ApprovalCardFrame(tool, stringResource(titleRes, who), onApproval, icon = icon) {
+            val currentText = if (canEditInline && tool.toolName == "workspace_write_file") {
+                draft.value("text")
+            } else {
+                toolArg(tool, "text")
+            }
+            ApprovalCardFrame(
+                tool = tool,
+                title = stringResource(titleRes, who),
+                onApproval = onApproval,
+                icon = icon,
+                allowEnabled = !draft.isModified || draft.isValid,
+                onAllow = if (canEditInline) ::handleAllow else null,
+            ) {
                 ApprovalFields(listOfNotNull(path?.let {
                     stringResource(R.string.im_approval_field_file) to @Composable { FieldText(readablePath(it)) }
                 }))
-                if (tool.toolName == "workspace_write_file") toolArg(tool, "text")?.let {
+                if (tool.toolName == "workspace_write_file" && !draft.editing) currentText?.let {
                     ChangeLongText(stringResource(R.string.im_approval_field_content), it)
+                }
+                if (canEditInline) {
+                    ApprovalInlineEditorSection(draft = draft)
                 }
                 if (professional || tool.toolName == "workspace_edit_file") renderer.Summary(context)
             }
@@ -252,17 +315,139 @@ internal fun ThreadGenericApprovalCard(tool: UIMessagePart.Tool, assistant: Assi
         }
         else -> if (tool.toolName.startsWith("mcp__")) {
             val (service, step) = mcpToolParts(tool.toolName)
-            val args = remember(tool.input) {
-                (tool.inputAsJson() as? JsonObject).orEmpty().mapNotNull { (key, value) ->
+            val editedJson = if (canEditInline) draft.buildEditedJson() else originalObj
+            val args = remember(editedJson) {
+                editedJson.mapNotNull { (key, value) ->
                     (value as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }?.let { key to it }
                 }.take(MAX_ARG_FIELDS)
             }
-            ApprovalCardFrame(tool, stringResource(R.string.im_approval_mcp, who, service, step), onApproval, icon = HugeIcons.McpServer) {
-                ApprovalFields(args.map { (key, value) -> key to @Composable { FieldText(value) } })
+            ApprovalCardFrame(
+                tool = tool,
+                title = stringResource(R.string.im_approval_mcp, who, service, step),
+                onApproval = onApproval,
+                icon = HugeIcons.McpServer,
+                allowEnabled = !draft.isModified || draft.isValid,
+                onAllow = if (canEditInline) ::handleAllow else null,
+            ) {
+                if (!draft.editing) {
+                    ApprovalFields(args.map { (key, value) -> key to @Composable { FieldText(value) } })
+                }
+                if (canEditInline) {
+                    ApprovalInlineEditorSection(draft = draft)
+                }
             }
         } else ApprovalCardFrame(tool, stringResource(R.string.im_approval_tool, who, renderer.title(context)), onApproval,
             icon = HugeIcons.Tools, footnote = stringResource(R.string.im_p5_permission_info)) {
             if (renderer.hasSummary(context)) renderer.Summary(context)
+        }
+    }
+}
+
+@Composable
+private fun ApprovalInlineEditorSection(draft: ApprovalEditDraft) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (draft.isModified) {
+            Text(
+                text = stringResource(R.string.im_calendar_edited),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (draft.isValid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+            )
+        } else {
+            Spacer(Modifier.width(1.dp))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (draft.isModified) {
+                TextButton(onClick = { draft.reset() }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+            TextButton(onClick = { draft.editing = !draft.editing }) {
+                Text(if (draft.editing) stringResource(R.string.common_confirm) else "Edit")
+            }
+        }
+    }
+    if (draft.editing) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            draft.specs.forEach { spec ->
+                ApprovalPrimitiveFieldEditor(spec = spec, draft = draft)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ApprovalPrimitiveFieldEditor(
+    spec: EditableParamSpec,
+    draft: ApprovalEditDraft,
+) {
+    when (spec.kind) {
+        EditableParamKind.BOOLEAN -> {
+            val checked = draft.booleanValue(spec.key)
+            ImCardBlock(onClick = { draft.setBoolean(spec.key, !checked) }) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(spec.key, style = MaterialTheme.typography.bodyMedium)
+                    Switch(
+                        checked = checked,
+                        onCheckedChange = { draft.setBoolean(spec.key, it) },
+                    )
+                }
+            }
+        }
+
+        EditableParamKind.INTEGER, EditableParamKind.NUMBER -> {
+            OutlinedTextField(
+                value = draft.value(spec.key),
+                onValueChange = { draft.set(spec.key, it) },
+                label = { Text(spec.key) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = if (spec.kind == EditableParamKind.INTEGER) {
+                        KeyboardType.Number
+                    } else {
+                        KeyboardType.Decimal
+                    },
+                ),
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        EditableParamKind.MULTILINE_TEXT -> {
+            OutlinedTextField(
+                value = draft.value(spec.key),
+                onValueChange = { draft.set(spec.key, it) },
+                label = { Text(spec.key) },
+                minLines = 3,
+                maxLines = 6,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        EditableParamKind.TEXT,
+        EditableParamKind.DATETIME,
+        EditableParamKind.WORKSPACE_PATH -> {
+            OutlinedTextField(
+                value = draft.value(spec.key),
+                onValueChange = { draft.set(spec.key, it) },
+                label = { Text(spec.key) },
+                singleLine = true,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

@@ -35,6 +35,7 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.ai.tools.REQUEST_ABILITY
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_SHELL_TOOL_NAME
 import me.ayuilos.miffan.data.ai.tools.WORKSPACE_TERMINAL_TOOL_NAME
+import me.ayuilos.miffan.data.ai.tools.isEditedOnCard
 import me.ayuilos.miffan.ui.modifier.shimmer
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessagePart
@@ -56,6 +57,8 @@ internal data class ThreadStep(
     val changes: Boolean,
     val failed: Boolean,
     val running: Boolean,
+    /** The user changed this call's arguments on its approval card before allowing it. */
+    val edited: Boolean = false,
 )
 
 /**
@@ -83,7 +86,7 @@ private fun threadStep(tool: UIMessagePart.Tool): ThreadStep {
     fun arg(key: String) = (input?.get(key) as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
     val file = arg("path")?.trimEnd('/')?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
     fun step(@StringRes label: Int, changes: Boolean = false, vararg args: String) =
-        ThreadStep(label, args.toList(), changes, failed = tool.failed(), running = !tool.isExecuted)
+        ThreadStep(label, args.toList(), changes, failed = tool.failed(), running = !tool.isExecuted, edited = tool.isEditedOnCard())
     fun fileStep(@StringRes named: Int, @StringRes unnamed: Int, changes: Boolean) =
         if (file != null) step(named, changes, file) else step(unnamed, changes)
     return when (tool.toolName) {
@@ -148,7 +151,8 @@ private data class StepLine(val step: ThreadStep, val count: Int, val failed: Bo
 
 private fun List<ThreadStep>.lines(): List<StepLine> = fold(mutableListOf()) { lines, step ->
     val last = lines.lastOrNull()
-    if (last != null && !step.changes && !last.step.changes && last.step.label == step.label && last.step.args == step.args) {
+    if (last != null && !step.changes && !last.step.changes && !step.edited && !last.step.edited &&
+        last.step.label == step.label && last.step.args == step.args) {
         lines[lines.lastIndex] = last.copy(count = last.count + 1, failed = last.failed || step.failed, running = step.running)
     } else lines += StepLine(step, 1, step.failed, step.running)
     lines
@@ -207,8 +211,11 @@ private fun ThreadStepLine(line: StepLine) {
         }
         val text = line.step.text()
         Text(if (line.count > 1) stringResource(R.string.im_steps_repeated, text, line.count) else text,
+            Modifier.weight(1f, fill = false),
             style = MaterialTheme.typography.bodyMedium, fontWeight = if (line.step.changes) FontWeight.Medium else null,
             color = if (line.step.changes) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (line.step.edited) Text("Edited by you", style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary, maxLines = 1)
     }
 }

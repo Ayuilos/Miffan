@@ -51,8 +51,8 @@ android {
         applicationId = "me.ayuilos.miffan.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 178054
-        versionName = "4.10.0"
+        versionCode = 178055
+        versionName = "4.10.1"
 
         buildConfigField("boolean", "FIREBASE_ENABLED", hasGoogleServicesConfig.toString())
 
