@@ -9,6 +9,8 @@ import me.rerere.ai.ui.recordDecision
 import me.ayuilos.miffan.data.ai.tools.PartnerAbility
 import me.ayuilos.miffan.data.ai.tools.buildSelfConfigTools
 import me.ayuilos.miffan.data.ai.tools.isCardSwitchEdit
+import me.ayuilos.miffan.data.ai.tools.isValidEditedToolInput
+import me.ayuilos.miffan.data.ai.tools.withEditedCardInput
 import android.app.Application
 import android.content.Context
 import android.util.Log
@@ -1081,7 +1083,7 @@ class ChatService(
                                                 "Workspace Shell was disabled after this call was created. Please request it again."
                                             } else workspaceToolTargetError(part, currentTarget)
                                         } else null
-                                        (if (editedInput != null) part.copy(input = editedInput.toString()) else part).recordCardDecision(
+                                        (if (editedInput != null) part.withEditedCardInput(editedInput) else part).recordCardDecision(
                                             staleReason?.let { ToolApprovalState.Denied(it) } ?: newApprovalState,
                                             via, Clock.System.now().toEpochMilliseconds(),
                                         )
@@ -1166,11 +1168,9 @@ class ChatService(
         appScope.launch { settingsStore.update { it.withStandingApproval(assistantId, key, allowed = false) } }
     }
 
-    /** Approves a pending calendar creation with the owner's validated replacement arguments. */
-    /** Arguments a card may change before allowing: the calendar's times, or a card's own switch. */
+    /** Arguments a card may change before allowing: calendar fields, card switches, or schema-validated primitive edits. */
     private fun validEditedInput(call: UIMessagePart.Tool, input: JsonObject): Boolean =
-        if (call.toolName == "calendar_create") validCalendarCreateInput(input)
-        else isCardSwitchEdit(call.toolName, call.inputAsJson(), input)
+        isValidEditedToolInput(call.toolName, call.inputAsJson(), input)
 
     fun approveToolWithInput(conversationId: Uuid, toolCallId: String, input: JsonObject) {
         val call = getOrCreateSession(conversationId).state.value.currentMessageNodes.lastOrNull()
