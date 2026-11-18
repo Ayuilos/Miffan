@@ -183,13 +183,14 @@ object NativeSshWorkspaceTransport {
     fun discoverHostKey(
         host: String, port: Int = 22, timeoutMillis: Int = 10_000,
         socketFactory: SocketFactory? = null,
+        jschSocketFactory: com.jcraft.jsch.SocketFactory? = null,
     ): RemoteHostKey {
         require(host.isNotBlank() && port in 1..65535 && timeoutMillis > 0)
         val repository = FingerprintHostKeyRepository(null)
         val jsch = JSch().apply { hostKeyRepository = repository }
         val session = jsch.getSession("miffan-host-key-discovery", host, port)
-        socketFactory?.let { factory ->
-            session.setSocketFactory(object : com.jcraft.jsch.SocketFactory {
+        (jschSocketFactory ?: socketFactory?.let { factory ->
+            object : com.jcraft.jsch.SocketFactory {
                 override fun createSocket(host: String, port: Int): Socket {
                     val socket = factory.createSocket()
                     try {
@@ -202,8 +203,8 @@ object NativeSshWorkspaceTransport {
                 }
                 override fun getInputStream(socket: Socket): InputStream = socket.getInputStream()
                 override fun getOutputStream(socket: Socket): OutputStream = socket.getOutputStream()
-            })
-        }
+            }
+        })?.let(session::setSocketFactory)
         session.timeout = timeoutMillis
         session.setConfig("StrictHostKeyChecking", "yes")
         session.setConfig("PreferredAuthentications", "none")

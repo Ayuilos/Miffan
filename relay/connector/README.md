@@ -32,6 +32,22 @@ official relay and another on a self-hosted one:
   1.0 top-level fields describe the relay `init` named last.
 - A 1.0 `config.json` (`relay`, `accessToken`) is migrated on read; its phones stay on that relay.
 
+### Pairing without direct SSH
+
+If the phone cannot reach your computer's SSH port directly (even for initial setup), you can pair directly over a relay:
+
+- **Guided setup**: in Miffan choose **Pair via relay** and run the one-line command on your Mac or Linux computer. It authorizes Miffan's SSH key, installs or reuses `miffan-connector`, runs `init` and `pair`, starts the daemon, and prints a `miffan-pair://v1?...` code containing your SSH host key fingerprints for out-of-band verification.
+- **Manual CLI**: if you already installed `miffan-connector`:
+  1. Copy Miffan's SSH public key and your phone's device public key (`<b64u SPKI>`) from Miffan's **Pair via relay** screen (or **Workspace -> Remote Hosts -> Add -> Via relay**).
+  2. Add Miffan's SSH public key to `~/.ssh/authorized_keys` (password sign-in is never sent over a relay).
+  3. Initialize and pair `miffan-connector`:
+     ```sh
+     miffan-connector init --relay https://relay.example.com [--token-stdin]
+     miffan-connector pair --device <b64u SPKI> --name "My phone" --relay https://relay.example.com
+     miffan-connector run
+     ```
+  4. Enter the printed `hostId` (or JSON line) in Miffan and confirm the computer's SSH host key fingerprint (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`).
+
 ## Build and test
 
 Go 1.22 or newer.

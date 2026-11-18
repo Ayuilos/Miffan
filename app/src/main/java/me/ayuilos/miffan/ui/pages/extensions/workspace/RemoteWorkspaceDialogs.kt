@@ -24,12 +24,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -52,22 +54,31 @@ import androidx.compose.ui.unit.dp
 import me.ayuilos.miffan.data.db.entity.RemoteAddressNetwork
 import me.ayuilos.miffan.data.db.entity.RemoteHostAddress
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
+import me.ayuilos.miffan.data.db.entity.RemoteHostRelay
 import me.ayuilos.miffan.data.db.entity.remoteAddressNetwork
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
 import me.ayuilos.miffan.data.repository.RemoteHostRuntimeState
+import me.ayuilos.miffan.data.repository.relay.OFFICIAL_RELAY_URL
+import me.ayuilos.miffan.data.repository.relay.RelayPhoneIdentity
+import me.ayuilos.miffan.data.repository.relay.manualConnectorCommands
+import me.ayuilos.miffan.data.repository.relay.parseRelayPairingInput
+import me.ayuilos.miffan.data.repository.relay.parseSshHostFingerprint
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteHostScreenSettingsDialog
 import org.koin.androidx.compose.koinViewModel
 import me.ayuilos.miffan.ui.components.ai.workspaceKindIcon
 import me.rerere.hugeicons.HugeIcons
 import me.ayuilos.miffan.ui.im.computer.TailscaleLogo
 import me.rerere.hugeicons.stroke.Add01
+import me.rerere.hugeicons.stroke.Cloud
+import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Delete02
 import me.rerere.hugeicons.stroke.Globe02
 import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Wifi01
 import me.rerere.workspace.RemoteAuthentication
 import me.rerere.workspace.RemoteHostKey
+import me.rerere.workspace.relay.RelayEndpoint
 
 @Composable
 internal fun RemoteHostCard(
@@ -156,13 +167,17 @@ internal fun RemoteHostEditorDialog(
     onUpdate: (String, String, String, Int, String, RemoteAuthentication?, String?, (Result<Boolean>) -> Unit) -> Unit,
     onAddAddress: (RemoteHostEntity, String, (Result<Boolean>) -> Unit) -> Unit,
     onRemoveAddress: (RemoteHostEntity, RemoteHostAddress, (Result<Boolean>) -> Unit) -> Unit,
+    relayPhone: RelayPhoneIdentity? = null,
+    onCopyText: (String, String) -> Unit = { _, _ -> },
+    onCreateRelay: ((String, String, String, String, String?, String, String?, (Result<RemoteHostEntity>) -> Unit) -> Unit)? = null,
 ) {
     val workspaceStrings = LocalResources.current
     val name = draft.name
     val hostname = draft.hostname
     val port = draft.port
     val username = draft.username
-    val authMode = draft.authMode
+    val viaRelayMode = host == null && draft.viaRelay && onCreateRelay != null
+    val authMode = if (viaRelayMode) HostAuthMode.SAVED_KEY else draft.authMode
     val selectedKeyId = draft.selectedKeyId ?: sshKeys.firstOrNull()?.id
     val credential = draft.credential
     val passphrase = draft.passphrase
@@ -172,15 +187,25 @@ internal fun RemoteHostEditorDialog(
     var active by remember(host?.id) { mutableStateOf(true) }
     DisposableEffect(host?.id) { onDispose { active = false } }
     var keyMenu by remember { mutableStateOf(false) }
+    var showManualInfo by remember(host?.id) { mutableStateOf(false) }
     val validPort = port.toIntOrNull()?.takeIf { it in 1..65535 }
+    val parsedRelay = parseRelayPairingInput(draft.pairingInput)
+    val relayUrlTrimmed = draft.relayUrl.trim().ifEmpty { OFFICIAL_RELAY_URL }
+    val relayEndpoint = runCatching {
+        RelayEndpoint(relayUrlTrimmed, draft.relayToken.trim().takeIf { it.isNotEmpty() })
+    }.getOrNull()
+    val validFp = draft.trustedFingerprint.isBlank() || parseSshHostFingerprint(draft.trustedFingerprint) != null
     val changedAuthentication = host != null && authMode != originalAuthMode
     val authValid = when (authMode) {
         HostAuthMode.SAVED_KEY -> selectedKeyId != null && sshKeys.any { it.id == selectedKeyId } && keyMaterialStatus[selectedKeyId] == true
         HostAuthMode.PASSWORD, HostAuthMode.PASTED_KEY -> credential.isNotBlank() || (host != null && !changedAuthentication)
     }
     // A saved host's addresses are edited in place below, so only a new host needs one typed here.
-    val valid = name.isNotBlank() && (host != null || hostname.isNotBlank() && validPort != null) && username.isNotBlank() &&
-        authValid
+    val valid = name.isNotBlank() && username.isNotBlank() && authValid && if (viaRelayMode) {
+        parsedRelay != null && relayEndpoint != null && validFp
+    } else {
+        host != null || (hostname.isNotBlank() && validPort != null)
+    }
 
     AlertDialog(
         onDismissRequest = { if (!submitting) onDismiss() },
@@ -190,9 +215,81 @@ internal fun RemoteHostEditorDialog(
                 modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (host == null) Text(stringResource(R.string.workspace_host_address_help), style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(name, { onDraftChange(draft.copy(name = it)); error = null }, label = { Text(stringResource(R.string.workspace_display_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (host == null && onCreateRelay != null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = !viaRelayMode,
+                            onClick = { onDraftChange(draft.copy(viaRelay = false)); error = null },
+                            label = { Text(stringResource(R.string.workspace_connection_direct)) },
+                        )
+                        FilterChip(
+                            selected = viaRelayMode,
+                            onClick = { onDraftChange(draft.copy(viaRelay = true, authMode = HostAuthMode.SAVED_KEY)); error = null },
+                            label = { Text(stringResource(R.string.workspace_connection_relay)) },
+                        )
+                    }
+                }
                 if (host == null) {
+                    Text(
+                        stringResource(if (viaRelayMode) R.string.workspace_relay_pairing_help else R.string.workspace_host_address_help),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (viaRelayMode) {
+                    OutlinedTextField(
+                        draft.pairingInput,
+                        { newValue ->
+                            val parsed = parseRelayPairingInput(newValue)
+                            onDraftChange(
+                                draft.copy(
+                                    pairingInput = newValue,
+                                    name = if (draft.name.isBlank() && parsed?.name != null) parsed.name else draft.name,
+                                    username = if (draft.username.isBlank() && parsed?.username != null) parsed.username else draft.username,
+                                    relayUrl = if ((draft.relayUrl.isBlank() || draft.relayUrl == OFFICIAL_RELAY_URL) && parsed?.relayUrl != null) parsed.relayUrl else draft.relayUrl,
+                                    trustedFingerprint = if (draft.trustedFingerprint.isBlank() && parsed?.fingerprints?.isNotEmpty() == true) parsed.fingerprints.first() else draft.trustedFingerprint,
+                                ),
+                            )
+                            error = null
+                        },
+                        label = { Text(stringResource(R.string.workspace_relay_host_id_label)) },
+                        placeholder = { Text(stringResource(R.string.workspace_relay_host_id_placeholder)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        isError = draft.pairingInput.isNotBlank() && parsedRelay == null,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                OutlinedTextField(name, { onDraftChange(draft.copy(name = it)); error = null }, label = { Text(stringResource(R.string.workspace_display_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (viaRelayMode) {
+                    OutlinedTextField(
+                        draft.relayUrl,
+                        { onDraftChange(draft.copy(relayUrl = it)); error = null },
+                        label = { Text(stringResource(R.string.im_computer_away_relay_address)) },
+                        placeholder = { Text(OFFICIAL_RELAY_URL) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        isError = draft.relayUrl.isNotBlank() && relayEndpoint == null,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        draft.relayToken,
+                        { onDraftChange(draft.copy(relayToken = it)); error = null },
+                        label = { Text(stringResource(R.string.im_computer_away_access_code)) },
+                        placeholder = { Text(stringResource(R.string.im_computer_away_access_code_hint)) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        draft.trustedFingerprint,
+                        { onDraftChange(draft.copy(trustedFingerprint = it)); error = null },
+                        label = { Text(stringResource(R.string.workspace_relay_fingerprint_optional)) },
+                        placeholder = { Text(stringResource(R.string.workspace_relay_fingerprint_placeholder)) },
+                        singleLine = true,
+                        isError = !validFp,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else if (host == null) {
                     OutlinedTextField(hostname, { onDraftChange(draft.copy(hostname = it)); error = null }, label = { Text(stringResource(R.string.workspace_host_address)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(port, { onDraftChange(draft.copy(port = it)); error = null }, label = { Text(stringResource(R.string.workspace_ssh_port)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), isError = port.isNotBlank() && validPort == null)
                 } else {
@@ -204,12 +301,14 @@ internal fun RemoteHostEditorDialog(
                     )
                 }
                 OutlinedTextField(username, { onDraftChange(draft.copy(username = it)); error = null }, label = { Text(stringResource(R.string.search_detail_username)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                RemoteHostAuthSelector(mode = authMode, onModeChange = {
-                    if (it != authMode) {
-                        onDraftChange(draft.copy(authMode = it, credential = "", passphrase = ""))
-                        error = null
-                    }
-                })
+                if (!viaRelayMode) {
+                    RemoteHostAuthSelector(mode = authMode, onModeChange = {
+                        if (it != authMode) {
+                            onDraftChange(draft.copy(authMode = it, credential = "", passphrase = ""))
+                            error = null
+                        }
+                    })
+                }
                 if (authMode == HostAuthMode.SAVED_KEY) {
                     val selectedKey = sshKeys.find { it.id == selectedKeyId }
                     OutlinedButton(onClick = { keyMenu = true }, modifier = Modifier.fillMaxWidth()) {
@@ -224,6 +323,45 @@ internal fun RemoteHostEditorDialog(
                         Text(stringResource(R.string.workspace_key_material_missing), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
                     TextButton(onClick = onManageKeys) { Text(if (sshKeys.isEmpty()) workspaceStrings.getString(R.string.workspace_create_ssh_key_first) else workspaceStrings.getString(R.string.workspace_manage_ssh_keys)) }
+                    if (viaRelayMode) {
+                        TextButton(onClick = { showManualInfo = !showManualInfo }) {
+                            Text(stringResource(R.string.workspace_relay_manual_info))
+                        }
+                        if (showManualInfo) {
+                            Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(12.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    relayPhone?.let { phone ->
+                                        Text(
+                                            "devicePub (${phone.deviceId}): ${phone.devicePublicKeyB64u}",
+                                            fontFamily = FontFamily.Monospace,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        OutlinedButton(onClick = { onCopyText("devicePub", phone.devicePublicKeyB64u) }, modifier = Modifier.fillMaxWidth()) {
+                                            Icon(HugeIcons.Copy01, null, Modifier.size(16.dp))
+                                            Text(stringResource(R.string.workspace_relay_copy_device_pub), Modifier.padding(start = 8.dp))
+                                        }
+                                        relayEndpoint?.let { ep ->
+                                            OutlinedButton(
+                                                onClick = { onCopyText("miffan-connector", manualConnectorCommands(phone, ep)) },
+                                                modifier = Modifier.fillMaxWidth(),
+                                            ) {
+                                                Icon(HugeIcons.Copy01, null, Modifier.size(16.dp))
+                                                Text(stringResource(R.string.workspace_relay_copy_commands), Modifier.padding(start = 8.dp))
+                                            }
+                                        }
+                                    }
+                                    selectedKey?.let { key ->
+                                        OutlinedButton(onClick = { onCopyText(key.name, key.publicKey) }, modifier = Modifier.fillMaxWidth()) {
+                                            Icon(HugeIcons.Copy01, null, Modifier.size(16.dp))
+                                            Text(stringResource(R.string.workspace_relay_copy_ssh_pub), Modifier.padding(start = 8.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 } else {
                     OutlinedTextField(
                         credential,
@@ -243,6 +381,30 @@ internal fun RemoteHostEditorDialog(
         },
         confirmButton = {
             TextButton(enabled = valid && !submitting, onClick = {
+                val createRelay = onCreateRelay
+                if (viaRelayMode && createRelay != null) {
+                    val hostIdValue = parsedRelay?.hostId ?: return@TextButton
+                    val keyIdValue = selectedKeyId ?: return@TextButton
+                    submitting = true
+                    createRelay(
+                        name.trim(),
+                        username.trim(),
+                        keyIdValue,
+                        relayUrlTrimmed,
+                        draft.relayToken.trim().takeIf { it.isNotEmpty() },
+                        hostIdValue,
+                        draft.trustedFingerprint.trim().takeIf { it.isNotEmpty() },
+                    ) { result ->
+                        if (active) {
+                            submitting = false
+                            result.fold(
+                                onSuccess = { onDismiss() },
+                                onFailure = { error = it.workspaceErrorMessage(workspaceStrings) ?: workspaceStrings.getString(R.string.workspace_save_failed) },
+                            )
+                        }
+                    }
+                    return@TextButton
+                }
                 val parsedPort = if (host != null) host.port else validPort ?: return@TextButton
                 submitting = true
                 val authentication = credential.takeIf { it.isNotBlank() }?.let {
@@ -296,17 +458,21 @@ private fun RemoteHostAddressList(
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(stringResource(R.string.im_computer_connection_ways), style = MaterialTheme.typography.titleSmall)
         val addresses = host.addresses
+        val relay = host.relay
         addresses.forEach { address ->
             RemoteHostAddressRow(
                 address = address,
-                lastUsed = addresses.size > 1 && address == host.lastAddress,
-                removable = addresses.size > 1,
+                lastUsed = (addresses.size > 1 || relay != null) && address == host.lastAddress,
+                removable = addresses.size > 1 || relay != null,
                 enabled = editable,
                 onRemove = {
                     busy = true; error = null
                     onRemove(address) { finish(it) }
                 },
             )
+        }
+        if (relay != null) {
+            RemoteHostRelayRow(relay = relay, lastUsed = host.lastViaRelay && addresses.isNotEmpty())
         }
         if (adding) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -373,10 +539,34 @@ private fun RemoteHostAddressRow(
     }
 }
 
+@Composable
+private fun RemoteHostRelayRow(
+    relay: RemoteHostRelay,
+    lastUsed: Boolean,
+) {
+    val label = stringResource(R.string.im_computer_via_relay_badge)
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(HugeIcons.Cloud, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(modifier = Modifier.weight(1f)) {
+            Text("${relay.endpoint.host} · ${relay.hostId.take(10)}", style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                if (lastUsed) "$label · ${stringResource(R.string.im_computer_address_last_used)}" else label,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (lastUsed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 /** The address Miffan tries first (the last one that worked), plus how many more it can fall back to. */
 internal fun RemoteHostEntity.connectionSummary(): String {
-    val first = lastAddress ?: addresses.first()
-    val more = addresses.size - 1
+    val first = lastAddress ?: addresses.firstOrNull()
+    if (first == null) return "$username@${relay?.hostId?.take(10) ?: name}"
+    val more = addresses.size - 1 + if (relay != null) 1 else 0
     return "$username@${first.host}:${first.port}" + if (more > 0) " +$more" else ""
 }
 
@@ -395,6 +585,11 @@ internal data class HostEditorDraft(
     val selectedKeyId: String? = null,
     val credential: String = "",
     val passphrase: String = "",
+    val viaRelay: Boolean = false,
+    val pairingInput: String = "",
+    val relayUrl: String = OFFICIAL_RELAY_URL,
+    val relayToken: String = "",
+    val trustedFingerprint: String = "",
 ) {
     companion object {
         fun fromHost(host: RemoteHostEntity?): HostEditorDraft = if (host == null) HostEditorDraft() else HostEditorDraft(

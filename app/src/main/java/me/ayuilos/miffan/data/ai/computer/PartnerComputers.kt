@@ -3,6 +3,7 @@ package me.ayuilos.miffan.data.ai.computer
 import me.rerere.workspace.RemotePlatform
 import me.rerere.workspace.WindowsRemotePath
 import me.rerere.workspace.isRemoteNetworkFailure
+import me.rerere.workspace.relay.RelayException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -214,7 +215,10 @@ class PartnerComputers(
                     if (workspaces.revokeComputerAccess(hostId, command, host.connectionRevision)) ForgetOutcome.FORGOTTEN
                     else ForgetOutcome.ALREADY_GONE
                 } catch (error: Exception) {
-                    if (isRemoteNetworkFailure(error)) throw ComputerUnreachableException(command, error)
+                    val relayOffline = generateSequence<Throwable>(error) { it.cause }.take(16)
+                        .filterIsInstance<RelayException>()
+                        .any { it.reason in setOf("host_offline", "host_timeout", "unreachable", "timeout") }
+                    if (isRemoteNetworkFailure(error) || relayOffline) throw ComputerUnreachableException(command, error)
                     throw error
                 }
             }
@@ -249,12 +253,17 @@ class PartnerComputers(
         val hostWorkspaces = allHostWorkspaces.filterNot { it.isSpace }
         val workspace = computerWorkspace(host.id, hostWorkspaces, assistants)
         val workspaceIds = allHostWorkspaces.map { it.id }.toSet()
-        val address = host.lastAddress ?: host.addresses.first()
+        val address = host.lastAddress ?: host.addresses.firstOrNull()
+        val addressLabel = if (address != null) {
+            "${host.username}@${if (':' in address.host) "[${address.host.removeSurrounding("[", "]")}]" else address.host}" +
+                if (address.port != 22) ":${address.port}" else ""
+        } else {
+            "${host.username}@${host.relay?.hostId?.take(10) ?: host.name}"
+        }
         return KnownComputer(
             hostId = host.id,
             name = host.name,
-            address = "${host.username}@${if (':' in address.host) "[${address.host.removeSurrounding("[", "]")}]" else address.host}" +
-                if (address.port != 22) ":${address.port}" else "",
+            address = addressLabel,
             platform = computerPlatform(host),
             screenEnabled = host.screenEnabled,
             workspaceId = workspace?.id,

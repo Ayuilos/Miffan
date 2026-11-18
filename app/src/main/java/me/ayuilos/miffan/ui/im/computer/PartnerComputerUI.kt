@@ -43,8 +43,12 @@ internal fun computerErrorMessage(resources: Resources, error: Throwable): Strin
         // The relay ended a screen that was open (idle, quota…): say so rather than "connection failed".
         ?: error.relaySessionClose()?.let { me.ayuilos.miffan.ui.pages.extensions.workspace.screen.relayScreenEnded(resources, it.reason) }
         ?: (error as? me.ayuilos.miffan.data.repository.relay.RelaySetupException)?.let {
-            if (it.reason == "relay_unreachable") resources.getString(R.string.im_computer_away_relay_unreachable)
-            else resources.getString(R.string.im_computer_away_install_failed, it.reason ?: it.message.orEmpty())
+            when (it.reason) {
+                "relay_unreachable" -> resources.getString(R.string.im_computer_away_relay_unreachable)
+                "bad_pairing_input" -> resources.getString(R.string.im_computer_relay_pair_bad_input)
+                "fingerprint_mismatch" -> resources.getString(R.string.im_computer_relay_pair_fingerprint_mismatch, it.message.orEmpty())
+                else -> resources.getString(R.string.im_computer_away_install_failed, it.reason ?: it.message.orEmpty())
+            }
         }
         ?: when ((error as? RemoteScreenUnavailableException)?.problem) {
         RemoteScreenProblem.NO_GRAPHICAL_SESSION -> resources.getString(R.string.im_computer_no_desktop)

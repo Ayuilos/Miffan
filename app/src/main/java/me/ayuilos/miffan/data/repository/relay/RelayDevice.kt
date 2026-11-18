@@ -3,6 +3,7 @@ package me.ayuilos.miffan.data.repository.relay
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import java.security.KeyPairGenerator
@@ -10,6 +11,7 @@ import java.security.KeyStore
 import java.security.PrivateKey
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
+import java.util.Base64
 import me.rerere.workspace.relay.RelayDeviceSigner
 import kotlinx.coroutines.flow.update
 import me.rerere.workspace.relay.RelayIds
@@ -83,12 +85,31 @@ class RelayNetworkKey(private val context: Context) {
     }
 }
 
+/** Public identity of this phone for relay pairing (`relay/PROTOCOL.md` §2). */
+data class RelayPhoneIdentity(
+    val devicePublicKeyB64u: String,
+    val deviceId: String,
+    val deviceName: String,
+)
+
+internal fun currentDeviceName(): String =
+    listOf(Build.MANUFACTURER, Build.MODEL).filter { !it.isNullOrBlank() }.joinToString(" ")
+        .filter { !it.isISOControl() }.take(64).ifBlank { "Phone" }
+
 /** What the app needs to reach computers through relays. */
 class RelayAccess(
     val client: me.rerere.workspace.relay.RelayClient,
     val deviceKeys: RelayDeviceKeyStore,
     val network: RelayNetworkKey,
 ) {
+    fun phoneIdentity(): RelayPhoneIdentity {
+        val spki = deviceKeys.signer().publicKeySpki
+        return RelayPhoneIdentity(
+            devicePublicKeyB64u = Base64.getUrlEncoder().withoutPadding().encodeToString(spki),
+            deviceId = RelayIds.deviceId(spki),
+            deviceName = currentDeviceName(),
+        )
+    }
     private val _lastReady = kotlinx.coroutines.flow.MutableStateFlow<Map<String, me.rerere.workspace.relay.RelayReady>>(emptyMap())
 
     /** The relay's last `ready` per computer (by host id): its policy and the computer's usage then. */

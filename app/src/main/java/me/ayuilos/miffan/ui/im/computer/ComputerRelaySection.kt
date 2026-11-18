@@ -98,10 +98,12 @@ internal fun ComputerRelaySection(
             RelayLinkRow(stringResource(R.string.im_computer_relay_change), enabled) {
                 nav.navigate(Screen.ComputerSetup(hostId = host.id, away = true))
             }
-            divider()
-            Surface(onClick = { forgetting = true }, enabled = enabled && workspaceId != null, color = MaterialTheme.colorScheme.surfaceContainerLow) {
-                Text(stringResource(R.string.im_computer_relay_forget), Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-                    color = MaterialTheme.colorScheme.error)
+            if (host.addresses.isNotEmpty()) {
+                divider()
+                Surface(onClick = { forgetting = true }, enabled = enabled && workspaceId != null, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Text(stringResource(R.string.im_computer_relay_forget), Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                        color = MaterialTheme.colorScheme.error)
+                }
             }
         }
     }

@@ -27,14 +27,18 @@ import me.ayuilos.miffan.data.db.dao.SshKeyDAO
 import me.ayuilos.miffan.data.db.entity.RELAY_LAST_ADDRESS
 import me.ayuilos.miffan.data.db.entity.RemoteHostAddress
 import me.ayuilos.miffan.data.db.entity.RemoteHostRelay
+import me.ayuilos.miffan.data.db.entity.encodeRemoteHostRelay
 import me.ayuilos.miffan.data.repository.relay.RelayAccess
+import me.ayuilos.miffan.data.repository.relay.RelayPhoneIdentity
 import me.ayuilos.miffan.data.repository.relay.RouteWinner
 import me.ayuilos.miffan.data.repository.relay.raceRoutes
 import me.ayuilos.miffan.data.repository.relay.relaySessionClose
 import me.ayuilos.miffan.data.repository.relay.shouldPreconnect
 import me.rerere.workspace.RemoteRoute
 import me.rerere.workspace.relay.RelayChannel
+import me.rerere.workspace.relay.RelayEndpoint
 import me.rerere.workspace.relay.RelayException
+import me.rerere.workspace.relay.RelayIds
 import me.rerere.workspace.relay.RelaySocket
 import me.ayuilos.miffan.data.repository.relay.RelayProbe
 import me.ayuilos.miffan.data.db.entity.encodeRemoteHostAddresses
@@ -242,23 +246,29 @@ class WorkspaceRepository(
         var directAddress: RemoteHostAddress? = null
         // Through a relay only key sign-in is used: a password never leaves for a path through a third party.
         val relay = host.relay?.takeIf { it.enabled && relayAccess != null && config.authentication is RemoteAuthentication.PrivateKey }
-        val (session, winner) = raceRoutes(
-            direct = {
-                tryRemoteAddresses(host.connectionAddresses) { address ->
-                    val timeout = addressTimeoutMillis(host, address)
-                    // Losing the race must end a blocked connect now, not at its timeout.
-                    val sockets = me.rerere.workspace.CancellableSocketFactory(timeout)
-                    openGuarded(onCancel = sockets::cancel) {
-                        remoteTransport.open(config.copy(host = address.host, port = address.port),
-                            timeoutMillis = timeout, socketFactory = sockets)
-                    }.also { directAddress = address }
-                }
-            },
-            relay = relay?.let { { openThroughRelay(host.id, relay, config, RelayChannel.CONTROL) } },
-            relayHeadStartMillis = if (host.lastViaRelay) RELAY_HEAD_START_AFTER_RELAY_MILLIS else RELAY_HEAD_START_MILLIS,
-            close = { withContext(NonCancellable + Dispatchers.IO) { it.close() } },
-            preferError = { direct, relayError -> if (isRemoteNetworkFailure(direct)) relayError else direct },
-        )
+        val addresses = host.connectionAddresses
+        val (session, winner) = if (addresses.isEmpty()) {
+            val activeRelay = requireNotNull(relay) { workspaceStrings.getString(R.string.workspace_error_host_address_required) }
+            openThroughRelay(host.id, activeRelay, config, RelayChannel.CONTROL) to RouteWinner.RELAY
+        } else {
+            raceRoutes(
+                direct = {
+                    tryRemoteAddresses(addresses) { address ->
+                        val timeout = addressTimeoutMillis(host, address)
+                        // Losing the race must end a blocked connect now, not at its timeout.
+                        val sockets = me.rerere.workspace.CancellableSocketFactory(timeout)
+                        openGuarded(onCancel = sockets::cancel) {
+                            remoteTransport.open(config.copy(host = address.host, port = address.port),
+                                timeoutMillis = timeout, socketFactory = sockets)
+                        }.also { directAddress = address }
+                    }
+                },
+                relay = relay?.let { { openThroughRelay(host.id, relay, config, RelayChannel.CONTROL) } },
+                relayHeadStartMillis = if (host.lastViaRelay) RELAY_HEAD_START_AFTER_RELAY_MILLIS else RELAY_HEAD_START_MILLIS,
+                close = { withContext(NonCancellable + Dispatchers.IO) { it.close() } },
+                preferError = { direct, relayError -> if (isRemoteNetworkFailure(direct)) relayError else direct },
+            )
+        }
         try {
             currentCoroutineContext().ensureActive()
             when (winner) {
@@ -415,11 +425,50 @@ class WorkspaceRepository(
     private fun addressTimeoutMillis(host: RemoteHostEntity, address: RemoteHostAddress): Int =
         if (host.addresses.size > 1 && address != host.lastAddress) 8_000 else 10_000
 
-    private suspend fun discoverSavedHostKey(host: RemoteHostEntity): RemoteHostKey =
-        tryRemoteAddresses(host.connectionAddresses) { address ->
-            runRemoteInterruptible { remoteTransport.discoverHostKey(address.host, address.port,
-                timeoutMillis = addressTimeoutMillis(host, address)) }
+    suspend fun relayPhoneIdentity(): RelayPhoneIdentity? =
+        relayAccess?.let { access -> withContext(Dispatchers.IO) { access.phoneIdentity() } }
+
+    /** Discovers a computer's SSH host key over a relay; never trusts the key silently. */
+    suspend fun discoverHostKeyThroughRelay(endpoint: RelayEndpoint, relayHostId: String): RemoteHostKey {
+        val access = requireNotNull(relayAccess) { "Relay is unavailable" }
+        val signer = withContext(Dispatchers.IO) { access.deviceKeys.signer() }
+        val networkKey = access.network.current()
+        val factory = access.client.jschSocketFactory(
+            endpoint, relayHostId, RelayChannel.CONTROL, signer, networkKey,
+            timeoutMillis = RELAY_OPEN_TIMEOUT_MILLIS,
+        )
+        return runRemoteInterruptible {
+            remoteTransport.discoverHostKey(
+                relayHostId, 22, timeoutMillis = RELAY_SSH_TIMEOUT_MILLIS, jschSocketFactory = factory,
+            )
         }
+    }
+
+    private suspend fun discoverSavedHostKey(host: RemoteHostEntity): RemoteHostKey {
+        val relay = host.relay?.takeIf { it.enabled && relayAccess != null }
+        val addresses = host.connectionAddresses
+        if (addresses.isEmpty()) {
+            val activeRelay = requireNotNull(relay) { workspaceStrings.getString(R.string.workspace_error_host_address_required) }
+            return discoverHostKeyThroughRelay(activeRelay.endpoint, activeRelay.hostId)
+        }
+        return try {
+            tryRemoteAddresses(addresses) { address ->
+                runRemoteInterruptible {
+                    remoteTransport.discoverHostKey(
+                        address.host, address.port, timeoutMillis = addressTimeoutMillis(host, address),
+                    )
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            if (relay != null && isRemoteNetworkFailure(error)) {
+                discoverHostKeyThroughRelay(relay.endpoint, relay.hostId)
+            } else {
+                throw error
+            }
+        }
+    }
 
     private suspend fun <T> runRemoteOperation(session: RemoteWorkspaceSession, block: () -> T): T {
         val operation = session.newOperation()
@@ -493,7 +542,10 @@ class WorkspaceRepository(
             hostConnectionRevision = host?.connectionRevision,
             workspaceName = workspace.name,
             remoteHostName = host?.name,
-            remoteHostLabel = host?.let { "${it.username}@${it.host}:${it.port}" },
+            remoteHostLabel = host?.let {
+                if (it.host.isNotBlank()) "${it.username}@${it.host}:${it.port}"
+                else "${it.username}@${it.relay?.hostId ?: it.name}"
+            },
         )
     }
 
@@ -668,6 +720,96 @@ class WorkspaceRepository(
         return result
     }
 
+    suspend fun createRelayHost(
+        name: String,
+        username: String,
+        sshKeyId: String,
+        relay: RemoteHostRelay,
+        trustedHostKeySha256: String? = null,
+    ): RemoteHostEntity {
+        requireUsableSshKey(sshKeyId)
+        val finalName = name.trim().also { require(it.isNotEmpty()) { workspaceStrings.getString(R.string.workspace_error_host_name_required) } }
+        val finalUser = username.trim().also { require(it.isNotEmpty()) { workspaceStrings.getString(R.string.workspace_error_username_required) } }
+        val normalizedHostId = relay.hostId.trim().lowercase()
+        require(RelayIds.isHostId(normalizedHostId)) { "Invalid relay host id" }
+        val normalizedRelay = RemoteHostRelay(
+            url = relay.endpoint.baseUrl,
+            hostId = normalizedHostId,
+            accessToken = relay.accessToken?.takeIf { it.isNotEmpty() },
+            enabled = true,
+        )
+        val normalizedFingerprint = trustedHostKeySha256?.trim()?.takeIf { it.isNotEmpty() }?.also {
+            require(SSH_FINGERPRINT_REGEX.matches(it)) { "Invalid SSH host key fingerprint" }
+        }
+        val now = System.currentTimeMillis()
+        val result = RemoteHostEntity(
+            id = UUID.randomUUID().toString(),
+            name = finalName,
+            host = "",
+            port = 22,
+            username = finalUser,
+            authType = AUTH_MANAGED_KEY,
+            sshKeyId = sshKeyId,
+            trustedHostKeySha256 = normalizedFingerprint,
+            connectionRevision = UUID.randomUUID().toString(),
+            createdAt = now,
+            updatedAt = now,
+            lastAddressValue = RELAY_LAST_ADDRESS,
+            relayValue = encodeRemoteHostRelay(normalizedRelay),
+        )
+        hostDao.insert(result)
+        if (normalizedFingerprint == null) {
+            remoteRuntime.configuration(result.id, RemoteConfigurationState.HOST_KEY_UNTRUSTED, result.connectionRevision)
+        }
+        return result
+    }
+
+    suspend fun updateRelayHost(
+        id: String,
+        name: String,
+        username: String,
+        sshKeyId: String,
+        relay: RemoteHostRelay,
+        trustedHostKeySha256: String?,
+    ): Boolean {
+        requireUsableSshKey(sshKeyId)
+        val previous = hostDao.getById(id) ?: return false
+        val finalName = name.trim().also { require(it.isNotEmpty()) { workspaceStrings.getString(R.string.workspace_error_host_name_required) } }
+        val finalUser = username.trim().also { require(it.isNotEmpty()) { workspaceStrings.getString(R.string.workspace_error_username_required) } }
+        val normalizedHostId = relay.hostId.trim().lowercase()
+        require(RelayIds.isHostId(normalizedHostId)) { "Invalid relay host id" }
+        val normalizedRelay = RemoteHostRelay(
+            url = relay.endpoint.baseUrl,
+            hostId = normalizedHostId,
+            accessToken = relay.accessToken?.takeIf { it.isNotEmpty() },
+            enabled = true,
+        )
+        val normalizedPin = trustedHostKeySha256?.trim()?.takeIf { it.isNotEmpty() }?.also {
+            require(SSH_FINGERPRINT_REGEX.matches(it)) { "Invalid SSH host key fingerprint" }
+        }
+        val relayChanged = previous.relay != normalizedRelay
+        val changedConnection = relayChanged || previous.username != finalUser ||
+            previous.sshKeyId != sshKeyId || previous.authType != AUTH_MANAGED_KEY ||
+            previous.trustedHostKeySha256 != normalizedPin
+        val revision = if (changedConnection) UUID.randomUUID().toString() else previous.connectionRevision
+        val now = System.currentTimeMillis()
+        hostDao.updateConnection(previous.copy(
+            name = finalName,
+            username = finalUser,
+            authType = AUTH_MANAGED_KEY,
+            sshKeyId = sshKeyId,
+            trustedHostKeySha256 = normalizedPin,
+            connectionRevision = revision,
+            updatedAt = now,
+        ))
+        hostDao.updateRelay(id, encodeRemoteHostRelay(normalizedRelay), revision, now)
+        if (previous.sshKeyId == null) withContext(Dispatchers.IO) {
+            credentialStore.delete(id)
+        }
+        if (changedConnection) invalidateRemoteHostWorkspaces(id)
+        return true
+    }
+
     suspend fun updateHost(
         id: String,
         name: String,
@@ -683,11 +825,13 @@ class WorkspaceRepository(
         if (sshKeyId != null) requireUsableSshKey(sshKeyId)
         val previous = hostDao.getById(id) ?: return false
         val finalName = name.trim().also { require(it.isNotEmpty()) { workspaceStrings.getString(R.string.workspace_error_host_name_required) } }
-        val finalHost = host.trim().also { require(it.isNotEmpty()) { workspaceStrings.getString(R.string.workspace_error_host_address_required) } }
+        val finalHost = host.trim().also {
+            require(it.isNotEmpty() || previous.relay != null) { workspaceStrings.getString(R.string.workspace_error_host_address_required) }
+        }
         val finalUser = username.trim().also { require(it.isNotEmpty()) { workspaceStrings.getString(R.string.workspace_error_username_required) } }
         require(port in 1..65535) { workspaceStrings.getString(R.string.workspace_error_port_invalid) }
-        val changedEndpoint = previous.host != finalHost || previous.port != port
-        val changedConnection = changedEndpoint || previous.username != finalUser ||
+        val changedEndpoint = previous.host.isNotEmpty() && finalHost.isNotEmpty() && (previous.host != finalHost || previous.port != port)
+        val changedConnection = previous.host != finalHost || previous.port != port || previous.username != finalUser ||
             authentication != null || (sshKeyId != null && sshKeyId != previous.sshKeyId)
         val oldAuthentication = if (authentication != null) withContext(Dispatchers.IO) {
             runCatching { credentialStore.load(id) }.getOrNull()
@@ -750,14 +894,17 @@ class WorkspaceRepository(
             val addresses = current.addresses
             val updated = if (remove) {
                 if (address !in addresses) return true
-                if (addresses.size == 1) return false
+                if (addresses.size == 1 && current.relay == null) return false
                 addresses - address
             } else {
                 if (address in addresses) return true
                 addresses + address
             }
             val last = current.lastAddress?.takeIf { it in updated }?.storageValue
-            if (hostDao.compareAndSetAddresses(id, updated.first().host, updated.first().port,
+                ?: current.lastAddressValue.takeIf { it == RELAY_LAST_ADDRESS && current.relay != null }
+            val nextHost = updated.firstOrNull()?.host.orEmpty()
+            val nextPort = updated.firstOrNull()?.port ?: current.port
+            if (hostDao.compareAndSetAddresses(id, nextHost, nextPort,
                     encodeRemoteHostAddresses(updated.drop(1)), last, current.host, current.port,
                     current.alternateAddresses, current.lastAddressValue, current.connectionRevision,
                     current.trustedHostKeySha256) > 0) return true
@@ -1197,7 +1344,7 @@ class WorkspaceRepository(
             loadVerifiedSshKey(keyId)
         } else withContext(Dispatchers.IO) { credentialStore.load(id) }
         return RemoteHostConfig(
-            host = host,
+            host = host.ifBlank { relay?.hostId.orEmpty() },
             port = port,
             username = username,
             authentication = authentication,
@@ -2073,6 +2220,7 @@ class WorkspaceRepository(
         private const val RELAY_OPEN_TIMEOUT_MILLIS = 15_000L
         private const val RELAY_SSH_TIMEOUT_MILLIS = 25_000
         private val SPACE_HELPER_ARG = Regex("[a-z0-9][a-z0-9-]{0,31}")
+        private val SSH_FINGERPRINT_REGEX = Regex("SHA256:[A-Za-z0-9+/]{43}")
         /** The remote files' own default import limit. */
         const val REMOTE_IMPORT_MAX_BYTES = 32L * 1024 * 1024
     }

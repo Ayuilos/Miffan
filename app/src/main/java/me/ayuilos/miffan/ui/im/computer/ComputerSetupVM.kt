@@ -43,6 +43,7 @@ import me.ayuilos.miffan.data.datastore.SettingsStore
 import me.ayuilos.miffan.data.datastore.getAssistantById
 import me.ayuilos.miffan.data.db.entity.RemoteHostAddress
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
+import me.ayuilos.miffan.data.db.entity.RemoteHostRelay
 import me.ayuilos.miffan.data.db.entity.RemoteScreenAuth
 import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
@@ -61,9 +62,14 @@ import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.RemoteStreamSetupC
 import me.ayuilos.miffan.data.repository.RemoteSunshinePermission
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.data.repository.relay.OFFICIAL_RELAY_URL
+import me.ayuilos.miffan.data.repository.relay.RelayPhoneIdentity
 import me.ayuilos.miffan.data.repository.relay.RelayProbe
+import me.ayuilos.miffan.data.repository.relay.RelaySetupException
 import me.ayuilos.miffan.data.repository.relay.RemoteRelaySetup
+import me.ayuilos.miffan.data.repository.relay.parseRelayPairingInput
+import me.ayuilos.miffan.data.repository.relay.parseSshHostFingerprint
 import me.rerere.workspace.relay.RelayEndpoint
+import me.rerere.workspace.relay.RelayException
 import me.rerere.workspace.RemoteAuthentication
 import me.rerere.workspace.RemoteConnectException
 import me.rerere.workspace.RemotePasswordSignInFailure
@@ -74,6 +80,8 @@ import kotlin.uuid.Uuid
 /** Tries of the setup's relay trip while a just-installed connector comes online, and the wait between. */
 private const val AWAY_TRIES = 6
 private const val AWAY_RETRY_MILLIS = 3_000L
+private const val RELAY_PAIR_TRIES = 4
+private const val RELAY_PAIR_RETRY_MILLIS = 2_000L
 
 /** Screens of "connect a computer"; the user moves between them, [ComputerSetupState.history] remembers the way back. */
 enum class ComputerSetupStep {
@@ -81,6 +89,8 @@ enum class ComputerSetupStep {
     FIND,
     /** Type an address; also the connection settings of a saved computer. */
     MANUAL,
+    /** Connect directly through a relay (guided script or manual connector CLI) without an initial LAN SSH. */
+    RELAY_PAIR,
     /** The account of a Mac or Linux computer; one that already lets Miffan's key in goes straight on. */
     SIGN_IN,
     /** The password for that account, when Miffan's key is not let in yet. */
@@ -337,6 +347,10 @@ class ComputerSetupVM(
     private val _appKey = MutableStateFlow<SshKeyEntity?>(null)
     val appKey: StateFlow<SshKeyEntity?> = _appKey.asStateFlow()
 
+    /** This phone's public relay device identity, loaded on demand for relay-first pairing. */
+    private val _relayPhone = MutableStateFlow<RelayPhoneIdentity?>(null)
+    val relayPhone: StateFlow<RelayPhoneIdentity?> = _relayPhone.asStateFlow()
+
     /**
      * What the partner is bound to now, when it is not the workspace being set up; binding replaces
      * it, so the UI says so before the user confirms.
@@ -525,6 +539,23 @@ class ComputerSetupVM(
 
     fun addManually() = go(ComputerSetupStep.MANUAL) { it.copy(unreachable = false, username = if (it.hostId == null) it.username else "") }
 
+    fun pairViaRelay() = go(ComputerSetupStep.RELAY_PAIR) { it.copy(unreachable = false, keyRefused = false) }
+
+    /** Ensures Miffan's SSH key and this phone's relay device public identity are loaded. */
+    fun ensureRelayPairReady() {
+        ensureAppKey()
+        if (_relayPhone.value != null) return
+        viewModelScope.launch {
+            try {
+                _relayPhone.value = relaySetup.phoneIdentity()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _state.update { it.copy(error = error) }
+            }
+        }
+    }
+
     /**
      * An address typed in: asks the port whether it is a computer with remote login, without
      * signing in, and continues with the screen that fits its system.
@@ -550,16 +581,23 @@ class ComputerSetupVM(
     /** Saves a saved computer's address, port, account and name, then checks it again. */
     fun saveConnection(name: String, address: String, port: Int, username: String) = run(ComputerSetupTask.SAVING) {
         val hostId = requireNotNull(_state.value.hostId)
-        check(workspaces.updateHost(hostId, name.ifBlank { defaultComputerName(address) }, address, port, username)) { "Computer not found" }
+        val finalName = name.trim().ifBlank {
+            if (address.isNotBlank()) defaultComputerName(address) else currentHost().name
+        }
+        check(workspaces.updateHost(hostId, finalName, address, port, username)) { "Computer not found" }
         if (name.isNotBlank()) guessedNameHostId = null
         connect(requireNotNull(workspaces.getHostById(hostId)) { "Computer not found" })
     }
 
-    /** Connection settings: sign in again, with a password or the key. */
+    /** Connection settings: sign in again, with a password, key, or relay pairing. */
     fun changeSignIn() {
         val state = _state.value
         val target = state.target ?: return
-        go(if (target.system == NearbySystem.WINDOWS) ComputerSetupStep.WINDOWS else ComputerSetupStep.SIGN_IN)
+        go(when {
+            target.host.isBlank() -> ComputerSetupStep.RELAY_PAIR
+            target.system == NearbySystem.WINDOWS -> ComputerSetupStep.WINDOWS
+            else -> ComputerSetupStep.SIGN_IN
+        })
     }
 
     /** A saved computer: connect and check it. */
@@ -663,6 +701,98 @@ class ComputerSetupVM(
         }
     }
 
+    /**
+     * Pairs and connects to a computer directly over a relay, without an initial LAN SSH connection.
+     * Verifies an out-of-band SSH fingerprint when supplied, or discovers the live host key over the
+     * relay and asks the user to confirm it on [ComputerSetupStep.VERIFY] before signing in.
+     */
+    fun connectViaRelay(
+        pairingInput: String,
+        usernameInput: String,
+        nameInput: String,
+        customUrl: String?,
+        accessCode: String?,
+        fingerprintInput: String?,
+    ) = run(ComputerSetupTask.CONNECTING) {
+        val parsed = parseRelayPairingInput(pairingInput)
+            ?: throw RelaySetupException("bad_pairing_input", "Invalid pairing code or connector hostId")
+        val relayUrl = customUrl?.trim()?.takeIf { it.isNotEmpty() } ?: parsed.relayUrl ?: OFFICIAL_RELAY_URL
+        val endpoint = RelayEndpoint(relayUrl, accessCode?.trim()?.takeIf { it.isNotEmpty() })
+        val finalUser = usernameInput.trim().ifBlank { parsed.username.orEmpty() }
+        require(finalUser.isNotEmpty()) { "Username is required" }
+        val candidates = (listOfNotNull(fingerprintInput?.let(::parseSshHostFingerprint)) + parsed.fingerprints).distinct()
+        val rawName = nameInput.trim().ifBlank { parsed.name?.trim().orEmpty() }
+        val nameGuessed = rawName.isEmpty()
+
+        try {
+            relaySetup.checkRelay(endpoint)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            throw RelaySetupException("relay_unreachable", error.message ?: "Relay unreachable")
+        }
+
+        val keyId = appKeyId()
+        val liveKey = discoverRelayKeyWithRetry(endpoint, parsed.hostId)
+        if (candidates.isNotEmpty() && liveKey.sha256Fingerprint !in candidates) {
+            throw RelaySetupException("fingerprint_mismatch", liveKey.sha256Fingerprint)
+        }
+
+        val relay = RemoteHostRelay(
+            url = endpoint.baseUrl,
+            hostId = parsed.hostId,
+            accessToken = endpoint.accessToken?.takeIf { it.isNotEmpty() },
+        )
+        val existing = _state.value.hostId?.let { workspaces.getHostById(it) }
+            ?: hosts.value.find { it.relay?.hostId == parsed.hostId }
+        val trustedSha = liveKey.sha256Fingerprint.takeIf {
+            candidates.isNotEmpty() || existing?.trustedHostKeySha256 == liveKey.sha256Fingerprint
+        }
+        val host = if (existing != null) {
+            val keepName = nameInput.trim().ifBlank { existing.name }
+            check(workspaces.updateRelayHost(existing.id, keepName, finalUser, keyId, relay, trustedSha)) { "Computer not found" }
+            requireNotNull(workspaces.getHostById(existing.id)) { "Computer not found" }
+        } else {
+            val baseName = rawName.ifBlank { "Relay ${parsed.hostId.take(6)}" }
+            val finalName = if (nameInput.isBlank()) uniqueRelayHostName(baseName) else baseName
+            workspaces.createRelayHost(finalName, finalUser, keyId, relay, trustedSha).also {
+                if (nameGuessed) guessedNameHostId = it.id
+            }
+        }
+        _state.update { it.copy(hostId = host.id, target = host.target(), username = finalUser, keyRefused = false) }
+        if (trustedSha == null) {
+            go(ComputerSetupStep.VERIFY) { it.copy(hostKey = liveKey) }
+        } else {
+            connectAndProbe(host.id)
+        }
+    }
+
+    private suspend fun discoverRelayKeyWithRetry(endpoint: RelayEndpoint, relayHostId: String): RemoteHostKey {
+        for (attempt in 1..RELAY_PAIR_TRIES) {
+            try {
+                return workspaces.discoverHostKeyThroughRelay(endpoint, relayHostId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                val offline = generateSequence<Throwable>(error) { it.cause }.take(16)
+                    .filterIsInstance<RelayException>()
+                    .any { it.reason == "host_offline" || it.reason == "host_timeout" }
+                if (offline && attempt < RELAY_PAIR_TRIES) {
+                    delay(RELAY_PAIR_RETRY_MILLIS)
+                    continue
+                }
+                throw error
+            }
+        }
+        error("Unreachable relay discovery loop")
+    }
+
+    private fun uniqueRelayHostName(base: String): String {
+        val taken = hosts.value.mapTo(hashSetOf()) { it.name.lowercase() }
+        if (base.lowercase() !in taken) return base
+        return generateSequence(2) { it + 1 }.map { "$base $it" }.first { it.lowercase() !in taken }
+    }
+
     /** Trusts the changed identity the user was warned about; refused if the live key differs from it. */
     fun trustAndConnect() = run(ComputerSetupTask.VERIFYING) {
         val host = currentHost()
@@ -746,9 +876,12 @@ class ComputerSetupVM(
                         _state.update { it.copy(error = error) }
                     }
                 }
-                _state.value.step in setOf(ComputerSetupStep.KEY, ComputerSetupStep.WINDOWS) &&
+                _state.value.step in setOf(ComputerSetupStep.KEY, ComputerSetupStep.WINDOWS, ComputerSetupStep.RELAY_PAIR) &&
                     connect != null && connect.passwordSignIn == null && connect.message?.startsWith("Auth ") == true ->
                     _state.update { it.copy(keyRefused = !quiet || it.keyRefused) }
+                _state.value.step == ComputerSetupStep.VERIFY && connect != null && connect.passwordSignIn == null &&
+                    connect.message?.startsWith("Auth ") == true && workspaces.getHostById(hostId)?.host.isNullOrBlank() ->
+                    go(ComputerSetupStep.RELAY_PAIR) { it.copy(keyRefused = true) }
                 quiet -> Unit
                 else -> throw error
             }

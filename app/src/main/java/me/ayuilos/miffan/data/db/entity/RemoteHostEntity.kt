@@ -48,7 +48,8 @@ data class RemoteHostEntity(
     /** The relay connected last time, so it gets a shorter head start in the next race. */
     val lastViaRelay: Boolean get() = lastAddressValue == RELAY_LAST_ADDRESS
     val addresses: List<RemoteHostAddress> get() =
-        (listOf(RemoteHostAddress(host, port)) + decodeRemoteHostAddresses(alternateAddresses)).distinct()
+        (listOfNotNull(host.takeIf { it.isNotBlank() }?.let { RemoteHostAddress(it, port) }) +
+            decodeRemoteHostAddresses(alternateAddresses)).distinct()
     val lastAddress: RemoteHostAddress? get() = addresses.firstOrNull { it.storageValue == lastAddressValue }
     val connectionAddresses: List<RemoteHostAddress> get() =
         (listOfNotNull(lastAddress) + addresses).distinct()

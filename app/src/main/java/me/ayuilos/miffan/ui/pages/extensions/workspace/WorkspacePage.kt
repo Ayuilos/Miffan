@@ -151,6 +151,7 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
     val hosts by vm.hosts.collectAsStateWithLifecycle()
     val sshKeys by vm.sshKeys.collectAsStateWithLifecycle()
     val keyMaterialStatus by vm.keyMaterialStatus.collectAsStateWithLifecycle()
+    val relayPhone by vm.relayPhoneIdentity.collectAsStateWithLifecycle()
     val remoteHostStates by vm.remoteHostStates.collectAsStateWithLifecycle()
     val remoteWorkspaceStates by vm.remoteWorkspaceStates.collectAsStateWithLifecycle()
     val remoteConnectionStates by vm.remoteConnectionStates.collectAsStateWithLifecycle()
@@ -466,6 +467,7 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
         )
     }
     if (showHostEditor && hostDraft != null) {
+        LaunchedEffect(showHostEditor) { vm.ensureRelayPhoneIdentity() }
         // Addresses change while the editor is open, so it follows the saved host rather than its snapshot.
         val editedHost = hostEditor?.let { editing -> hosts.find { it.id == editing.id } ?: editing }
         RemoteHostEditorDialog(
@@ -525,6 +527,25 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
             },
             onAddAddress = vm::addHostAddress,
             onRemoveAddress = { host, address, callback -> vm.removeHostAddress(host.id, address, callback) },
+            relayPhone = relayPhone,
+            onCopyText = { label, text ->
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+                Toast.makeText(context, workspaceStrings.getString(R.string.copied), Toast.LENGTH_SHORT).show()
+            },
+            onCreateRelay = { name, username, sshKeyId, relayUrl, accessToken, hostId, fingerprint, callback ->
+                vm.createRelayHost(name, username, sshKeyId, relayUrl, accessToken, hostId, fingerprint) { result ->
+                    result.getOrNull()?.let { created ->
+                        if (showHostEditor) {
+                            if (returnToRemoteWorkspaceDialog) {
+                                remoteWorkspaceDraft = remoteWorkspaceDraft.copy(selectedHostId = created.id)
+                            }
+                            hostToVerify = created
+                        }
+                    }
+                    callback(result)
+                }
+            },
         )
     }
     hostToVerify?.let { host ->

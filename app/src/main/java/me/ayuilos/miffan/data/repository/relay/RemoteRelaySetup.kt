@@ -1,6 +1,5 @@
 package me.ayuilos.miffan.data.repository.relay
 
-import android.os.Build
 import java.io.ByteArrayInputStream
 import java.io.Closeable
 import kotlinx.coroutines.CancellationException
@@ -73,6 +72,11 @@ class RemoteRelaySetup internal constructor(
         access.client.info(endpoint, refresh = true)
     }
 
+    /** Returns this phone's device public key (`b64u` SPKI), device id, and name for relay pairing. */
+    suspend fun phoneIdentity(): RelayPhoneIdentity = withContext(Dispatchers.IO) {
+        access.phoneIdentity()
+    }
+
     suspend fun status(workspaceId: String): RelayConnectorStatus = withRemote(workspaceId) { ssh ->
         helper.ensureInstalled(ssh)
         json.decodeFromString<RelayConnectorStatus>(run(ssh, "relay status", null))
@@ -121,7 +125,7 @@ class RemoteRelaySetup internal constructor(
             onStage(1)
             json.decodeFromString<RelayPairResult>(run(ssh, "relay pair", buildJsonObject {
                 put("device", java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(devicePub))
-                put("name", deviceName())
+                put("name", currentDeviceName())
                 // The connector serves every relay a paired phone uses; this phone uses this one.
                 put("relay", endpoint.baseUrl)
             }.toString()))
@@ -178,8 +182,4 @@ class RemoteRelaySetup internal constructor(
         }.close()
         return requireNotNull(value).getOrThrow()
     }
-
-    private fun deviceName(): String =
-        listOf(Build.MANUFACTURER, Build.MODEL).filter { !it.isNullOrBlank() }.joinToString(" ")
-            .filter { !it.isISOControl() }.take(64).ifBlank { "Phone" }
 }

@@ -26,6 +26,7 @@ import me.ayuilos.miffan.ui.components.ui.permission.PermissionLocalNetwork
 import me.ayuilos.miffan.ui.components.ui.permission.PermissionManager
 import me.ayuilos.miffan.ui.components.ui.permission.rememberPermissionState
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Cloud
 import me.rerere.hugeicons.stroke.InformationCircle
 import me.rerere.hugeicons.stroke.Wifi01
 import org.koin.compose.koinInject
@@ -93,8 +94,10 @@ internal fun ComputerFindStep(
             SectionLabel(stringResource(R.string.im_computer_my_computers))
             hosts.forEach { host ->
                 val seen = found[host.id].orEmpty()
-                val missing = allowed && !scan.searching && seen.isEmpty()
-                SavedCard(host, seen, searching = allowed && scan.searching, missing = missing,
+                val viaRelay = host.relay?.enabled == true
+                val missing = allowed && !scan.searching && seen.isEmpty() && !viaRelay
+                SavedCard(host, seen, searching = allowed && scan.searching && host.addresses.isNotEmpty(),
+                    missing = missing, viaRelay = viaRelay,
                     otherSystemUp = missing && fresh.any { hosts.sharingAddressWith(it)?.id == host.id },
                     enabled = !state.busy) {
                     // One that is not around opens its settings: connecting would only fail.
@@ -124,6 +127,11 @@ internal fun ComputerFindStep(
             FilledTonalButton(onClick = vm::addManually, enabled = !state.busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                 Text(stringResource(R.string.im_computer_add_by_address))
             }
+            OutlinedButton(onClick = vm::pairViaRelay, enabled = !state.busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                Icon(HugeIcons.Cloud, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.im_computer_pair_via_relay))
+            }
         }
     }
 }
@@ -135,6 +143,7 @@ private fun SavedCard(
     seen: List<NearbyComputer>,
     searching: Boolean,
     missing: Boolean,
+    viaRelay: Boolean,
     otherSystemUp: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
@@ -143,19 +152,21 @@ private fun SavedCard(
     ComputerCard(host.name,
         when {
             seen.isNotEmpty() -> kind
+            viaRelay && !searching -> stringResource(R.string.im_computer_saved_relay, kind)
             missing && otherSystemUp -> stringResource(R.string.im_computer_saved_missing_other_system, kind)
             missing -> stringResource(R.string.im_computer_saved_missing, kind)
             searching -> stringResource(R.string.im_computer_saved_searching, kind)
             else -> kind
         },
         host.system().icon(), enabled = enabled, dimmed = missing,
-        badges = if (seen.isEmpty()) null else ({
+        badges = if (seen.isEmpty() && !viaRelay) null else ({
             seen.map { it.network }.distinct().sorted().forEach { network ->
                 when (network) {
                     NearbyNetwork.LOCAL -> NetworkTag(HugeIcons.Wifi01, "Wi‑Fi")
                     NearbyNetwork.TAILSCALE -> NetworkTag(TailscaleLogo, "Tailscale")
                 }
             }
+            if (viaRelay && seen.isEmpty()) NetworkTag(HugeIcons.Cloud, stringResource(R.string.im_computer_via_relay_badge))
         }),
         onClick = onClick)
 }

@@ -12,7 +12,12 @@ import kotlinx.coroutines.launch
 import me.ayuilos.miffan.data.db.entity.WorkspaceEntity
 import me.ayuilos.miffan.data.db.entity.RemoteHostAddress
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
+import me.ayuilos.miffan.data.db.entity.RemoteHostRelay
 import me.ayuilos.miffan.data.db.entity.SshKeyEntity
+import me.ayuilos.miffan.data.repository.relay.OFFICIAL_RELAY_URL
+import me.ayuilos.miffan.data.repository.relay.RelayPhoneIdentity
+import me.ayuilos.miffan.data.repository.relay.parseSshHostFingerprint
+import me.rerere.workspace.relay.RelayEndpoint
 import me.ayuilos.miffan.data.db.entity.RemoteScreenAuth
 import me.ayuilos.miffan.data.db.entity.RemoteScreenEndpoint
 import me.ayuilos.miffan.data.repository.RemoteHostScreenConfig
@@ -43,6 +48,16 @@ class WorkspaceVM(
     val remoteConnectionStates = repository.remoteConnectionStates
     private val _keyMaterialStatus = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     val keyMaterialStatus = _keyMaterialStatus.asStateFlow()
+
+    private val _relayPhoneIdentity = MutableStateFlow<RelayPhoneIdentity?>(null)
+    val relayPhoneIdentity = _relayPhoneIdentity.asStateFlow()
+
+    fun ensureRelayPhoneIdentity() {
+        if (_relayPhoneIdentity.value != null) return
+        viewModelScope.launch {
+            runCatching { repository.relayPhoneIdentity() }.getOrNull()?.let { _relayPhoneIdentity.value = it }
+        }
+    }
 
     private val _screenEnvironments = MutableStateFlow<Map<String, RemoteScreenEnvironmentState>>(emptyMap())
     val screenEnvironments = _screenEnvironments.asStateFlow()
@@ -162,6 +177,29 @@ class WorkspaceVM(
         onResult: (Result<RemoteHostEntity>) -> Unit,
     ) {
         runOperation({ repository.createHost(name, host, port, username, authentication, sshKeyId) }, onResult)
+    }
+
+    fun createRelayHost(
+        name: String,
+        username: String,
+        sshKeyId: String,
+        relayUrl: String,
+        accessToken: String?,
+        hostId: String,
+        fingerprint: String?,
+        onResult: (Result<RemoteHostEntity>) -> Unit,
+    ) {
+        runOperation({
+            val endpoint = RelayEndpoint(
+                relayUrl.trim().ifEmpty { OFFICIAL_RELAY_URL },
+                accessToken?.trim()?.takeIf { it.isNotEmpty() },
+            )
+            val relay = RemoteHostRelay(endpoint.baseUrl, hostId.trim().lowercase(), endpoint.accessToken)
+            val fp = fingerprint?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                requireNotNull(parseSshHostFingerprint(it)) { "Invalid SSH host key fingerprint" }
+            }
+            repository.createRelayHost(name, username, sshKeyId, relay, fp)
+        }, onResult)
     }
 
     fun updateHost(

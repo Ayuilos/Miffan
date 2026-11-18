@@ -25,7 +25,7 @@ private val ComputerSetupStep.canGoBack: Boolean get() = this !in setOf(Computer
 /** Which of the four dots a screen lights: find, sign in, get ready, share. */
 private fun ComputerSetupStep.dot(): Int? = when (this) {
     ComputerSetupStep.FIND, ComputerSetupStep.MANUAL -> 0
-    ComputerSetupStep.SIGN_IN, ComputerSetupStep.PASSWORD, ComputerSetupStep.KEY, ComputerSetupStep.WINDOWS, ComputerSetupStep.VERIFY -> 1
+    ComputerSetupStep.RELAY_PAIR, ComputerSetupStep.SIGN_IN, ComputerSetupStep.PASSWORD, ComputerSetupStep.KEY, ComputerSetupStep.WINDOWS, ComputerSetupStep.VERIFY -> 1
     ComputerSetupStep.READY, ComputerSetupStep.AWAY -> 2
     ComputerSetupStep.SHARE -> 3
     ComputerSetupStep.HOW, ComputerSetupStep.SPACE_INSTALL, ComputerSetupStep.SPACE_PREPARE, ComputerSetupStep.SPACE_NETWORK,
@@ -93,11 +93,12 @@ fun ComputerSetupPage(args: ComputerSetupArgs) {
                     nav.navigate(Screen.ComputerSetup(forPartner?.toString(), hostId, edit = true))
                 }
                 ComputerSetupStep.MANUAL -> if (state.editing) ComputerSettingsStep(vm, state, host) else ComputerManualStep(vm, state)
+                ComputerSetupStep.RELAY_PAIR -> ComputerRelayPairStep(vm, state)
                 ComputerSetupStep.SIGN_IN -> ComputerSignInStep(vm, state)
                 ComputerSetupStep.PASSWORD -> ComputerPasswordStep(vm, state)
                 ComputerSetupStep.KEY -> ComputerKeyStep(vm, state)
                 ComputerSetupStep.WINDOWS -> ComputerWindowsStep(vm, state)
-                ComputerSetupStep.VERIFY -> ComputerVerifyStep(vm, state)
+                ComputerSetupStep.VERIFY -> ComputerVerifyStep(vm, state, firstTime = host?.trustedHostKeySha256 == null)
                 ComputerSetupStep.READY -> ComputerReadyStep(vm, state)
                 ComputerSetupStep.AWAY -> ComputerAwayStep(vm, state) { if (vm.awayOnly) nav.popBackStack() else vm.leaveAway() }
                 ComputerSetupStep.SHARE -> ComputerShareStep(vm, state, forPartner)

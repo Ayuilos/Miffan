@@ -19,10 +19,12 @@ import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.db.entity.RemoteAddressNetwork
 import me.ayuilos.miffan.data.db.entity.RemoteHostAddress
 import me.ayuilos.miffan.data.db.entity.RemoteHostEntity
+import me.ayuilos.miffan.data.db.entity.RemoteHostRelay
 import me.ayuilos.miffan.data.db.entity.remoteAddressNetwork
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.ArrowRight01
+import me.rerere.hugeicons.stroke.Cloud
 import me.rerere.hugeicons.stroke.Delete02
 import me.rerere.hugeicons.stroke.Globe02
 import me.rerere.hugeicons.stroke.InformationCircle
@@ -66,9 +68,14 @@ internal fun ComputerSettingsStep(vm: ComputerSetupVM, state: ComputerSetupState
         SectionLabel(stringResource(R.string.im_computer_connection_ways))
         SetupGroup {
             val addresses = host.addresses
+            val relay = host.relay
             addresses.forEach { address ->
-                AddressRow(address, lastUsed = address == host.lastAddress && addresses.size > 1,
-                    removable = addresses.size > 1 && !state.busy, onRemove = { vm.removeAddress(address) })
+                AddressRow(address, lastUsed = address == host.lastAddress && (addresses.size > 1 || relay != null),
+                    removable = (addresses.size > 1 || relay != null) && !state.busy, onRemove = { vm.removeAddress(address) })
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            }
+            if (relay != null) {
+                RelayRouteRow(relay, lastUsed = host.lastViaRelay && addresses.isNotEmpty())
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             }
             if (adding) {
@@ -136,6 +143,23 @@ private fun AddressRow(address: RemoteHostAddress, lastUsed: Boolean, removable:
         if (removable) IconButton(onClick = onRemove) {
             Icon(HugeIcons.Delete02, stringResource(R.string.im_computer_remove_address), Modifier.size(20.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun RelayRouteRow(relay: RemoteHostRelay, lastUsed: Boolean) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        NetworkTile(HugeIcons.Cloud)
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.im_computer_via_relay_badge), style = MaterialTheme.typography.bodyLarge)
+            Text("${relay.endpoint.host} · ${relay.hostId.take(10)}", style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (lastUsed) Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+            Text(stringResource(R.string.im_computer_address_last_used), Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
         }
     }
 }

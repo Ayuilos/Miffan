@@ -88,7 +88,9 @@ bunx wrangler login      # 浏览器里授权
    bunx wrangler deploy -c worker/wrangler.toml
    ```
 4. 验证：`curl https://relay.example.com/v1/info` 应返回 JSON（含 `"impl":"worker"`）。
-5. 回到电脑所在的网络，在 Miffan 开启“不在家也能用”时（或电脑详情“出门在外 > 换一个中转”）点“用自己的中转”，填 `https://relay.example.com` 和访问码；也可以扫描内容为 `miffan-relay://add?url=https://relay.example.com&token=<访问码>` 的二维码。访问码建议用 `openssl rand -hex 24` 生成。
+5. 在 Miffan 中配对使用你的自建中转（填 `https://relay.example.com` 和访问码，也可以扫描内容为 `miffan-relay://add?url=https://relay.example.com&token=<访问码>` 的二维码；访问码建议用 `openssl rand -hex 24` 生成）：
+   - 若电脑在当前网络可直连：先直连配对电脑，再开启“不在家也能用”（或电脑详情“出门在外 > 换一个中转”）点“用自己的中转”。
+   - 若手机与电脑不在同一网络、无法预先直连 SSH：可在添加电脑时选择“经中转连接”（或工作区主机里选“通过中转”），使用引导脚本或手动安装 `miffan-connector` 后凭 `hostId` / `miffan-pair://` 完成配对。
 
 给不熟悉命令行的用户的分步教程见 <https://miffan.ayuilos.me/docs/relay-self-hosting>。
 

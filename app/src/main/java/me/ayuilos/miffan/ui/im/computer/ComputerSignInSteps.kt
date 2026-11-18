@@ -27,6 +27,7 @@ import me.ayuilos.miffan.data.remote.NearbySystem
 import me.ayuilos.miffan.data.repository.WindowsSetupScript
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Alert02
+import me.rerere.hugeicons.stroke.Cloud
 import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.InformationCircle
 import me.rerere.hugeicons.stroke.Key01
@@ -208,7 +209,7 @@ private fun RetryOnReturn(attempt: () -> Unit) {
 }
 
 @Composable
-private fun KeyHero() {
+internal fun KeyHero() {
     Box(Modifier.size(72.dp).clip(RoundedCornerShape(24.dp)).background(MaterialTheme.colorScheme.tertiaryContainer),
         contentAlignment = Alignment.Center) {
         Icon(HugeIcons.Key01, null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onTertiaryContainer)
@@ -216,14 +217,14 @@ private fun KeyHero() {
 }
 
 @Composable
-private fun KeyStatus(refused: Boolean) {
+internal fun KeyStatus(refused: Boolean) {
     if (refused) SetupNote(HugeIcons.Alert02, stringResource(R.string.im_computer_key_refused))
     else SetupNote(HugeIcons.InformationCircle, stringResource(R.string.im_computer_key_auto))
 }
 
 /** Copy, or send to an app the user also has on the computer: the phone's clipboard rarely reaches it. */
 @Composable
-private fun HandOverButtons(subject: String, text: String, onHandedOver: () -> Unit) {
+internal fun HandOverButtons(subject: String, text: String, onHandedOver: () -> Unit) {
     val context = LocalContext.current
     var copied by remember(text) { mutableStateOf(false) }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -296,21 +297,33 @@ internal fun ComputerManualStep(vm: ComputerSetupVM, state: ComputerSetupState) 
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.im_computer_is_windows))
             }
+            OutlinedButton(onClick = vm::pairViaRelay, enabled = !state.busy) {
+                Icon(HugeIcons.Cloud, null, Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.im_computer_pair_via_relay))
+            }
         }
     }
 }
 
-/** A saved computer answered with another identity: never trusted without the user saying so. */
+/**
+ * First-time host key confirmation (when no out-of-band fingerprint was supplied, e.g. manual CLI
+ * relay pairing) or strong warning when a saved computer's SSH identity changed.
+ */
 @Composable
-internal fun ComputerVerifyStep(vm: ComputerSetupVM, state: ComputerSetupState) {
+internal fun ComputerVerifyStep(vm: ComputerSetupVM, state: ComputerSetupState, firstTime: Boolean = false) {
     SetupScreen(
-        title = stringResource(R.string.im_computer_identity_changed_title),
-        subtitle = stringResource(R.string.im_computer_identity_changed),
+        title = stringResource(if (firstTime) R.string.im_computer_verify else R.string.im_computer_identity_changed_title),
+        subtitle = stringResource(if (firstTime) R.string.im_computer_verify_help else R.string.im_computer_identity_changed),
         state = state, onDismissError = vm::dismissError, centered = true,
         hero = {
-            Box(Modifier.size(72.dp).clip(RoundedCornerShape(24.dp)).background(MaterialTheme.colorScheme.errorContainer),
-                contentAlignment = Alignment.Center) {
-                Icon(HugeIcons.Alert02, null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onErrorContainer)
+            if (firstTime) {
+                KeyHero()
+            } else {
+                Box(Modifier.size(72.dp).clip(RoundedCornerShape(24.dp)).background(MaterialTheme.colorScheme.errorContainer),
+                    contentAlignment = Alignment.Center) {
+                    Icon(HugeIcons.Alert02, null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onErrorContainer)
+                }
             }
         },
         primary = SetupAction(stringResource(R.string.im_computer_trust_connect), enabled = state.hostKey != null, onClick = vm::trustAndConnect),
