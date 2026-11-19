@@ -26,7 +26,7 @@
 #   miffan window probe|list|focus|resize|shots|serve|locate|authorize|install-extension|uninstall-extension|revoke
 #                           one window of a Linux desktop on the phone (niri, KDE, GNOME, X11), video and input
 
-MIFFAN_HELPER_VERSION=50
+MIFFAN_HELPER_VERSION=51
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -6745,11 +6745,11 @@ space() {
 # Release binaries are pinned by version and SHA-256, taken from the release's SHA256SUMS when
 # relay-connector-v$MIFFAN_CONNECTOR_VERSION was published.
 
-MIFFAN_CONNECTOR_VERSION=1.2.0
-MIFFAN_CONNECTOR_SHA256_DARWIN_ARM64=d80631d7df0416ea6666c130d2486712ee96c994e0e6d1b1d76ac12036fb89d2
-MIFFAN_CONNECTOR_SHA256_DARWIN_AMD64=3cb2ed11c8285c408ee58bc31c6d142fbe6c4f673d0bcdd9e70a99a8ca8ea91e
-MIFFAN_CONNECTOR_SHA256_LINUX_AMD64=35a226f8d10c466481962ed7670aa0a078b736e60ab34417a4bfef5b5d609440
-MIFFAN_CONNECTOR_SHA256_LINUX_ARM64=dc1d30517071be9ef44fa8781592d53063b850ee004d8adc6e8fc344cd4c2755
+MIFFAN_CONNECTOR_VERSION=1.3.0
+MIFFAN_CONNECTOR_SHA256_DARWIN_ARM64=f3b8b33a2210153089017948ce9dbde64d6e2ff4ac001ba9c6d779b02bef8b68
+MIFFAN_CONNECTOR_SHA256_DARWIN_AMD64=c4bf19abdf14e396e72a7f332153779c422178840b3148c068af1178c4a8bc60
+MIFFAN_CONNECTOR_SHA256_LINUX_AMD64=a8d840abeeacf24490fb5aaaf08f1ac2a3d086ceb0cfdadf8cf7cc7584d5bdb2
+MIFFAN_CONNECTOR_SHA256_LINUX_ARM64=dbfc8aeead488b38420321bfa69f473c4d4e9ee0b3fe4ca99febc389aaaf0f87
 MIFFAN_CONNECTOR_RELEASE_URL="https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v$MIFFAN_CONNECTOR_VERSION"
 # Extra download locations tried after the GitHub release, space separated, same file names. None yet.
 MIFFAN_CONNECTOR_MIRRORS=""
