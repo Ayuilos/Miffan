@@ -9,8 +9,8 @@
 # The release binary is pinned by version and SHA-256, taken from the release's SHA256SUMS when
 # relay-connector-v$RelayConnectorVersion was published.
 
-$script:RelayConnectorVersion = '1.3.0'
-$script:RelayConnectorSha256 = @{ 'windows-amd64' = '091fe20ab8dfa1e3a7a709fe2ff4bcecb67c77fcbf7c033e65b40a8aac0de88c' }
+$script:RelayConnectorVersion = '1.4.0'
+$script:RelayConnectorSha256 = @{ 'windows-amd64' = '2e96983a7698e43eebe4f2d8f2d3e5c85c6c9c38bc85fc98e8fd037c8612128' }
 # Download locations tried in order (same file names): official Cloudflare R2 mirror first, GitHub release as fallback.
 $script:RelayMirrors = @('https://downloads.ayuilos.me/connector/v' + $script:RelayConnectorVersion)
 $script:RelayReleaseUrl = 'https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v' + $script:RelayConnectorVersion

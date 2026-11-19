@@ -31,8 +31,8 @@ $env:MIFFAN_CONNECTOR_FILE = ''
 $env:MIFFAN_CONNECTOR_SHA256 = ''
 try {
     Test 'the connector version and SHA-256 are pinned' {
-        Assert-Equal $script:RelayConnectorVersion '1.3.0' 'pinned version'
-        Assert-Equal (Get-RelayExpectedSha 'windows-amd64') '091fe20ab8dfa1e3a7a709fe2ff4bcecb67c77fcbf7c033e65b40a8aac0de88c' 'pinned SHA-256'
+        Assert-Equal $script:RelayConnectorVersion '1.4.0' 'pinned version'
+        Assert-Equal (Get-RelayExpectedSha 'windows-amd64') '2e96983a7698e43eebe4f2d8f2d3e5c85c6c9c38bc85fc98e8fd037c8612128' 'pinned SHA-256'
         Assert-Equal (Get-RelayExpectedSha 'linux-amd64') '' 'unknown platform has no digest'
         $env:MIFFAN_CONNECTOR_SHA256 = 'ABCDEF'
         Assert-Equal (Get-RelayExpectedSha 'windows-amd64') 'abcdef' 'override is lower-cased'
@@ -51,15 +51,15 @@ try {
     Test 'download locations: official R2 mirror first, then GitHub release fallback' {
         $urls = @(Get-RelayDownloadUrls 'windows-amd64')
         Assert-Equal $urls.Count 2 'official mirror plus GitHub fallback'
-        Assert-Equal $urls[0] 'https://downloads.ayuilos.me/connector/v1.3.0/miffan-connector-windows-amd64.exe' 'official R2 URL'
-        Assert-Equal $urls[1] 'https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v1.3.0/miffan-connector-windows-amd64.exe' 'GitHub fallback URL'
+        Assert-Equal $urls[0] 'https://downloads.ayuilos.me/connector/v1.4.0/miffan-connector-windows-amd64.exe' 'official R2 URL'
+        Assert-Equal $urls[1] 'https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v1.4.0/miffan-connector-windows-amd64.exe' 'GitHub fallback URL'
         $saved = $script:RelayMirrors
         try {
             $script:RelayMirrors = @('https://mirror.example/connector/')
             $urls = @(Get-RelayDownloadUrls 'windows-amd64')
             Assert-Equal $urls.Count 2 'custom mirror plus GitHub fallback'
             Assert-Equal $urls[0] 'https://mirror.example/connector/miffan-connector-windows-amd64.exe' 'custom mirror first'
-            Assert-Equal $urls[1] 'https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v1.3.0/miffan-connector-windows-amd64.exe' 'GitHub fallback second'
+            Assert-Equal $urls[1] 'https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v1.4.0/miffan-connector-windows-amd64.exe' 'GitHub fallback second'
         } finally { $script:RelayMirrors = $saved }
     }
     Test 'status line merging' {
