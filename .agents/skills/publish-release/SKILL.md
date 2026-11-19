@@ -69,7 +69,7 @@ Updates:
 - xxx
 ```
 
-展示草案时，同时给出一段不属于 Release 正文的来源核对摘要：起始 tag、目标 commit、识别到的上游同步点，以及两类原始提交数量；再列出 README 打算改动的段落和新增的历史行（见“更新 README”）。随后请求用户确认日志、README 改动和版本号。只有用户明确确认可以发布后，才进入下一阶段；如日志发生实质修改，需要再次确认。
+展示草案时，同时给出一段不属于 Release 正文的来源核对摘要：起始 tag、目标 commit、识别到的上游同步点，以及两类原始提交数量；再列出 README 打算改动的段落和新增的历史行（见“更新 README”）以及文档站计划更新的 Help Skill 版本与涉及 topic（见“更新文档站”）。随后请求用户确认日志、README 改动和版本号。只有用户明确确认可以发布后，才进入下一阶段；如日志发生实质修改，需要再次确认。
 
 ## 更新 README
 
@@ -81,6 +81,15 @@ Updates:
 - 三种语言逐句对应；繁体中文沿用文件里已有的用词（如“夥伴”“閘道”“訊息”）。
 - 写给普通读者：不写 commit、PR、类名或构建细节。
 
+## 更新文档站（`miffan-site` / Miffan Help Skill）
+
+每次正式版本（stable release）发布后，必须同步更新同级仓库 `Ayuilos/miffan-site`（本地路径 `/Users/chenxiansheng/miffan-site`，流程详见 `miffan-site/docs/miffan-help/README.md`），让应用内帮助与 `https://miffan.ayuilos.me/docs` 保持与最新正式版一致：
+
+1. 从上一版目录复制出新的完整不可变版本目录 `public/skills/miffan-help/<新skillVersion>/`（严禁原地修改已部署的旧版本目录）。
+2. 对照本次发布提交的源码与 `values-zh` / `values` 资源更新 `zh-CN` 与 `en` 正文（保持两语言标题层级和行内 `` `topic-id` `` 引用一致，英文保留 `# 标题` + 空行 + `> 摘要`），并同步 `index.md`、`remote-workspaces.md` 等处依据的 App 版本号与发布提交短 SHA。
+3. 更新 `public/skills/miffan-help/manifest.json`（`skillVersion`、`appVersionRange` 设为 `=<新App版本>`、各 topic `path`，以及必要的描述与不重复关键词）、在 `public/_headers` 末尾追加 `/skills/miffan-help/<新skillVersion>/*` 不可变缓存规则，并更新 `tests/help-skill.test.mjs` 与 `docs/miffan-help/README.md`。
+4. 在 `miffan-site` 运行 `npm run help:hash && npm test && npm run build && npm run help:verify && npm run deploy:check`，确认全部通过后提交并推送至 `origin/main` 触发 Cloudflare Workers Builds；部署完成后核对线上 `https://miffan.ayuilos.me/skills/miffan-help/manifest.json` 与 `/docs`。
+
 ## 发布
 
 1. 版本号同时作为 Release 标题和 tag；tag 不加 `v`。
@@ -88,6 +97,6 @@ Updates:
 3. 从 `app/release/` 中只选择 `arm64-v8a` APK。若没有唯一候选，停止并请用户指出正确文件。
 4. 在临时目录创建带版本号的上传副本，文件名使用 `<项目名>-<版本号>-arm64-v8a.apk`，并在同一目录用 `shasum -a 256 <文件名> > <文件名>.sha256` 生成校验文件；不要改动或上传其他架构的 APK。
 5. 使用 `gh release create` 在目标 commit 上创建 Release，标题为版本号，正文必须是用户最后确认的双语更新日志，并在同一条命令里同时上传 APK 和 `.sha256` 校验文件。本仓库的 Release 发布后不可修改：之后无法补传文件，删除后同一版本号也不能再用；下载站同步流程缺少校验文件会失败。
-6. 发布后用 `gh release view` 核对 tag、目标 commit、Release 正文、唯一的 arm64 APK 及其 `.sha256`，并确认 “Publish APK to R2” 工作流成功；向用户返回 Release 链接与资源文件名。
+6. 发布后用 `gh release view` 核对 tag、目标 commit、Release 正文、唯一的 arm64 APK 及其 `.sha256`，并确认 “Publish APK to R2” 工作流成功；同步完成 `miffan-site` 文档站更新并确认线上 `manifest.json` 生效后，向用户返回 Release 链接、资源文件名与文档站状态。
 
 任何发布前检查失败时停止，不得用强制覆盖、删 tag 或替换已有 Release 的方式继续。

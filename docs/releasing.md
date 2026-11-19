@@ -113,6 +113,7 @@ When these four entries are absent, `assembleRelease` may produce unsigned verif
 4. Add bilingual notes at `docs/releases/<version>.md` using [the template](releases/TEMPLATE.md). Keep Miffan-owned changes separate from improvements incorporated from RikkaHub.
 5. For contributions through a PR, require CI to pass `test`, `lint`, and `assembleDebug`. The owner may publish directly without a PR or a successful GitHub CI run, choosing local verification appropriate to the changes.
 6. Review the in-place upgrade acceptance below for any release that shares the official package name.
+7. For every stable release, plan to publish a matching immutable Help Skill / docs-site update (`appVersionRange` set to `=<versionName>`) in the sibling `Ayuilos/miffan-site` repository after the release commit is finalized, so in-app help and `https://miffan.ayuilos.me/docs` stay aligned with the release.
 
 No upstream tag is a Miffan release trigger. Do not fetch-and-push, mirror, or automatically propagate upstream tags.
 
@@ -125,6 +126,7 @@ The repository owner may publish a locally built, production-signed APK using Gi
 3. Stage `Miffan-<version>-arm64-v8a.apk` and generate its checksum in the same directory with `shasum -a 256 "Miffan-<version>-arm64-v8a.apk" > "Miffan-<version>-arm64-v8a.apk.sha256"`.
 4. Verify the version tag and Release do not already exist, then create the Release at the recorded commit, attaching the APK and checksum and using `docs/releases/<version>.md` as its body. Use `--prerelease` for an RC; use `--latest` for the intended stable release.
 5. Verify the published tag resolves to the recorded commit and both assets are present. Stable publication automatically starts the R2 mirror, which copies the uploaded APK without rebuilding it.
+6. For a stable release, update and push the matching Help Skill and docs site in `Ayuilos/miffan-site` (new immutable `public/skills/miffan-help/<skillVersion>/` directory, `appVersionRange = "=<version>"` referencing the recorded commit, `npm run help:hash`, `npm test`, `npm run build`, `npm run help:verify`, `npm run deploy:check`) and verify the live `https://miffan.ayuilos.me/skills/miffan-help/manifest.json` and `/docs` after Cloudflare Workers Builds finishes.
 
 For example, after assigning the verified `version`, `commit`, and `staging_dir` values:
 
