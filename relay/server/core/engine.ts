@@ -66,6 +66,8 @@ export interface Platform {
   sql: Sql;
   budget: BudgetPort;
   log(line: Record<string, unknown>): void;
+  /** True when the adapter accepts bidirectional HTTP stream transport (`x-miffan-relay-v1`). */
+  stream?: boolean;
 }
 
 export interface RequestCtx {
@@ -513,7 +515,7 @@ export class Engine {
         hostId: this.hid,
         policy: publicPolicy(this.cfg),
         usage,
-        capabilities: { dgram: "none" },
+        capabilities: { dgram: "none", ...(this.p.stream ? { stream: true } : {}) },
       }),
     );
     this.log("host_online");

@@ -21,7 +21,7 @@ const (
 )
 
 // session serves one `open`: data connection → end-to-end handshake → forward to the configured target.
-func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace, edges []string, warm *tlsWarmer) {
+func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace, edges []string, warm *tlsWarmer, viaStream bool, activeEdge string, streamCapable bool, h3 *h3Pool) {
 	short := sid[:8]
 	start := time.Now()
 	deadline := start.Add(c.timing.handshake)
@@ -31,10 +31,34 @@ func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace
 		c.log.printf("session %s: bad relay in config", short)
 		return
 	}
+	client.h3 = h3
 	client.warm = warm
 	dialCtx, cancel := context.WithDeadline(ctx, deadline)
 	// The session data connection is authorised by the sid alone (PROTOCOL §3), so no access code is sent.
-	ws, _, err := client.dialWSAny(dialCtx, edges, "/v1/host/"+c.id.hostID+"/session/"+sid, false)
+	path := "/v1/host/" + c.id.hostID + "/session/" + sid
+	var ws relayConn
+	if viaStream || (client.h3Enabled() && streamCapable) {
+		target := activeEdge
+		if target == "" && len(edges) > 0 {
+			target = edges[0]
+		}
+		h3Ctx, h3Cancel := context.WithTimeout(dialCtx, 3*time.Second)
+		sc, h3Err := client.dialStream(ctx, h3Ctx, target, path, false)
+		h3Cancel()
+		if h3Err == nil {
+			ws = sc
+			err = nil
+		} else {
+			var re *relayError
+			if errors.As(h3Err, &re) && re.Status != 405 && re.Status != 501 {
+				err = h3Err
+			} else {
+				ws, _, err = client.dialWSAny(dialCtx, edges, path, false)
+			}
+		}
+	} else {
+		ws, _, err = client.dialWSAny(dialCtx, edges, path, false)
+	}
 	cancel()
 	if warm != nil {
 		logWarm(c.log, short, client.warmed)
@@ -54,7 +78,7 @@ func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace
 		return ws.WriteMessage(websocket.TextMessage, raw)
 	}
 	closeWith := func(code int, reason string) {
-		_ = ws.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(code, reason), time.Now().Add(time.Second))
+		_ = ws.WriteClose(code, reason, time.Now().Add(time.Second))
 	}
 
 	// 1. challenge
@@ -135,7 +159,7 @@ func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace
 
 // forward copies in both directions until either side ends and returns the byte counts
 // (toRelay, fromRelay).
-func (c *connector) forward(ctx context.Context, ws *websocket.Conn, local net.Conn, wmu *sync.Mutex, p pace) (int64, int64) {
+func (c *connector) forward(ctx context.Context, ws relayConn, local net.Conn, wmu *sync.Mutex, p pace) (int64, int64) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var toRelay, fromRelay int64
@@ -160,21 +184,24 @@ func (c *connector) forward(ctx context.Context, ws *websocket.Conn, local net.C
 		ws.SetReadLimit(maxBinaryFrame)
 		for {
 			_ = ws.SetReadDeadline(time.Now().Add(c.timing.readIdle))
-			kind, r, err := ws.NextReader()
+			kind, data, err := ws.ReadMessage()
 			if err != nil {
+				if code, _, ok := asRelayClose(err); ok && code == 4413 {
+					finish(closeTooBig, "frame_too_large")
+					return
+				}
 				finish(closeNormal, "peer_closed")
 				return
 			}
 			if kind == websocket.TextMessage {
-				// Only pong/ping can arrive here; anything bigger than a text frame may be is a protocol error.
-				if n, _ := io.Copy(io.Discard, io.LimitReader(r, maxTextFrame+1)); n > maxTextFrame {
+				if len(data) > maxTextFrame {
 					finish(closeTooBig, "frame_too_large")
 					return
 				}
 				continue
 			}
-			n, err := io.Copy(local, r)
-			fromRelay += n
+			n, err := local.Write(data)
+			fromRelay += int64(n)
 			if err != nil {
 				finish(closeNormal, "peer_closed")
 				return
@@ -233,7 +260,7 @@ func (c *connector) forward(ctx context.Context, ws *websocket.Conn, local net.C
 		}
 	}
 	finish(closeNormal, "eof")
-	_ = ws.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(closeCode, closeText), time.Now().Add(time.Second))
+	_ = ws.WriteClose(closeCode, closeText, time.Now().Add(time.Second))
 	_ = ws.Close()
 	wg.Wait()
 	return toRelay, fromRelay

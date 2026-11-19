@@ -1,7 +1,7 @@
 # miffan-connector
 
 Computer-side agent of the Miffan relay ([PROTOCOL.md](../PROTOCOL.md) v1). It keeps one outbound
-WebSocket to each relay that a paired phone uses and, for each session a relay announces, checks the
+HTTP/3 (QUIC over UDP) bidirectional stream or WebSocket control connection to each relay that a paired phone uses and, for each session a relay announces, checks the
 phone's signature and forwards the session to the local sshd. Design: [RELAY_PLAN.md](../../docs/remote-screen/RELAY_PLAN.md)
 §8; implementation notes: [RELAY_R1C_NOTES.md](../../docs/remote-screen/RELAY_R1C_NOTES.md).
 
@@ -50,7 +50,7 @@ If the phone cannot reach your computer's SSH port directly (even for initial se
 
 ## Build and test
 
-Go 1.22 or newer.
+Go 1.26 or newer.
 
 ```sh
 cd relay/connector

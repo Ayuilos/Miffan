@@ -47,7 +47,40 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
     /** OkHttp queue depth at which writes wait; see [maxQueuedBytes]. */
     @Volatile private var maxQueued = DEFAULT_MAX_QUEUED
     private var pinger: ScheduledFuture<*>? = null
-    private lateinit var ws: WebSocket
+    @Volatile private var wire: Wire? = null
+
+    private interface Wire {
+        fun sendText(text: String): Boolean
+        fun sendBinary(bytes: ByteArray, offset: Int, len: Int): Boolean
+        fun queueSize(): Long
+        fun close(code: Int, reason: String?)
+    }
+
+    private class WsWire(private val ws: WebSocket) : Wire {
+        override fun sendText(text: String): Boolean = ws.send(text)
+        override fun sendBinary(bytes: ByteArray, offset: Int, len: Int): Boolean =
+            ws.send(bytes.toByteString(offset, len))
+        override fun queueSize(): Long = ws.queueSize()
+        override fun close(code: Int, reason: String?) {
+            runCatching { ws.close(code, null) }
+        }
+    }
+
+    private class StreamWire(private val stream: RelayRawStream) : Wire {
+        @Volatile private var sentClose = false
+
+        override fun sendText(text: String): Boolean = stream.send(RelayStreamCodec.encodeText(text))
+        override fun sendBinary(bytes: ByteArray, offset: Int, len: Int): Boolean =
+            stream.send(RelayStreamCodec.encodeBinary(bytes, offset, len))
+        override fun queueSize(): Long = stream.queuedBytes()
+        override fun close(code: Int, reason: String?) {
+            if (!sentClose) {
+                sentClose = true
+                runCatching { stream.send(RelayStreamCodec.encodeClose(code, reason.orEmpty())) }
+            }
+            runCatching { stream.close(code, reason.orEmpty()) }
+        }
+    }
 
     /** The relay's `ready` message for this session; set once [open] returns. */
     lateinit var ready: RelayReady
@@ -63,10 +96,11 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
      * state), in milliseconds, or null when no `pong` came within [timeoutMillis].
      */
     fun ping(timeoutMillis: Long = 5_000): Long? {
+        val current = wire ?: return null
         val latch = CountDownLatch(1)
         pongWaiter = latch
         val start = System.nanoTime()
-        if (!ws.send("ping")) return null
+        if (!current.sendText("ping")) return null
         return if (latch.await(timeoutMillis, TimeUnit.MILLISECONDS)) (System.nanoTime() - start) / 1_000_000 else null
     }
 
@@ -163,11 +197,12 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
                 bucket?.take(n)
                 // OkHttp buffers up to 16 MiB before failing; wait instead when SSH outruns the link.
                 // A `ping` waits behind this queue, so it stays short (see maxQueuedBytes).
-                while (ws.queueSize() > maxQueued) {
+                val current = wire ?: throw failure.get() ?: IOException("relay session closed")
+                while (current.queueSize() > maxQueued) {
                     if (closed) throw failure.get() ?: IOException("relay session closed")
                     Thread.sleep(5)
                 }
-                if (!ws.send(b.toByteString(pos, n))) throw failure.get() ?: IOException("relay send failed")
+                if (!current.sendBinary(b, pos, n)) throw failure.get() ?: IOException("relay send failed")
                 lastBinaryNanos = System.nanoTime()
                 pos += n
             }
@@ -194,14 +229,15 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
         if (reason != null) closeReason = reason
         closed = true
         pinger?.cancel(false)
-        if (::ws.isInitialized) runCatching { ws.close(code, null) }
+        wire?.close(code, reason)
         incoming.offer(EOF)
         opened.countDown()
         closeListeners.toList().forEach { listener -> if (closeListeners.remove(listener)) runCatching { listener(this) } }
     }
 
-    private fun sendText(text: String, via: WebSocket = ws) {
-        if (!via.send(text)) throw failure.get() ?: IOException("relay send failed")
+    private fun sendText(text: String, via: Wire? = wire) {
+        val target = via ?: throw failure.get() ?: IOException("relay send failed")
+        if (!target.sendText(text)) throw failure.get() ?: IOException("relay send failed")
     }
 
     companion object {
@@ -246,26 +282,69 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
             val request = Request.Builder().url(url).apply {
                 if (!accessToken.isNullOrEmpty()) header("Authorization", "Bearer $accessToken")
             }.build()
-            socket.ws = client.newWebSocket(request, socket.Listener(hostId, signer))
-            val finished = try {
-                socket.opened.await(timeoutMillis, TimeUnit.MILLISECONDS)
-            } catch (error: InterruptedException) {
-                socket.close()
-                Thread.currentThread().interrupt()
-                throw InterruptedIOException("relay open interrupted")
-            }
-            if (!finished) {
-                socket.finish(RelayException(RelayException.TIMEOUT), 1000, null)
-                throw RelayException(RelayException.TIMEOUT, message = "Relay session did not open in time")
-            }
-            socket.failure.get()?.let { throw it }
-            if (socket.closed) throw RelayException(socket.closeReason ?: RelayException.UNREACHABLE)
-            socket.openMillis = (System.nanoTime() - started) / 1_000_000
-            socket.established = true
-            socket.pinger = scheduler.scheduleWithFixedDelay(socket::pingOrClose, timings.pingMillis, timings.pingMillis,
-                TimeUnit.MILLISECONDS)
-            return socket
+            val ws = client.newWebSocket(request, socket.WsListener(hostId, signer))
+            socket.wire = WsWire(ws)
+            return socket.awaitOpened(started, timeoutMillis, streamConnectTimeout = null)
         }
+
+        /**
+         * Opens a session over a bidirectional HTTP stream transport (preferring HTTP/3 / QUIC) and
+         * completes the end-to-end handshake with [signer].
+         */
+        fun openStream(
+            transport: RelayStreamTransport,
+            baseUrl: String,
+            accessToken: String?,
+            hostId: String,
+            channel: RelayChannel,
+            signer: RelayDeviceSigner,
+            timeoutMillis: Long = 20_000,
+            connectTimeoutMillis: Int = 3_000,
+            timings: RelayTimings = RelayTimings(),
+        ): RelaySocket {
+            require(RelayIds.isHostId(hostId)) { "Invalid relay host id" }
+            val socket = RelaySocket(channel, timings)
+            val started = System.nanoTime()
+            val url = baseUrl.trimEnd('/') + "/v1/connect/$hostId?ch=${channel.wire}"
+            val headers = if (!accessToken.isNullOrEmpty()) mapOf("Authorization" to "Bearer $accessToken") else emptyMap()
+            val boundedConnect = minOf(connectTimeoutMillis.toLong(), timeoutMillis).toInt().coerceAtLeast(1)
+            val streamListener = socket.StreamListener(hostId, signer)
+            val raw = transport.openStream(url, headers, boundedConnect, streamListener)
+            socket.wire = StreamWire(raw)
+            return socket.awaitOpened(started, timeoutMillis, streamConnectTimeout = boundedConnect, streamListener = streamListener)
+        }
+    }
+
+    private fun awaitOpened(
+        started: Long,
+        timeoutMillis: Long,
+        streamConnectTimeout: Int? = null,
+        streamListener: StreamListener? = null,
+    ): RelaySocket {
+        val finished = try {
+            opened.await(timeoutMillis, TimeUnit.MILLISECONDS)
+        } catch (error: InterruptedException) {
+            close()
+            Thread.currentThread().interrupt()
+            throw InterruptedIOException("relay open interrupted")
+        }
+        if (!finished) {
+            val preOpen = streamConnectTimeout != null && streamListener?.openSeen == false
+            val err = if (preOpen) {
+                RelayException(RelayException.UNREACHABLE, message = "Relay stream did not connect in time")
+            } else {
+                RelayException(RelayException.TIMEOUT, message = "Relay session did not open in time")
+            }
+            finish(err, 1000, null)
+            throw err
+        }
+        failure.get()?.let { throw it }
+        if (closed) throw RelayException(closeReason ?: RelayException.UNREACHABLE)
+        openMillis = (System.nanoTime() - started) / 1_000_000
+        established = true
+        pinger = scheduler.scheduleWithFixedDelay(this::pingOrClose, timings.pingMillis, timings.pingMillis,
+            TimeUnit.MILLISECONDS)
+        return this
     }
 
     private fun pingOrClose() {
@@ -281,10 +360,11 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
 
     private enum class Stage { READY, CHALLENGE, VERDICT, OPEN }
 
-    private inner class Listener(private val hostId: String, private val signer: RelayDeviceSigner) : WebSocketListener() {
-        @Volatile private var stage = Stage.READY
+    private inner class SessionState(private val hostId: String, private val signer: RelayDeviceSigner) {
+        @Volatile var stage = Stage.READY
+            private set
 
-        override fun onMessage(webSocket: WebSocket, text: String) {
+        fun onText(text: String, via: Wire) {
             lastHeardNanos = System.nanoTime()
             if (text == "pong") {
                 pongWaiter?.countDown()
@@ -306,7 +386,7 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
                         val payload = RelayIds.sessionSignaturePayload(hostId, ready.sid, channel, nonce)
                         val auth = RelayAuth(device = RelayIds.b64u(signer.publicKeySpki), sig = RelayIds.b64u(signer.sign(payload)))
                         stage = Stage.VERDICT
-                        sendText(relayJson.encodeToString(auth), webSocket)
+                        sendText(relayJson.encodeToString(auth), via)
                     }
                     stage == Stage.VERDICT && message?.t == "ok" -> {
                         stage = Stage.OPEN
@@ -324,7 +404,7 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
             }
         }
 
-        override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+        fun onBinary(bytes: ByteString) {
             lastHeardNanos = System.nanoTime()
             if (stage != Stage.OPEN) {
                 finish(RelayException("bad_request", message = "Data before the handshake finished"), 4403, null)
@@ -334,14 +414,95 @@ class RelaySocket private constructor(private val channel: RelayChannel, private
             if (bytes.size > 0) incoming.offer(bytes)
         }
 
-        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+        fun onClosing(code: Int, reason: String) {
             val error = if (stage != Stage.OPEN) RelayException(reason.ifEmpty { RelayException.UNREACHABLE }) else null
             finish(error, 1000, reason.ifEmpty { null })
         }
 
-        override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            // After the handshake a failure is the link going away (reset, network change).
+        fun onFailure(t: Throwable, response: Response?) {
             finish(toRelayException(t, response), 1000, if (stage == Stage.OPEN) RelayException.UNREACHABLE else null)
+        }
+
+        fun onHttpFailure(status: Int, body: String) {
+            finish(toRelayException(status, body), 1000, if (stage == Stage.OPEN) RelayException.UNREACHABLE else null)
+        }
+    }
+
+    private inner class WsListener(hostId: String, signer: RelayDeviceSigner) : WebSocketListener() {
+        private val state = SessionState(hostId, signer)
+
+        override fun onMessage(webSocket: WebSocket, text: String) {
+            state.onText(text, WsWire(webSocket))
+        }
+
+        override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+            state.onBinary(bytes)
+        }
+
+        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            state.onClosing(code, reason)
+        }
+
+        override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            state.onFailure(t, response)
+        }
+    }
+
+    private inner class StreamListener(hostId: String, signer: RelayDeviceSigner) : RelayRawStreamListener {
+        private val state = SessionState(hostId, signer)
+        private val framer = RelayStreamFramer()
+        @Volatile var openSeen = false
+            private set
+
+        override fun onOpen(stream: RelayRawStream) {
+            openSeen = true
+            if (wire == null) wire = StreamWire(stream)
+            if (!stream.send(RelayStreamCodec.PRELUDE)) {
+                finish(RelayException(RelayException.UNREACHABLE, message = "Relay stream closed on open"), 1000, null)
+            }
+        }
+
+        override fun onBytes(stream: RelayRawStream, data: ByteArray, off: Int, len: Int) {
+            if (closed) return
+            val sw = StreamWire(stream)
+            for (ev in framer.push(data, off, len)) {
+                when (ev) {
+                    RelayStreamFramer.Event.Prelude -> Unit
+                    is RelayStreamFramer.Event.Text -> state.onText(ev.data, sw)
+                    is RelayStreamFramer.Event.Binary -> state.onBinary(ev.data)
+                    is RelayStreamFramer.Event.Close -> {
+                        state.onClosing(ev.code, ev.reason)
+                        return
+                    }
+                    RelayStreamFramer.Event.Oversize -> {
+                        finish(RelayException("frame_too_large"), 4413, "frame_too_large")
+                        return
+                    }
+                    is RelayStreamFramer.Event.Invalid -> {
+                        finish(RelayException("bad_request", message = ev.reason), 1008, "bad_request")
+                        return
+                    }
+                }
+                if (closed) return
+            }
+        }
+
+        override fun onHttpError(stream: RelayRawStream, status: Int, body: String) {
+            state.onHttpFailure(status, body)
+        }
+
+        override fun onFailure(stream: RelayRawStream, error: Throwable) {
+            val ex = (error as? RelayException) ?: RelayException(
+                RelayException.UNREACHABLE,
+                message = error.message ?: "Relay unreachable",
+                cause = error,
+            )
+            finish(ex, 1000, if (state.stage == Stage.OPEN) RelayException.UNREACHABLE else null)
+        }
+
+        override fun onClosed(stream: RelayRawStream) {
+            val error = if (state.stage != Stage.OPEN) RelayException(RelayException.UNREACHABLE) else null
+            finish(error, 1000, if (state.stage == Stage.OPEN) RelayException.UNREACHABLE else null)
         }
     }
 }
@@ -356,18 +517,22 @@ data class RelayTimings(val pingMillis: Long = 30_000, val graceMillis: Long = 2
     }
 }
 
+internal fun toRelayException(status: Int, body: String, cause: Throwable? = null): RelayException {
+    val error = runCatching { relayJson.decodeFromString<RelayError>(body) }.getOrNull()
+    return if (error != null) {
+        RelayException(error.reason, error.retryAfter, status, "Relay refused: ${error.reason}", cause)
+    } else {
+        RelayException(RelayException.PLATFORM, null, status, "Relay platform error HTTP $status", cause)
+    }
+}
+
 /** Maps a failed WebSocket upgrade to a protocol reason; non-relay responses become [RelayException.PLATFORM]. */
 internal fun toRelayException(t: Throwable, response: Response?): RelayException {
     if (response == null) {
         return RelayException(RelayException.UNREACHABLE, message = t.message ?: "Relay unreachable", cause = t)
     }
     val body = runCatching { response.peekBody(4096).string() }.getOrNull().orEmpty()
-    val error = runCatching { relayJson.decodeFromString<RelayError>(body) }.getOrNull()
-    return if (error != null) {
-        RelayException(error.reason, error.retryAfter, response.code, "Relay refused: ${error.reason}", t)
-    } else {
-        RelayException(RelayException.PLATFORM, null, response.code, "Relay platform error HTTP ${response.code}", t)
-    }
+    return toRelayException(response.code, body, t)
 }
 
 /** Token bucket for the session's upstream pace. Blocks the writer when empty. */

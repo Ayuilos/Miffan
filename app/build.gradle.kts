@@ -139,6 +139,8 @@ android {
         jniLibs {
             useLegacyPackaging = true
             pickFirsts += "lib/*/libtermux.so"
+            // libcronet.*.so (~6.5 MB/ABI) is downloaded on demand only when Relay HTTP/3 is needed.
+            excludes += "**/libcronet.*.so"
         }
         resources {
             // BouncyCastle 的 Picnic 后量子签名查找表（约 1.2MB），JSch 用不到
@@ -352,6 +354,10 @@ dependencies {
 
     // sqlite-android (requery SQLite for Android)
     implementation(libs.sqlite.android)
+
+    // Cronet API + Java/native bindings (native .so downloaded on demand; excluded from APK above)
+    implementation(libs.cronet.embedded)
+    implementation(libs.play.services.cronet)
 
     // modules
     implementation(project(":ai"))

@@ -41,9 +41,9 @@ relay 的基础地址记作 `BASE`（例如 `https://relay.miffan.ayuilos.me`）
 | 方法与路径 | 鉴权 | 用途 |
 |---|---|---|
 | `GET /v1/info` | 无 | 中转的能力、公开策略、入口候选 |
-| `GET /v1/host` (WS) | 访问码（若需要）+ 主机签名 | connector 控制连接 |
-| `GET /v1/host/{hostId}/session/{sid}` (WS) | `sid`（只有 connector 通过控制连接知道） | connector 的会话数据连接 |
-| `GET /v1/connect/{hostId}?ch={control\|media}` (WS) | 访问码（若需要） | App 的会话连接 |
+| `GET` (WS) 或 `POST` (Stream) `/v1/host` | 访问码（若需要）+ 主机签名 | connector 控制连接 |
+| `GET` (WS) 或 `POST` (Stream) `/v1/host/{hostId}/session/{sid}` | `sid`（只有 connector 通过控制连接知道） | connector 的会话数据连接 |
+| `GET` (WS) 或 `POST` (Stream) `/v1/connect/{hostId}?ch={control\|media}` | 访问码（若需要） | App 的会话连接 |
 | `GET /v1/admin/stats` | `Authorization: Bearer <ADMIN_TOKEN>` | 部署者查看全局用量 |
 
 访问码：`/v1/info` 的 `access` 为 `"token"` 时，connector 和 App 的 WebSocket 请求都必须带 `Authorization: Bearer <访问码>`，否则返回 401 `unauthorized`。`access` 为 `"open"` 时忽略该头。
@@ -56,7 +56,7 @@ relay 的基础地址记作 `BASE`（例如 `https://relay.miffan.ayuilos.me`）
   "impl": "worker",
   "version": "1.0.0",
   "access": "open",
-  "capabilities": { "dgram": "none" },
+  "capabilities": { "dgram": "none", "stream": true },
   "policy": { …§6.1 的策略对象… },
   "edges": ["104.17.5.5", "104.19.8.8"]
 }
@@ -64,19 +64,36 @@ relay 的基础地址记作 `BASE`（例如 `https://relay.miffan.ayuilos.me`）
 
 - `impl`：`"worker"`（Cloudflare）或 `"bun"`（VPS）。
 - `capabilities.dgram`：`"none"`（v1 固定），R2 增加 `"ws"`、`"udp"`。
+- `capabilities.stream`：可选布尔值；为 `true` 时表示服务端支持 §3.3 的 HTTP 双向流传输（主要用于 HTTP/3 over QUIC / UDP，无需 WebSocket `Upgrade`）。
 - `edges`：入口 IP 候选（IPv4 或 IPv6 文本），可为空。客户端按 §8 使用。
 
 ### 3.2 错误响应
 
-WebSocket 升级前的拒绝一律是 HTTP 错误，正文为 JSON：
+WebSocket 升级或 HTTP 流建立前的拒绝一律是 HTTP 错误，正文为 JSON：
 
 ```json
 { "reason": "host_offline", "retryAfter": 30 }
 ```
 
-`retryAfter`（秒）可选。原因码见 §9。WebSocket 建立之后的拒绝用关闭码（§9）。
+`retryAfter`（秒）可选。原因码见 §9。连接建立之后的拒绝用关闭码（§9）。
 
 客户端必须把**不是 JSON 或没有 `reason` 的错误响应**视为平台层拒绝（例如 Cloudflare 免费额度用完时的 1027 错误页），不得当作"电脑离线"。
+
+### 3.3 双向 HTTP 流传输（HTTP/3 / QUIC 兼容）
+
+为支持在 HTTP/3（QUIC over UDP）上直接建立全双工信道（无需 Extended CONNECT RFC 9220 或 WebSocket 升级头），当 `capabilities.stream` 为 `true` 时，三个连接端点同时支持 `POST` 双向字节流：
+
+- **请求**：方法为 `POST`，请求头 `Content-Type: application/x-miffan-relay-v1`。
+- **响应**：接受连接时返回 `200 OK`，`Content-Type: application/x-miffan-relay-v1`（及 `Cache-Control: no-store, no-transform`）；被拒绝时按 §3.2 返回非 200 HTTP 状态码与 JSON 错误体，不进入帧流。
+- **连接前奏与反向代理冲洗**：客户端与服务端应当在建流后立即发送 5 字节前奏帧（type `0x00`，length `0`），使反向代理和 TLS/HTTP/3 栈立刻冲洗响应头，而不等待第一条应用帧。
+- **帧格式**：请求体与响应体均由连续的帧组成，每帧为 5 字节头 + 载荷：
+  - `byte 0`：帧类型
+    - `0x00`：前奏 / 空操作帧（长度必须为 `0`；非 `0` 视为协议错误 `1008` 关闭）
+    - `0x01`：UTF-8 文本帧（长度 `<= 4,096`；超长以 `4413` 关闭，非法 UTF-8 以 `1008` 关闭）
+    - `0x02`：二进制帧（长度 `<= 65,536`；超长以 `4413` 关闭）
+    - `0x08`：关闭帧（载荷为 `0` 字节，或 `2..125` 字节：`uint16 BE` 关闭码 + UTF-8 `reason`）
+  - `bytes 1..4`：`uint32 BE` 载荷长度
+- 同一会话的 connector 侧与 App 侧可以分别使用 WebSocket 或 HTTP 流（由 relay 透明桥接），上层握手、限速、保活与关闭码语义完全一致。
 
 ## 4. connector 控制连接
 
@@ -106,7 +123,7 @@ connector                          relay
   "hostId": "…",
   "policy": { …§6.1… },
   "usage": { …§6.3… },
-  "capabilities": { "dgram": "none" }
+  "capabilities": { "dgram": "none", "stream": true }
 }
 ```
 

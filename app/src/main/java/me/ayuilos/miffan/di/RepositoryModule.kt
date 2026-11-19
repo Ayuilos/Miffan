@@ -149,10 +149,20 @@ val repositoryModule = module {
 
     single { NativeSshWorkspaceTransport }
     single {
+        me.ayuilos.miffan.data.repository.relay.CronetRelayStreamTransport(
+            context = get<android.content.Context>(),
+            okHttpClient = get(),
+        )
+    }
+    single {
+        me.rerere.workspace.relay.RelayClient(
+            infoStore = me.ayuilos.miffan.data.repository.relay.RelayInfoPrefsStore(get<android.content.Context>()),
+            streamTransport = get<me.ayuilos.miffan.data.repository.relay.CronetRelayStreamTransport>(),
+        )
+    }
+    single {
         me.ayuilos.miffan.data.repository.relay.RelayAccess(
-            me.rerere.workspace.relay.RelayClient(
-                infoStore = me.ayuilos.miffan.data.repository.relay.RelayInfoPrefsStore(get<android.content.Context>()),
-            ),
+            get(),
             me.ayuilos.miffan.data.repository.relay.RelayDeviceKeyStore(),
             me.ayuilos.miffan.data.repository.relay.RelayNetworkKey(get()),
         )

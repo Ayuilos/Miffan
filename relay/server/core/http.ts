@@ -4,13 +4,18 @@ import { HTTP_STATUS, isChannel, type Channel, type Reason } from "./codes.ts";
 import type { RelayConfig } from "./config.ts";
 import { HOST_ID_RE, SID_RE, b64uDecode, bearerToken, hostIdFromPub, secretEquals } from "./crypto.ts";
 import type { Rejection } from "./policy.ts";
+import { STREAM_CONTENT_TYPE } from "./stream.ts";
+
+export { STREAM_CONTENT_TYPE };
+
+export type TransportKind = "ws" | "stream";
 
 export type Route =
   | { kind: "info" }
   | { kind: "admin" }
-  | { kind: "host"; hostId: string; pub: Uint8Array; hint?: string }
-  | { kind: "data"; hostId: string; sid: string }
-  | { kind: "connect"; hostId: string; ch: Channel };
+  | { kind: "host"; transport?: TransportKind; hostId: string; pub: Uint8Array; hint?: string }
+  | { kind: "data"; transport?: TransportKind; hostId: string; sid: string }
+  | { kind: "connect"; transport?: TransportKind; hostId: string; ch: Channel };
 
 export interface Secrets {
   accessToken?: string;
@@ -44,8 +49,15 @@ export async function accessAllowed(cfg: RelayConfig, secrets: Secrets, headers:
   return secretEquals(bearerToken(headers.get("authorization")), secrets.accessToken);
 }
 
-function isUpgrade(req: Request): boolean {
-  return req.headers.get("upgrade")?.toLowerCase() === "websocket";
+function requestTransport(req: Request): TransportKind | null {
+  if (req.method === "GET") {
+    return req.headers.get("upgrade")?.toLowerCase() === "websocket" ? "ws" : null;
+  }
+  if (req.method === "POST") {
+    const ct = req.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+    return ct === STREAM_CONTENT_TYPE ? "stream" : null;
+  }
+  return null;
 }
 
 /**
@@ -56,31 +68,37 @@ export async function routeRequest(req: Request, cfg: RelayConfig, secrets: Secr
   const url = new URL(req.url);
   const parts = url.pathname.split("/").filter(Boolean);
   if (parts[0] !== "v1") return reject("bad_request", undefined, 404);
-  if (req.method !== "GET") return reject("bad_request", undefined, 405);
+  if (req.method !== "GET" && req.method !== "POST") return reject("bad_request", undefined, 405);
 
-  if (parts.length === 2 && parts[1] === "info") return { kind: "info" };
+  if (parts.length === 2 && parts[1] === "info") {
+    return req.method === "GET" ? { kind: "info" } : reject("bad_request", undefined, 405);
+  }
 
   if (parts.length === 3 && parts[1] === "admin" && parts[2] === "stats") {
+    if (req.method !== "GET") return reject("bad_request", undefined, 405);
     const ok = await secretEquals(bearerToken(req.headers.get("authorization")), secrets.adminToken);
     return ok ? { kind: "admin" } : reject("unauthorized");
   }
 
   if (parts[1] === "host" && parts.length === 5 && parts[3] === "session") {
     // The sid is the credential here, so there is no access-code check (PROTOCOL §3).
-    if (!isUpgrade(req)) return reject("bad_request");
+    const transport = requestTransport(req);
+    if (!transport) return reject("bad_request");
     const [hostId, sid] = [parts[2]!, parts[4]!];
     if (!HOST_ID_RE.test(hostId) || !SID_RE.test(sid)) return reject("bad_request");
-    return { kind: "data", hostId, sid };
+    return { kind: "data", transport, hostId, sid };
   }
 
   if (parts[1] === "host" && parts.length === 2) {
     if (!(await accessAllowed(cfg, secrets, req.headers))) return reject("unauthorized");
-    if (!isUpgrade(req)) return reject("bad_request");
+    const transport = requestTransport(req);
+    if (!transport) return reject("bad_request");
     const pub = b64uDecode(url.searchParams.get("pub") ?? "");
     if (!pub || pub.length !== 32) return reject("bad_request");
     const hint = url.searchParams.get("hint") ?? undefined;
     return {
       kind: "host",
+      transport,
       hostId: await hostIdFromPub(pub),
       pub,
       // An unknown hint is ignored rather than rejected so new regions do not break old relays.
@@ -90,10 +108,11 @@ export async function routeRequest(req: Request, cfg: RelayConfig, secrets: Secr
 
   if (parts[1] === "connect" && parts.length === 3) {
     if (!(await accessAllowed(cfg, secrets, req.headers))) return reject("unauthorized");
-    if (!isUpgrade(req)) return reject("bad_request");
+    const transport = requestTransport(req);
+    if (!transport) return reject("bad_request");
     const ch = url.searchParams.get("ch");
     if (!HOST_ID_RE.test(parts[2]!) || !isChannel(ch)) return reject("bad_request");
-    return { kind: "connect", hostId: parts[2]!, ch };
+    return { kind: "connect", transport, hostId: parts[2]!, ch };
   }
 
   return reject("bad_request", undefined, 404);

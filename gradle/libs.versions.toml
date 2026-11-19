@@ -68,6 +68,8 @@ jsch = "2.28.7"
 wire = "7.1.0"
 bouncycastle = "1.86"
 apacheSshd = "2.16.0"
+cronet = "143.7445.0"
+playServicesCronet = "18.1.0"
 
 [libraries]
 android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
@@ -192,6 +194,8 @@ slf4j-android = { module = "uk.uuid.slf4j:slf4j-android", version = "2.0.17-0" }
 sqlite-android = { module = "com.github.rikkahub:sqlite-android", version.ref = "sqlite-android" }
 termux-terminal-view = { module = "com.termux.termux-app:terminal-view", version.ref = "termux" }
 guava-listenablefuture = { module = "com.google.guava:listenablefuture", version = "9999.0-empty-to-avoid-conflict-with-guava" }
+cronet-embedded = { module = "org.chromium.net:cronet-embedded", version.ref = "cronet" }
+play-services-cronet = { module = "com.google.android.gms:play-services-cronet", version.ref = "playServicesCronet" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

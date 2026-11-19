@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/quic-go/quic-go"
 )
 
 // netEnv is everything the relay client takes from the network stack, so tests can substitute it.
@@ -27,11 +29,15 @@ type netEnv struct {
 	tlsConfig *tls.Config
 	// proxy returns a proxy for the relay URL, or nil.
 	proxy func(*http.Request) (*url.URL, error)
+	// quic enables HTTP/3 (QUIC over UDP) alongside WebSocket when talking to https relays.
+	quic bool
+	// quicDial overrides QUIC dialing in tests; nil uses quic.DialAddrEarly.
+	quicDial func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (*quic.Conn, error)
 }
 
 func defaultNetEnv() netEnv {
 	d := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
-	return netEnv{dial: d.DialContext, proxy: http.ProxyFromEnvironment}
+	return netEnv{dial: d.DialContext, proxy: http.ProxyFromEnvironment, quic: true}
 }
 
 // relayClient talks to one relay. The edge argument everywhere is a candidate from edge selection:
@@ -42,6 +48,7 @@ type relayClient struct {
 	base  *url.URL
 	token string
 	env   netEnv
+	h3    *h3Pool
 	// warm, when set, supplies an already connected TLS connection for WebSocket dials (warm.go).
 	warm *tlsWarmer
 	// warmed is what the last WebSocket dial got from warm (a relayClient serves one session).
@@ -195,8 +202,129 @@ func (c *relayClient) dialWS(ctx context.Context, edge, path string, withToken b
 	return conn, nil
 }
 
+func (c *relayClient) h3Enabled() bool {
+	return c.env.quic && c.base.Scheme == "https" && c.proxyURL() == nil
+}
+
+func (c *relayClient) pool() *h3Pool {
+	if c.h3 == nil {
+		c.h3 = newH3Pool()
+	}
+	return c.h3
+}
+
+func (c *relayClient) dnsEdgeCandidates(ctx context.Context) []string {
+	host := c.hostname()
+	if _, err := netip.ParseAddr(host); err == nil {
+		return nil
+	}
+	rCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	addrs, err := (&net.Resolver{}).LookupIPAddr(rCtx, host)
+	if err != nil {
+		return nil
+	}
+	var v4, v6 []string
+	seen := map[string]bool{}
+	for _, a := range addrs {
+		s := a.IP.String()
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		if a.IP.To4() != nil {
+			v4 = append(v4, s)
+		} else {
+			v6 = append(v6, s)
+		}
+	}
+	var out []string
+	for i := 0; len(out) < 4 && (i < len(v4) || i < len(v6)); i++ {
+		if i < len(v4) {
+			out = append(out, v4[i])
+		}
+		if i < len(v6) && len(out) < 4 {
+			out = append(out, v6[i])
+		}
+	}
+	return out
+}
+
+func (c *relayClient) dialStream(streamCtx, dialCtx context.Context, edge, path string, withToken bool) (*streamConn, error) {
+	reqCtx, cancelReq := context.WithCancel(streamCtx)
+	pr, pw := io.Pipe()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, c.base.String()+path, &streamBodyReader{
+		r: io.MultiReader(bytes.NewReader(streamPreludeBytes[:]), pr),
+		c: pr,
+	})
+	if err != nil {
+		_ = pw.Close()
+		_ = pr.Close()
+		cancelReq()
+		return nil, err
+	}
+	req.Header.Set("Content-Type", streamContentType)
+	if withToken && c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	stopWatch := context.AfterFunc(dialCtx, cancelReq)
+	h3c := &http.Client{
+		Transport:     c.pool().transportFor(c, edge),
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	res, err := h3c.Do(req)
+	notTimedOut := stopWatch()
+	if err != nil {
+		_ = pw.Close()
+		_ = pr.Close()
+		cancelReq()
+		if !notTimedOut && dialCtx.Err() != nil {
+			return nil, dialCtx.Err()
+		}
+		return nil, err
+	}
+	if !notTimedOut && dialCtx.Err() != nil {
+		_ = res.Body.Close()
+		_ = pw.Close()
+		_ = pr.Close()
+		cancelReq()
+		return nil, dialCtx.Err()
+	}
+	if res.StatusCode != http.StatusOK {
+		re := parseRelayError(res)
+		_ = res.Body.Close()
+		_ = pw.Close()
+		_ = pr.Close()
+		cancelReq()
+		return nil, re
+	}
+	return newStreamConn(cancelReq, pw, res.Body), nil
+}
+
+func (c *relayClient) dialStreamAny(streamCtx, dialCtx context.Context, edges []string, path string, withToken bool) (relayConn, string, error) {
+	var lastErr error
+	for _, edge := range edges {
+		if dialCtx.Err() != nil {
+			return nil, "", dialCtx.Err()
+		}
+		sc, err := c.dialStream(streamCtx, dialCtx, edge, path, withToken)
+		if err == nil {
+			return sc, edge, nil
+		}
+		var re *relayError
+		if errors.As(err, &re) {
+			return nil, edge, err
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = errors.New("no relay address to try")
+	}
+	return nil, "", lastErr
+}
+
 // dialWSAny tries the edges in order and stops at the first connection or the first relay answer.
-func (c *relayClient) dialWSAny(ctx context.Context, edges []string, path string, withToken bool) (*websocket.Conn, string, error) {
+func (c *relayClient) dialWSAny(ctx context.Context, edges []string, path string, withToken bool) (relayConn, string, error) {
 	var lastErr error
 	for _, edge := range edges {
 		if ctx.Err() != nil {
@@ -204,7 +332,7 @@ func (c *relayClient) dialWSAny(ctx context.Context, edges []string, path string
 		}
 		conn, err := c.dialWS(ctx, edge, path, withToken)
 		if err == nil {
-			return conn, edge, nil
+			return wsConn{conn}, edge, nil
 		}
 		var re *relayError
 		if errors.As(err, &re) {
@@ -238,12 +366,12 @@ func (c *relayClient) httpClient(edge string) *http.Client {
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
-func (c *relayClient) get(ctx context.Context, edge, path string, limit int64) ([]byte, error) {
+func (c *relayClient) getOnce(ctx context.Context, client *http.Client, path string, limit int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.base.String()+path, nil)
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.httpClient(edge).Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -254,9 +382,59 @@ func (c *relayClient) get(ctx context.Context, edge, path string, limit int64) (
 	return io.ReadAll(io.LimitReader(res.Body, limit))
 }
 
+func (c *relayClient) get(ctx context.Context, edge, path string, limit int64) ([]byte, error) {
+	if !c.h3Enabled() || edge == edgeProxy {
+		return c.getOnce(ctx, c.httpClient(edge), path, limit)
+	}
+	h3Edges := []string{edge}
+	if edge == "" {
+		if dnsEdges := c.dnsEdgeCandidates(ctx); len(dnsEdges) > 0 {
+			h3Edges = append(dnsEdges, "")
+		}
+	}
+	type res struct {
+		b   []byte
+		err error
+	}
+	raceCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	total := 1 + len(h3Edges)
+	ch := make(chan res, total)
+	go func() {
+		b, err := c.getOnce(raceCtx, c.httpClient(edge), path, limit)
+		ch <- res{b, err}
+	}()
+	for _, he := range h3Edges {
+		he := he
+		go func() {
+			hc := &http.Client{
+				Transport:     c.pool().transportFor(c, he),
+				Timeout:       10 * time.Second,
+				CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+			}
+			b, err := c.getOnce(raceCtx, hc, path, limit)
+			ch <- res{b, err}
+		}()
+	}
+	var lastErr error
+	for i := 0; i < total; i++ {
+		r := <-ch
+		if r.err == nil {
+			cancel()
+			return r.b, nil
+		}
+		lastErr = r.err
+	}
+	return nil, lastErr
+}
+
 type relayInfo struct {
-	Access string   `json:"access"`
-	Edges  []string `json:"edges"`
+	Access       string   `json:"access"`
+	Edges        []string `json:"edges"`
+	Capabilities struct {
+		Dgram  string `json:"dgram"`
+		Stream bool   `json:"stream"`
+	} `json:"capabilities"`
 }
 
 // info fetches /v1/info. Failures are not fatal: the connector then just uses the default address.
@@ -321,8 +499,7 @@ func parseEdges(in []string) []string {
 	return out
 }
 
-// probe measures TCP connect plus TLS handshake to the relay host through one candidate.
-func (c *relayClient) probe(ctx context.Context, edge string) (time.Duration, error) {
+func (c *relayClient) probeTCP(ctx context.Context, edge string) (time.Duration, error) {
 	ctx, cancel := context.WithTimeout(ctx, edgeProbeTime)
 	defer cancel()
 	start := time.Now()
@@ -338,6 +515,104 @@ func (c *relayClient) probe(ctx context.Context, edge string) (time.Duration, er
 		}
 	}
 	return time.Since(start), nil
+}
+
+func (c *relayClient) probeH3(ctx context.Context, edge string) (time.Duration, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	start := time.Now()
+	hc := &http.Client{
+		Transport:     c.pool().transportFor(c, edge),
+		Timeout:       3 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	if _, err := c.getOnce(ctx, hc, "/v1/info", 64<<10); err != nil {
+		return 0, err
+	}
+	return time.Since(start), nil
+}
+
+// probe measures TCP/TLS (and H3 when QUIC is enabled) latency to the relay host through one candidate.
+func (c *relayClient) probe(ctx context.Context, edge string) (time.Duration, error) {
+	if !c.h3Enabled() || edge == edgeProxy {
+		return c.probeTCP(ctx, edge)
+	}
+	type res struct {
+		d   time.Duration
+		err error
+	}
+	ch := make(chan res, 2)
+	go func() {
+		d, err := c.probeTCP(ctx, edge)
+		ch <- res{d, err}
+	}()
+	go func() {
+		d, err := c.probeH3(ctx, edge)
+		ch <- res{d, err}
+	}()
+	r1 := <-ch
+	if r1.err == nil {
+		return r1.d, nil
+	}
+	r2 := <-ch
+	return r2.d, r2.err
+}
+
+type edgeRoute struct {
+	edge   string
+	stream bool
+	d      time.Duration
+}
+
+func (c *relayClient) rankRoutes(ctx context.Context, candidates []string) ([]edgeRoute, []string) {
+	all := append([]string{""}, candidates...)
+	type probeRes struct {
+		route edgeRoute
+		ok    bool
+	}
+	results := make([]probeRes, len(all)*2)
+	var wg sync.WaitGroup
+	for i, e := range all {
+		wg.Add(2)
+		go func(idx int, edge string) {
+			defer wg.Done()
+			d, err := c.probeH3(ctx, edge)
+			results[idx] = probeRes{edgeRoute{edge: edge, stream: true, d: d}, err == nil}
+		}(i*2, e)
+		go func(idx int, edge string) {
+			defer wg.Done()
+			d, err := c.probeTCP(ctx, edge)
+			results[idx] = probeRes{edgeRoute{edge: edge, stream: false, d: d}, err == nil}
+		}(i*2+1, e)
+	}
+	wg.Wait()
+
+	var routes []edgeRoute
+	for _, r := range results {
+		if r.ok {
+			routes = append(routes, r.route)
+		}
+	}
+	sort.SliceStable(routes, func(a, b int) bool {
+		// Prefer stream (H3 over UDP) first, fastest RTT within each transport.
+		if routes[a].stream != routes[b].stream {
+			return routes[a].stream
+		}
+		return routes[a].d < routes[b].d
+	})
+
+	var edges []string
+	seen := map[string]bool{}
+	for _, rt := range routes {
+		if !seen[rt.edge] {
+			seen[rt.edge] = true
+			edges = append(edges, rt.edge)
+		}
+	}
+	if !seen[""] {
+		edges = append(edges, "")
+	}
+	return routes, edges
 }
 
 // rankEdges probes the default address and every candidate in parallel and returns them fastest first.
@@ -382,12 +657,14 @@ func (c *relayClient) rankEdges(ctx context.Context, candidates []string) []stri
 
 // edgeSelector caches the ranked candidate list for up to an hour.
 type edgeSelector struct {
-	mu      sync.Mutex
-	client  *relayClient
-	now     func() time.Time
-	ranked  []string
-	chosen  time.Time
-	hasInfo bool
+	mu            sync.Mutex
+	client        *relayClient
+	now           func() time.Time
+	ranked        []string
+	routes        []edgeRoute
+	chosen        time.Time
+	hasInfo       bool
+	streamCapable bool
 }
 
 func newEdgeSelector(c *relayClient) *edgeSelector {
@@ -404,18 +681,43 @@ func (s *edgeSelector) get(ctx context.Context, force bool) []string {
 	}
 	if s.client.proxyURL() != nil {
 		s.ranked = []string{edgeProxy}
+		s.routes = nil
 		s.chosen = s.now()
 		return append([]string(nil), s.ranked...)
 	}
 	var candidates []string
 	infoCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	if info, err := s.client.info(infoCtx); err == nil {
+		s.hasInfo = true
+		s.streamCapable = info.Capabilities.Stream
 		candidates = parseEdges(info.Edges)
 	}
 	cancel()
-	s.ranked = s.client.rankEdges(ctx, candidates)
+	if s.client.h3Enabled() {
+		if len(candidates) == 0 {
+			candidates = s.client.dnsEdgeCandidates(ctx)
+		}
+		s.routes, s.ranked = s.client.rankRoutes(ctx, candidates)
+	} else {
+		s.routes = nil
+		s.ranked = s.client.rankEdges(ctx, candidates)
+	}
 	s.chosen = s.now()
 	return append([]string(nil), s.ranked...)
+}
+
+func (s *edgeSelector) snapshot() (edges []string, routes []edgeRoute, hasInfo, streamCapable bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.ranked) > 0 {
+		edges = append([]string(nil), s.ranked...)
+	} else {
+		edges = []string{""}
+	}
+	if len(s.routes) > 0 {
+		routes = append([]edgeRoute(nil), s.routes...)
+	}
+	return edges, routes, s.hasInfo, s.streamCapable
 }
 
 // describeEdge is what `status` shows for the chosen edge.

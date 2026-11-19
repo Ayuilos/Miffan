@@ -3,6 +3,7 @@
 import { randomBytes } from "node:crypto";
 import request from "node:http";
 import net from "node:net";
+import { encodeStreamClose, encodeStreamFrame, STREAM_CONTENT_TYPE, STREAM_PRELUDE, StreamDecoder } from "../../core/stream.ts";
 
 export type Msg = string | Uint8Array;
 
@@ -266,3 +267,172 @@ export async function getJson(url: string, headers: Record<string, string> = {})
 }
 
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Bidirectional framed HTTP POST client (`application/x-miffan-relay-v1`) matching `Conn`'s API. */
+export class StreamConn {
+  readonly messages: Msg[] = [];
+  closed?: CloseInfo;
+  readonly closePromise: Promise<CloseInfo>;
+  private waiters: (() => void)[] = [];
+  private decoder = new StreamDecoder();
+  private sentClose = false;
+  private resolveClose!: (c: CloseInfo) => void;
+
+  private constructor(
+    private req: request.ClientRequest,
+    private res: request.IncomingMessage,
+  ) {
+    this.closePromise = new Promise((resolve) => (this.resolveClose = resolve));
+    res.on("data", (d: Buffer) => this.onData(new Uint8Array(d.buffer, d.byteOffset, d.byteLength)));
+    res.on("end", () => this.finish({ code: 1006, reason: "" }));
+    res.on("error", () => this.finish({ code: 1006, reason: "" }));
+    req.on("error", () => this.finish({ code: 1006, reason: "" }));
+  }
+
+  static open(url: string, headers: Record<string, string> = {}): Promise<StreamConn> {
+    const u = new URL(url);
+    return new Promise((resolve, reject) => {
+      const req = request.request(
+        {
+          host: u.hostname,
+          port: u.port,
+          path: u.pathname + u.search,
+          method: "POST",
+          headers: { "content-type": STREAM_CONTENT_TYPE, ...headers },
+        },
+        (res) => {
+          if (res.statusCode !== 200) {
+            let body = "";
+            res.on("data", (c) => (body += c));
+            res.on("end", () => reject(new Error(`stream refused (${res.statusCode}): ${body}`)));
+            return;
+          }
+          resolve(new StreamConn(req, res));
+        },
+      );
+      req.on("error", reject);
+      req.write(STREAM_PRELUDE);
+    });
+  }
+
+  private wake(): void {
+    for (const w of this.waiters.splice(0)) w();
+  }
+
+  private finish(info: CloseInfo): void {
+    if (this.closed) return;
+    this.closed = info;
+    this.resolveClose(info);
+    this.wake();
+    try {
+      this.res.destroy();
+      this.req.destroy();
+    } catch {
+      // ignore
+    }
+  }
+
+  private onData(chunk: Uint8Array): void {
+    for (const ev of this.decoder.push(chunk)) {
+      if (ev.kind === "prelude") continue;
+      if (ev.kind === "text" || ev.kind === "binary") {
+        this.messages.push(ev.data);
+        this.wake();
+      } else if (ev.kind === "close") {
+        this.finish({ code: ev.code, reason: ev.reason });
+        return;
+      } else {
+        this.finish({ code: 1002, reason: ev.kind });
+        return;
+      }
+    }
+  }
+
+  send(m: Msg): void {
+    if (this.closed) return;
+    this.req.write(encodeStreamFrame(m));
+  }
+
+  close(code = 1000, reason = ""): void {
+    if (this.sentClose) return;
+    this.sentClose = true;
+    this.req.write(encodeStreamClose(code, reason));
+    this.req.end();
+  }
+
+  async next(timeoutMs = 5000): Promise<Msg> {
+    const deadline = Date.now() + timeoutMs;
+    while (this.messages.length === 0) {
+      if (this.closed) throw new Error(`closed (${this.closed.code} ${this.closed.reason}) while waiting for a message`);
+      const left = deadline - Date.now();
+      if (left <= 0) throw new Error("timed out waiting for a message");
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, left);
+        this.waiters.push(() => {
+          clearTimeout(t);
+          resolve();
+        });
+      });
+    }
+    return this.messages.shift()!;
+  }
+
+  async nextText(timeoutMs?: number): Promise<string> {
+    const m = await this.next(timeoutMs);
+    if (typeof m !== "string") throw new Error("expected a text frame, got binary");
+    return m;
+  }
+
+  async nextJson<T = Record<string, unknown>>(timeoutMs?: number): Promise<T> {
+    return JSON.parse(await this.nextText(timeoutMs)) as T;
+  }
+
+  async nextBinary(timeoutMs?: number): Promise<Uint8Array> {
+    const m = await this.next(timeoutMs);
+    if (typeof m === "string") throw new Error("expected a binary frame, got text: " + m);
+    return m;
+  }
+
+  async waitClosed(timeoutMs = 5000): Promise<CloseInfo> {
+    return Promise.race([
+      this.closePromise,
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timed out waiting for close")), timeoutMs)),
+    ]);
+  }
+}
+
+export function streamAttempt(url: string, headers: Record<string, string> = {}): Promise<HttpResult> {
+  const u = new URL(url);
+  return new Promise((resolve, reject) => {
+    const req = request.request(
+      {
+        host: u.hostname,
+        port: u.port,
+        path: u.pathname + u.search,
+        method: "POST",
+        headers: { "content-type": STREAM_CONTENT_TYPE, ...headers },
+      },
+      (res) => {
+        if (res.statusCode === 200) {
+          res.destroy();
+          req.destroy();
+          resolve({ status: 200, json: null, headers: res.headers });
+          return;
+        }
+        let body = "";
+        res.on("data", (c) => (body += c));
+        res.on("end", () => {
+          let json: Record<string, unknown> | null = null;
+          try {
+            json = JSON.parse(body);
+          } catch {
+            // not JSON
+          }
+          resolve({ status: res.statusCode ?? 0, json, headers: res.headers });
+        });
+      },
+    );
+    req.on("error", reject);
+    req.end(STREAM_PRELUDE);
+  });
+}

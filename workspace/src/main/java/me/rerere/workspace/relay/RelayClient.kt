@@ -1,7 +1,10 @@
 package me.rerere.workspace.relay
 
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.Inet4Address
+import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -79,6 +82,8 @@ class RelayClient(
     private val pinnedConnectTimeoutMillis: Long = 3_000,
     /** Replaces the TLS handshake probe in tests: handshake nanos, or null when the entry failed. */
     private val edgeProbe: ((host: String, port: Int, ip: String?) -> Long?)? = null,
+    /** Optional HTTP/3 / bidirectional stream transport (implemented in `:app` with Cronet). */
+    private val streamTransport: RelayStreamTransport? = null,
 ) {
     private val client = baseClient.newBuilder()
         // SSH sends small packets back to back; Nagle's algorithm would hold each behind the previous ACK.
@@ -128,20 +133,59 @@ class RelayClient(
     }
 
     private fun fetchInfo(key: String): RelayInfo {
+        streamTransport?.startWarmup()
         val now = System.currentTimeMillis()
+        val (info, rawJson) = fetchInfoPair(key)
+        if (info.v != 1) throw RelayException("unsupported_version", message = "Relay speaks protocol v${info.v}")
+        infoCache[key] = now to info
+        runCatching { infoStore?.write(key, StoredRelayInfo(now, rawJson)) }
+        return info
+    }
+
+    private fun fetchInfoPair(key: String): Pair<RelayInfo, String> {
+        val st = streamTransport ?: return fetchInfoViaOkHttp(key)
+        if (!st.isAvailable()) {
+            try {
+                return fetchInfoViaOkHttp(key)
+            } catch (error: IOException) {
+                if (error is RelayException && error.httpStatus != null) throw error
+                if (!st.ensureReady()) throw error
+                return fetchInfoViaStream(st, key)
+            }
+        }
+
+        val done = ExecutorCompletionService<Result<Pair<RelayInfo, String>>>(probes)
+        done.submit { runCatching { fetchInfoViaStream(st, key) } }
+        done.submit { runCatching { fetchInfoViaOkHttp(key) } }
+        var firstError: Throwable? = null
+        repeat(2) {
+            val res = done.take().get()
+            res.getOrNull()?.let { return it }
+            val err = res.exceptionOrNull()
+            if (firstError == null || (err is RelayException && err.httpStatus != null)) {
+                firstError = err
+            }
+        }
+        throw (firstError as? IOException) ?: IOException(firstError)
+    }
+
+    private fun fetchInfoViaOkHttp(key: String): Pair<RelayInfo, String> {
         val request = Request.Builder().url("$key/v1/info").build()
-        val info = client.newBuilder().readTimeout(10, TimeUnit.SECONDS).build().newCall(request).execute().use { response ->
+        return client.newBuilder().readTimeout(10, TimeUnit.SECONDS).build().newCall(request).execute().use { response ->
             val body = response.body.string()
             if (!response.isSuccessful) {
-                val error = runCatching { relayJson.decodeFromString<RelayError>(body) }.getOrNull()
-                throw RelayException(error?.reason ?: RelayException.PLATFORM, error?.retryAfter, response.code)
+                throw toRelayException(response.code, body)
             }
             relayJson.decodeFromString<RelayInfo>(body) to body
         }
-        if (info.first.v != 1) throw RelayException("unsupported_version", message = "Relay speaks protocol v${info.first.v}")
-        infoCache[key] = now to info.first
-        runCatching { infoStore?.write(key, StoredRelayInfo(now, info.second)) }
-        return info.first
+    }
+
+    private fun fetchInfoViaStream(transport: RelayStreamTransport, key: String): Pair<RelayInfo, String> {
+        val response = transport.get("$key/v1/info", timeoutMillis = 5_000)
+        if (response.status !in 200..299) {
+            throw toRelayException(response.status, response.body)
+        }
+        return relayJson.decodeFromString<RelayInfo>(response.body) to response.body
     }
 
     /** Forgets entry choices, for example after the phone switched between Wi-Fi and mobile data. */
@@ -177,8 +221,37 @@ class RelayClient(
         return chooseEdges(endpoint, key, candidates)
     }
 
-    private fun candidates(endpoint: RelayEndpoint): List<String?> =
-        infoForEdges(endpoint)?.edges.orEmpty().distinct() + null
+    private fun candidates(endpoint: RelayEndpoint): List<String?> {
+        val explicit = infoForEdges(endpoint)?.edges.orEmpty().distinct()
+        if (explicit.isNotEmpty()) return explicit + null
+        val st = streamTransport
+        if (st != null && edgeProbe == null && endpoint.baseUrl.startsWith("https://", ignoreCase = true) && !isIpLiteral(endpoint.host)) {
+            val split = splitDnsCandidates(endpoint.host)
+            if (split.size > 1) return split + null
+        }
+        return listOf(null)
+    }
+
+    private fun isIpLiteral(host: String): Boolean {
+        val clean = host.removePrefix("[").removeSuffix("]")
+        if (clean.contains(':')) return true
+        val parts = clean.split('.')
+        return parts.size == 4 && parts.all { it.toIntOrNull() in 0..255 }
+    }
+
+    private fun splitDnsCandidates(host: String): List<String> = runCatching {
+        val addrs = InetAddress.getAllByName(host)
+        val v4 = addrs.filterIsInstance<Inet4Address>().mapNotNull { it.hostAddress }.distinct()
+        val v6 = addrs.filterIsInstance<Inet6Address>().mapNotNull { it.hostAddress?.substringBefore('%') }.distinct()
+        val out = ArrayList<String>(4)
+        var i = 0
+        while (out.size < 4 && (i < v4.size || i < v6.size)) {
+            if (i < v4.size) out += v4[i]
+            if (i < v6.size && out.size < 4) out += v6[i]
+            i++
+        }
+        out
+    }.getOrDefault(emptyList())
 
     /**
      * Probes every candidate in parallel but answers once the fastest has answered and the others
@@ -300,6 +373,62 @@ class RelayClient(
         signer: RelayDeviceSigner,
         networkKey: String,
         timeoutMillis: Long = 20_000,
+    ): RelaySocket {
+        val st = streamTransport
+        st?.startWarmup()
+        val cachedInfo = runCatching { infoForEdges(endpoint) }.getOrNull()
+
+        // Prefer HTTP/3 / stream first when supported and already initialized (sequentially, never racing two connects).
+        if (st != null && cachedInfo?.capabilities?.stream == true && st.isAvailable()) {
+            try {
+                return openViaStream(st, endpoint, hostId, channel, signer, timeoutMillis)
+            } catch (error: RelayException) {
+                val streamUnsupported = error.httpStatus == 405 || error.httpStatus == 501
+                if (error.reason != RelayException.UNREACHABLE && !streamUnsupported) throw error
+                return openViaOkHttp(endpoint, hostId, channel, signer, networkKey, timeoutMillis)
+            }
+        }
+
+        try {
+            return openViaOkHttp(endpoint, hostId, channel, signer, networkKey, timeoutMillis)
+        } catch (error: RelayException) {
+            if (error.reason != RelayException.UNREACHABLE || st == null) throw error
+            if (!st.isAvailable() && !st.ensureReady()) throw error
+            val freshInfo = cachedInfo?.takeIf { it.capabilities.stream }
+                ?: runCatching { fetchInfo(endpoint.baseUrl.trimEnd('/')) }.getOrNull()
+            if (freshInfo?.capabilities?.stream != true) throw error
+            return openViaStream(st, endpoint, hostId, channel, signer, timeoutMillis)
+        }
+    }
+
+    private fun openViaStream(
+        transport: RelayStreamTransport,
+        endpoint: RelayEndpoint,
+        hostId: String,
+        channel: RelayChannel,
+        signer: RelayDeviceSigner,
+        timeoutMillis: Long,
+    ): RelaySocket = RelaySocket.openStream(
+        transport = transport,
+        baseUrl = endpoint.baseUrl,
+        accessToken = endpoint.accessToken,
+        hostId = hostId,
+        channel = channel,
+        signer = signer,
+        timeoutMillis = timeoutMillis,
+        connectTimeoutMillis = pinnedConnectTimeoutMillis.toInt(),
+    ).also { socket ->
+        live += socket
+        socket.addCloseListener { live -= it }
+    }
+
+    private fun openViaOkHttp(
+        endpoint: RelayEndpoint,
+        hostId: String,
+        channel: RelayChannel,
+        signer: RelayDeviceSigner,
+        networkKey: String,
+        timeoutMillis: Long,
     ): RelaySocket {
         val entries = entryAttempts(edges(endpoint, networkKey))
         var last: RelayException? = null

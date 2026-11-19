@@ -171,13 +171,13 @@ export const RELAY_VERSION = "1.0.0";
 
 export type Impl = "worker" | "bun";
 
-export function infoDocument(cfg: RelayConfig, impl: Impl) {
+export function infoDocument(cfg: RelayConfig, impl: Impl, stream = true) {
   return {
     v: 1,
     impl,
     version: RELAY_VERSION,
     access: cfg.accessMode,
-    capabilities: { dgram: "none" as const },
+    capabilities: { dgram: "none" as const, ...(stream ? { stream: true } : {}) },
     policy: publicPolicy(cfg),
     edges: cfg.edges,
   };

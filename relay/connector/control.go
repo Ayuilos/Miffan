@@ -61,10 +61,47 @@ type link struct {
 	url   string
 	token string
 
-	selMu    sync.Mutex
-	selURL   string
-	selector *edgeSelector
-	warm     *tlsWarmer // spare TLS connection for session data connections, while the control link is up
+	selMu         sync.Mutex
+	selURL        string
+	selector      *edgeSelector
+	warm          *tlsWarmer // spare TLS connection for session data connections, while the control link is up
+	h3            *h3Pool
+	activeEdge    string
+	viaStream     bool
+	streamCapable bool
+}
+
+func (l *link) ensureH3Pool() *h3Pool {
+	l.selMu.Lock()
+	defer l.selMu.Unlock()
+	if l.h3 == nil {
+		l.h3 = newH3Pool()
+	}
+	return l.h3
+}
+
+func (l *link) closeH3Pool() {
+	l.selMu.Lock()
+	h3 := l.h3
+	l.h3 = nil
+	l.selMu.Unlock()
+	if h3 != nil {
+		h3.closeAll()
+	}
+}
+
+func (l *link) setControlMeta(viaStream bool, edge string, streamCapable bool) {
+	l.selMu.Lock()
+	l.viaStream = viaStream
+	l.activeEdge = edge
+	l.streamCapable = streamCapable
+	l.selMu.Unlock()
+}
+
+func (l *link) sessionPrefs() (viaStream bool, activeEdge string, streamCapable bool, h3 *h3Pool) {
+	l.selMu.Lock()
+	defer l.selMu.Unlock()
+	return l.viaStream, l.activeEdge, l.streamCapable, l.h3
 }
 
 func (l *link) setWarmer(w *tlsWarmer) {
@@ -239,6 +276,7 @@ func (c *connector) run(ctx context.Context) {
 
 // run keeps this relay's control connection up until ctx ends.
 func (l *link) run(ctx context.Context) {
+	defer l.closeH3Pool()
 	c := l.c
 	l.c.update(l.url, func(s *state) { s.Connected = false })
 	backoff := c.timing.backoffMin
@@ -286,6 +324,7 @@ func (l *link) controlOnce(ctx context.Context, forceProbe bool) (out outcome) {
 	if err != nil {
 		return outcome{err: err, reason: "bad_config", wait: c.timing.longRetry}
 	}
+	client.h3 = l.ensureH3Pool()
 	sel := l.selectorFor(client)
 	edges := sel.get(ctx, forceProbe)
 	if ctx.Err() != nil {
@@ -299,7 +338,7 @@ func (l *link) controlOnce(ctx context.Context, forceProbe bool) (out outcome) {
 		}
 	}
 	dialCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	ws, edge, err := client.dialWSAny(dialCtx, edges, path, true)
+	ws, edge, viaStream, err := l.dialControl(ctx, dialCtx, client, sel, edges, path)
 	cancel()
 	if err != nil {
 		var re *relayError
@@ -333,12 +372,16 @@ func (l *link) controlOnce(ctx context.Context, forceProbe bool) (out outcome) {
 		return outcome{err: err, reason: "network", network: true}
 	}
 	var hello struct {
-		T     string
-		Usage json.RawMessage
+		T            string
+		Usage        json.RawMessage
+		Capabilities struct {
+			Stream bool `json:"stream"`
+		} `json:"capabilities"`
 	}
 	if err := readJSON(ws, &hello); err != nil || hello.T != "hello" {
 		return handshakeFailure(err, "protocol", c.timing)
 	}
+	l.setControlMeta(viaStream, edge, hello.Capabilities.Stream)
 
 	c.update(l.url, func(s *state) {
 		now := time.Now().UTC().Format(time.RFC3339)
@@ -353,8 +396,8 @@ func (l *link) controlOnce(ctx context.Context, forceProbe bool) (out outcome) {
 	})
 	c.log.printf("connected to relay %s as %s via %s", l.url, c.id.hostID, describeEdge(edge))
 
-	// Keep a TLS connection ready for the next session's data connection (not through a proxy).
-	if client.base.Scheme == "https" && edge != edgeProxy {
+	// Keep a TLS connection ready for the next session's data connection (when on TCP WS without H3).
+	if !viaStream && client.base.Scheme == "https" && edge != edgeProxy {
 		w := newTLSWarmer(client, edge)
 		wctx, wcancel := context.WithCancel(ctx)
 		go w.run(wctx)
@@ -417,7 +460,7 @@ func (l *link) controlOnce(ctx context.Context, forceProbe bool) (out outcome) {
 	}
 }
 
-func readJSON(ws *websocket.Conn, v any) error {
+func readJSON(ws relayConn, v any) error {
 	kind, data, err := ws.ReadMessage()
 	if err != nil {
 		return err
@@ -437,9 +480,8 @@ func handshakeFailure(err error, fallback string, t timing) outcome {
 
 // classifyClose turns a read error into an outcome.
 func classifyClose(err error, established bool, t timing) outcome {
-	var ce *websocket.CloseError
-	if errors.As(err, &ce) {
-		switch ce.Code {
+	if code, _, ok := asRelayClose(err); ok {
+		switch code {
 		case 4000:
 			return outcome{err: err, reason: "replaced", established: established}
 		case 4401:
@@ -471,6 +513,51 @@ func relayRefusal(re *relayError, t timing) outcome {
 	return out
 }
 
+func (l *link) dialControl(streamCtx, dialCtx context.Context, client *relayClient, sel *edgeSelector, edges []string, path string) (relayConn, string, bool, error) {
+	if !client.h3Enabled() {
+		conn, edge, err := client.dialWSAny(dialCtx, edges, path, true)
+		return conn, edge, false, err
+	}
+	_, routes, hasInfo, streamCapable := sel.snapshot()
+	if hasInfo && !streamCapable {
+		conn, edge, err := client.dialWSAny(dialCtx, edges, path, true)
+		return conn, edge, false, err
+	}
+	var h3Edges []string
+	var wsEdges []string
+	seenH3 := map[string]bool{}
+	seenWS := map[string]bool{}
+	for _, rt := range routes {
+		if rt.stream && !seenH3[rt.edge] {
+			seenH3[rt.edge] = true
+			h3Edges = append(h3Edges, rt.edge)
+		} else if !rt.stream && !seenWS[rt.edge] {
+			seenWS[rt.edge] = true
+			wsEdges = append(wsEdges, rt.edge)
+		}
+	}
+	if !hasInfo && len(h3Edges) == 0 {
+		h3Edges = edges
+	}
+	if len(wsEdges) == 0 {
+		wsEdges = edges
+	}
+	if len(h3Edges) > 0 {
+		h3Ctx, h3Cancel := context.WithTimeout(dialCtx, 6*time.Second)
+		conn, edge, err := client.dialStreamAny(streamCtx, h3Ctx, h3Edges, path, true)
+		h3Cancel()
+		if err == nil {
+			return conn, edge, true, nil
+		}
+		var re *relayError
+		if errors.As(err, &re) && re.Status != 405 && re.Status != 501 {
+			return nil, edge, false, err
+		}
+	}
+	conn, edge, err := client.dialWSAny(dialCtx, wsEdges, path, true)
+	return conn, edge, false, err
+}
+
 func (l *link) startSession(ctx context.Context, sid, ch string, p pace) {
 	c := l.c
 	if !sidPattern.MatchString(sid) || (ch != "control" && ch != "media") {
@@ -485,11 +572,12 @@ func (l *link) startSession(ctx context.Context, sid, ch string, p pace) {
 	}
 	edges := l.cachedEdges()
 	warm := l.warmer()
+	viaStream, activeEdge, streamCapable, h3 := l.sessionPrefs()
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 		defer func() { <-c.sessions }()
-		c.session(ctx, l, sid, ch, p, edges, warm)
+		c.session(ctx, l, sid, ch, p, edges, warm, viaStream, activeEdge, streamCapable, h3)
 	}()
 }
 

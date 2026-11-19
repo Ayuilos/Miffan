@@ -15,6 +15,7 @@ import {
   wsUrl,
   type ReadyMsg,
 } from "../client/client.ts";
+import { StreamConn, streamAttempt } from "../client/conn.ts";
 import { newDeviceKey, newHostKey, verifySession } from "../client/keys.ts";
 import { ADMIN_TOKEN, ACCESS_TOKEN } from "./profiles.ts";
 
@@ -37,7 +38,7 @@ describe("info", () => {
     expect(j.impl).toBe(IMPL);
     expect(typeof j.version).toBe("string");
     expect(j.access).toBe("open");
-    expect(j.capabilities).toEqual({ dgram: "none" });
+    expect(j.capabilities).toEqual(IMPL === "bun" ? { dgram: "none", stream: true } : { dgram: "none" });
     expect(j.edges).toEqual(["104.17.5.5", "104.19.8.8"]);
     expect(j.policy.access).toEqual({ mode: "open", registrationsPerIpPerDay: 60 });
     expect(j.policy.control).toEqual({ kbps: 100, burstKb: 32 });
@@ -76,7 +77,7 @@ describe("host authentication", () => {
     const key = await newHostKey();
     const host = await HostControl.connect(A, key);
     expect(host.hello.hostId).toBe(key.hostId);
-    expect(host.hello.capabilities).toEqual({ dgram: "none" });
+    expect(host.hello.capabilities).toEqual(IMPL === "bun" ? { dgram: "none", stream: true } : { dgram: "none" });
     expect(host.hello.policy.control).toEqual({ kbps: 100, burstKb: 32 });
     expect(host.hello.usage.day).toBe(today());
     expect(host.hello.usage.dayMb).toBe(0);
@@ -595,6 +596,42 @@ describe("global budget", () => {
     h1.close();
     h2.close();
     h3.close();
+  });
+});
+
+describe("HTTP stream transport", () => {
+  test("hosts and apps can pair and forward binary frames over POST stream when supported", async () => {
+    if (IMPL !== "bun") return;
+    const key = await newHostKey();
+    const host = await StreamConn.open(`${A}/v1/host?pub=${key.pubB64u}`);
+    const ch = await host.nextJson<{ t: string; nonce: string }>();
+    expect(ch.t).toBe("challenge");
+    host.send(JSON.stringify({ t: "auth", sig: await key.signChallenge(new URL(A).host.toLowerCase(), ch.nonce) }));
+    const hello = await host.nextJson<{ t: string; capabilities: { dgram: string; stream?: boolean } }>();
+    expect(hello.t).toBe("hello");
+    expect(hello.capabilities).toEqual({ dgram: "none", stream: true });
+
+    const app = await StreamConn.open(`${A}/v1/connect/${key.hostId}?ch=control`);
+    const open = await host.nextJson<{ t: string; sid: string }>();
+    expect(open.t).toBe("open");
+    const data = await StreamConn.open(`${A}/v1/host/${key.hostId}/session/${open.sid}`);
+    const ready = await app.nextJson<{ t: string; sid: string }>();
+    expect(ready.t).toBe("ready");
+
+    const payload = bytes(2048);
+    app.send(payload);
+    expect(await data.nextBinary()).toEqual(payload);
+    data.send(payload.subarray(0, 256));
+    expect(await app.nextBinary()).toEqual(payload.subarray(0, 256));
+
+    app.close(1000, "done");
+    expect(closeCodes(await data.waitClosed())).toBe("1000 peer_closed");
+    host.close(1000, "done");
+    await host.waitClosed();
+
+    const off = await streamAttempt(`${A}/v1/connect/${key.hostId}?ch=control`);
+    expect(off.status).toBe(404);
+    expect((off.json as any).reason).toBe("host_offline");
   });
 });
 

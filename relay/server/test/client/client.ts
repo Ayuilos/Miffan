@@ -19,7 +19,7 @@ export interface HelloMsg {
   hostId: string;
   policy: Record<string, any>;
   usage: Usage;
-  capabilities: { dgram: string };
+  capabilities: { dgram: string; stream?: boolean };
 }
 
 export interface Usage {

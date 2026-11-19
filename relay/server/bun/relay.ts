@@ -2,11 +2,20 @@
 
 import { Database } from "bun:sqlite";
 import { GlobalBudget, IpRegistrations } from "../core/budget.ts";
+import { CLOSE_CODE } from "../core/codes.ts";
 import type { RelayConfig } from "../core/config.ts";
 import { infoDocument } from "../core/config.ts";
 import { Engine, type Att, type BudgetPort, type Frame, type Platform, type RequestCtx, type Sock } from "../core/engine.ts";
-import { jsonResponse, routeRequest, type Secrets } from "../core/http.ts";
+import { jsonResponse, routeRequest, STREAM_CONTENT_TYPE, type Secrets } from "../core/http.ts";
 import type { Sql, SqlValue } from "../core/sql.ts";
+import { encodeStreamClose, encodeStreamFrame, STREAM_PRELUDE, StreamDecoder } from "../core/stream.ts";
+
+const STREAM_BACKPRESSURE_LIMIT = 4 * 1024 * 1024;
+const STREAM_RESPONSE_HEADERS = {
+  "content-type": STREAM_CONTENT_TYPE,
+  "cache-control": "no-store, no-transform",
+  "x-accel-buffering": "no",
+} as const;
 
 export function sqlite(db: Database): Sql {
   return {
@@ -15,7 +24,12 @@ export function sqlite(db: Database): Sql {
   };
 }
 
-class BunSock implements Sock {
+interface SlotSock extends Sock {
+  dead: boolean;
+  readonly tags: string[];
+}
+
+class BunSock implements SlotSock {
   ws?: Bun.ServerWebSocket<SockData>;
   dead = false;
   private outbox: Frame[] = [];
@@ -56,13 +70,207 @@ class BunSock implements Sock {
   }
 }
 
+class BunStreamSock implements SlotSock {
+  dead = false;
+  private a: Att;
+  private controller?: ReadableStreamDefaultController<Uint8Array>;
+  private outbox: Uint8Array[] = [STREAM_PRELUDE];
+  private head = 0;
+  private queuedBytes = STREAM_PRELUDE.byteLength;
+  private closing = false;
+  private closeAfterDrain = false;
+  private reader?: ReadableStreamDefaultReader<Uint8Array>;
+  private cleaned = false;
+
+  constructor(
+    readonly tags: string[],
+    att: Att,
+    private readonly slot: Slot,
+    private readonly req: Request,
+    private readonly after: (s: Sock) => void,
+  ) {
+    this.a = att;
+  }
+
+  att(): Att {
+    return this.a;
+  }
+
+  setAtt(a: Att): void {
+    this.a = a;
+  }
+
+  createResponse(): Response {
+    const readable = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        this.controller = controller;
+        this.after(this);
+        this.drain();
+      },
+      pull: () => {
+        this.drain();
+      },
+      cancel: () => {
+        this.closing = true;
+        this.closeController();
+        this.cancelInput();
+        this.cleanup();
+      },
+    });
+    void this.pumpInput();
+    return new Response(readable, { status: 200, headers: STREAM_RESPONSE_HEADERS });
+  }
+
+  send(data: Frame): void {
+    if (this.dead || this.closing) return;
+    const encoded = encodeStreamFrame(data);
+    if (this.queuedBytes + encoded.byteLength > STREAM_BACKPRESSURE_LIMIT) {
+      this.close(1013, "backpressure");
+      return;
+    }
+    this.outbox.push(encoded);
+    this.queuedBytes += encoded.byteLength;
+    this.drain();
+  }
+
+  close(code: number, reason: string): void {
+    if (this.closing) return;
+    this.closing = true;
+    const frame = encodeStreamClose(code, reason);
+    if (code === 1013) {
+      // Backpressure exceeded: bypass desiredSize so a stalled reader still sees EOF immediately.
+      this.outbox.length = 0;
+      this.head = 0;
+      this.queuedBytes = 0;
+      if (this.controller) {
+        try {
+          this.controller.enqueue(frame);
+        } catch {
+          // ignore
+        }
+        this.closeController();
+      }
+    } else {
+      this.outbox.push(frame);
+      this.queuedBytes += frame.byteLength;
+      this.closeAfterDrain = true;
+      this.drain();
+    }
+    this.cancelInput();
+    this.cleanup();
+  }
+
+  private drain(): void {
+    const c = this.controller;
+    if (!c) return;
+    while (this.head < this.outbox.length && (c.desiredSize ?? 0) > 0) {
+      let chunk: Uint8Array;
+      const pending = this.outbox.length - this.head;
+      if (pending === 1) {
+        chunk = this.outbox[this.head++]!;
+      } else {
+        let total = 0;
+        for (let i = this.head; i < this.outbox.length; i++) total += this.outbox[i]!.byteLength;
+        chunk = new Uint8Array(total);
+        let pos = 0;
+        for (let i = this.head; i < this.outbox.length; i++) {
+          const part = this.outbox[i]!;
+          chunk.set(part, pos);
+          pos += part.byteLength;
+        }
+        this.head = this.outbox.length;
+      }
+      this.queuedBytes -= chunk.byteLength;
+      if (this.head === this.outbox.length) {
+        this.outbox.length = 0;
+        this.head = 0;
+        this.queuedBytes = 0;
+      }
+      try {
+        c.enqueue(chunk);
+      } catch {
+        this.closeController();
+        return;
+      }
+    }
+    if (this.closeAfterDrain && this.head === this.outbox.length) {
+      this.closeController();
+    }
+  }
+
+  private closeController(): void {
+    if (!this.controller) return;
+    try {
+      this.controller.close();
+    } catch {
+      // stream already closed or errored
+    }
+    this.controller = undefined;
+  }
+
+  private cancelInput(): void {
+    const r = this.reader;
+    if (r) void r.cancel().catch(() => {});
+  }
+
+  private cleanup(): void {
+    if (this.cleaned) return;
+    this.cleaned = true;
+    this.dead = true;
+    this.slot.socks.delete(this);
+    this.slot.engine.onClose(this);
+    this.slot.checkIdle();
+  }
+
+  private async pumpInput(): Promise<void> {
+    const body = this.req.body;
+    if (!body) {
+      this.cleanup();
+      return;
+    }
+    const reader = body.getReader();
+    this.reader = reader;
+    const decoder = new StreamDecoder();
+    try {
+      while (!this.closing && !this.dead) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (!value || value.byteLength === 0) continue;
+        for (const ev of decoder.push(value)) {
+          if (this.closing || this.dead) break;
+          if (ev.kind === "prelude") continue;
+          if (ev.kind === "oversize") {
+            this.close(CLOSE_CODE.frame_too_large, "frame_too_large");
+            return;
+          }
+          if (ev.kind === "invalid") {
+            this.close(CLOSE_CODE.early_frame, "bad_request");
+            return;
+          }
+          if (ev.kind === "close") {
+            this.close(ev.code, ev.reason);
+            return;
+          }
+          await this.slot.engine.onMessage(this, ev.data);
+        }
+      }
+    } catch (e) {
+      if (!this.closing && !this.dead) {
+        console.error(JSON.stringify({ ev: "stream_read_error", msg: String(e) }));
+      }
+    } finally {
+      this.cleanup();
+    }
+  }
+}
+
 interface SockData {
   slot: Slot;
   sock: BunSock;
 }
 
 class Slot {
-  readonly socks = new Set<BunSock>();
+  readonly socks = new Set<SlotSock>();
   readonly engine: Engine;
   private timer?: ReturnType<typeof setTimeout>;
 
@@ -85,6 +293,7 @@ class Slot {
       sql,
       budget,
       log: (line) => console.log(JSON.stringify(line)),
+      stream: true,
     };
     this.engine = new Engine(platform, cfg);
   }
@@ -150,7 +359,7 @@ export function createBunRelay(opts: BunRelayOptions) {
   async function fetch(req: Request, server: Bun.Server<SockData>): Promise<Response | undefined> {
     const route = await routeRequest(req, cfg, secrets);
     if (route instanceof Response) return route;
-    if (route.kind === "info") return jsonResponse(200, infoDocument(cfg, "bun"));
+    if (route.kind === "info") return jsonResponse(200, infoDocument(cfg, "bun", true));
     if (route.kind === "admin") {
       const online = [...slots.values()].filter((s) => [...s.socks].some((k) => k.tags.includes("host"))).length;
       return jsonResponse(200, { impl: "bun", ...global.stats(Date.now(), ips.total(Date.now())), hostsOnline: online });
@@ -160,6 +369,12 @@ export function createBunRelay(opts: BunRelayOptions) {
       host: (req.headers.get("host") ?? new URL(req.url).host).toLowerCase(),
       ip: clientIp(req, server),
       accept(tags, att, after) {
+        if (route.transport === "stream") {
+          server.timeout(req, 0);
+          const sock = new BunStreamSock(tags, att, slot, req, after);
+          slot.socks.add(sock);
+          return sock.createResponse();
+        }
         const sock = new BunSock(tags, att, after);
         slot.socks.add(sock);
         if (!server.upgrade(req, { data: { slot, sock } })) {

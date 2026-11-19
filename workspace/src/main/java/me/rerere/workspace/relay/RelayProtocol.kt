@@ -49,7 +49,10 @@ data class RelayUsage(
 )
 
 @Serializable
-data class RelayCapabilities(val dgram: String = "none")
+data class RelayCapabilities(
+    val dgram: String = "none",
+    val stream: Boolean = false,
+)
 
 @Serializable
 data class RelayInfo(

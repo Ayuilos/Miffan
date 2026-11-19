@@ -176,19 +176,31 @@ ADMIN_TOKEN=...
 | `PORT` / `HOST` | `8787` / `127.0.0.1` | 监听端口与地址（Docker 镜像里 `HOST` 为 `0.0.0.0`） |
 | `TRUSTED_IP_HEADER` | — | 在反向代理后面时，从哪个请求头取来源 IP（用于"每天注册次数"限制），例如 `x-forwarded-for`（取最后一个值）。不设置则使用直连地址——此时所有人都是反向代理的地址 |
 
-### HTTPS：Caddy 反向代理
+### HTTPS / HTTP/3：Caddy 反向代理
 
-中转本身只说 HTTP/WebSocket，TLS 交给反向代理。Caddy 会自动申请证书，WebSocket 无需额外配置：
+中转本身只说 HTTP（WebSocket 与 `application/x-miffan-relay-v1` 双向流），TLS 与 HTTP/3 (QUIC over UDP) 交给 Caddy。Caddy 会自动申请证书并在同一端口同时监听 TCP (HTTPS/H2/WSS) 与 UDP (QUIC/HTTP/3)；反向代理处开启 `flush_interval -1` 以确保流帧即时转发不缓冲：
 
 ```
 relay.example.com {
-    reverse_proxy 127.0.0.1:8787
+    reverse_proxy 127.0.0.1:8787 {
+        flush_interval -1
+    }
 }
 ```
 
-> 反向代理必须**原样保留 `Host` 请求头**（Caddy 默认就是；nginx 要写 `proxy_set_header Host $host;`），因为 connector 的签名里包含它。nginx 还需要 `proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; proxy_read_timeout 3600s;`。
+如果主机的 `UDP 443` 已被其他服务占用，可单独绑定自定义端口（同时放行该端口的 TCP 与 UDP，客户端将通过地址中的 `:8443` 同时竞速 HTTP/3 over UDP 和 HTTP/2 over TCP）：
 
-验证：`curl https://relay.example.com/v1/info`（含 `"impl":"bun"`）。
+```
+relay-udp.example.com:8443 {
+    reverse_proxy 127.0.0.1:8787 {
+        flush_interval -1
+    }
+}
+```
+
+> 反向代理必须**原样保留 `Host` 请求头**（Caddy 默认就是；nginx 要写 `proxy_set_header Host $host;`），因为 connector 的签名里包含它；同时注意不要缓存或缓冲流响应。nginx 如仅用于 WebSocket 需写 `proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; proxy_read_timeout 3600s;`，并建议配 `proxy_buffering off; proxy_request_buffering off;`。
+
+验证：`curl https://relay.example.com/v1/info`（含 `"impl":"bun"` 与 `"stream":true`）；支持 QUIC 的环境也可用 `curl --http3-only https://relay.example.com/v1/info` 验证 UDP 可达性。
 
 ## 四、日常运维
 
