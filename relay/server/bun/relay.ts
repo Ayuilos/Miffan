@@ -5,10 +5,11 @@ import { GlobalBudget, IpRegistrations } from "../core/budget.ts";
 import { CLOSE_CODE } from "../core/codes.ts";
 import type { RelayConfig } from "../core/config.ts";
 import { infoDocument } from "../core/config.ts";
-import { Engine, type Att, type BudgetPort, type Frame, type Platform, type RequestCtx, type Sock } from "../core/engine.ts";
+import { Engine, type Att, type BudgetPort, type DgramPlatform, type Frame, type Platform, type RequestCtx, type Sock } from "../core/engine.ts";
 import { jsonResponse, routeRequest, STREAM_CONTENT_TYPE, type Secrets } from "../core/http.ts";
 import type { Sql, SqlValue } from "../core/sql.ts";
 import { encodeStreamClose, encodeStreamFrame, STREAM_PRELUDE, StreamDecoder } from "../core/stream.ts";
+import type { BunUdpRelay } from "./udp.ts";
 
 const STREAM_BACKPRESSURE_LIMIT = 4 * 1024 * 1024;
 const STREAM_RESPONSE_HEADERS = {
@@ -280,6 +281,7 @@ class Slot {
     sql: Sql,
     budget: BudgetPort,
     private onIdle: (s: Slot) => void,
+    dgram?: DgramPlatform,
   ) {
     const platform: Platform = {
       now: () => Date.now(),
@@ -294,6 +296,7 @@ class Slot {
       budget,
       log: (line) => console.log(JSON.stringify(line)),
       stream: true,
+      ...(dgram ? { dgram } : {}),
     };
     this.engine = new Engine(platform, cfg);
   }
@@ -321,10 +324,14 @@ export interface BunRelayOptions {
   db: Database;
   /** Header to read the client IP from when behind a reverse proxy (e.g. "x-forwarded-for"). The last value wins. */
   trustedIpHeader?: string;
+  /** Optional native UDP datagram forwarder for `ch=media-dgram`. */
+  udp?: BunUdpRelay;
 }
 
 export function createBunRelay(opts: BunRelayOptions) {
-  const { config: cfg, secrets } = opts;
+  const { config: cfg, secrets, udp } = opts;
+  const dgramCap = udp?.capability();
+  const dgramPort = udp?.platformPort();
   const sql = sqlite(opts.db);
   const global = new GlobalBudget(sql, cfg.policy.budget);
   // Source addresses only ever live in memory (PROTOCOL §6.3).
@@ -341,7 +348,7 @@ export function createBunRelay(opts: BunRelayOptions) {
   function slotFor(hostId: string): Slot {
     let s = slots.get(hostId);
     if (!s) {
-      s = new Slot(hostId, cfg, sql, budget, (done) => slots.delete(done.hostId));
+      s = new Slot(hostId, cfg, sql, budget, (done) => slots.delete(done.hostId), dgramPort);
       slots.set(hostId, s);
     }
     return s;
@@ -359,7 +366,7 @@ export function createBunRelay(opts: BunRelayOptions) {
   async function fetch(req: Request, server: Bun.Server<SockData>): Promise<Response | undefined> {
     const route = await routeRequest(req, cfg, secrets);
     if (route instanceof Response) return route;
-    if (route.kind === "info") return jsonResponse(200, infoDocument(cfg, "bun", true));
+    if (route.kind === "info") return jsonResponse(200, infoDocument(cfg, "bun", true, dgramCap));
     if (route.kind === "admin") {
       const online = [...slots.values()].filter((s) => [...s.socks].some((k) => k.tags.includes("host"))).length;
       return jsonResponse(200, { impl: "bun", ...global.stats(Date.now(), ips.total(Date.now())), hostsOnline: online });

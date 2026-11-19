@@ -1,3 +1,5 @@
+import { meterChannel, type Channel } from "./codes.ts";
+
 // Relay configuration: one JSON shape for both adapters (R1b spec §2). Defaults are the
 // example values of RELAY_PLAN §5.1; the media burst is the PROTOCOL §6.1 example.
 
@@ -171,19 +173,34 @@ export const RELAY_VERSION = "1.0.0";
 
 export type Impl = "worker" | "bun";
 
-export function infoDocument(cfg: RelayConfig, impl: Impl, stream = true) {
+export interface DgramCapability {
+  mode: "udp";
+  port: number;
+  host?: string;
+}
+
+export function capabilitiesObject(stream = true, dgram?: DgramCapability) {
+  return {
+    ...(dgram && dgram.mode === "udp"
+      ? { dgram: "udp" as const, udpPort: dgram.port, ...(dgram.host ? { udpHost: dgram.host } : {}) }
+      : { dgram: "none" as const }),
+    ...(stream ? { stream: true } : {}),
+  };
+}
+
+export function infoDocument(cfg: RelayConfig, impl: Impl, stream = true, dgram?: DgramCapability) {
   return {
     v: 1,
     impl,
     version: RELAY_VERSION,
     access: cfg.accessMode,
-    capabilities: { dgram: "none" as const, ...(stream ? { stream: true } : {}) },
+    capabilities: capabilitiesObject(stream, dgram),
     policy: publicPolicy(cfg),
     edges: cfg.edges,
   };
 }
 
-export function paceFor(cfg: RelayConfig, ch: "control" | "media"): { kbps: number; burstKb: number } {
-  const p = ch === "media" ? cfg.policy.media : cfg.policy.control;
+export function paceFor(cfg: RelayConfig, ch: Channel): { kbps: number; burstKb: number } {
+  const p = meterChannel(ch) === "media" ? cfg.policy.media : cfg.policy.control;
   return { kbps: p.kbps, burstKb: p.burstKb };
 }

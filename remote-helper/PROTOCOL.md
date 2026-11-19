@@ -336,9 +336,10 @@ stdin，**原样**交给 connector（由它解析并校验），不进入命令�
 `service_failed`、`not_installed`、`init_failed`、`connector_failed`，以及 connector 自己的原因码（`bad_relay`、
 `bad_target`、`bad_device`、`bad_name`、`already_running` 等，见 `relay/connector/README.md`）。
 
-下载与校验：helper 内置固定的 connector 版本与每个平台产物的 SHA-256。顺序尝试 GitHub Release
-（`https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v<版本>/miffan-connector-<os>-<arch>[.exe]`）
-与预留的镜像地址（目前为空）。校验失败删除下载文件、`checksum_mismatch`、不安装。发版前这些摘要是占位值，
+下载与校验：helper 内置固定的 connector 版本与每个平台产物的 SHA-256。顺序尝试官方 Cloudflare R2 镜像
+（`https://downloads.ayuilos.me/connector/v<版本>/miffan-connector-<os>-<arch>[.exe]`）与 GitHub Release
+（`https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v<版本>/miffan-connector-<os>-<arch>[.exe]`）；
+下载失败或校验不匹配时继续尝试下一地址。全部校验失败删除下载文件并返回 `checksum_mismatch` / `download_failed`，不安装。发版前这些摘要是占位值，
 不可能匹配，所以未发布的版本装不上。`MIFFAN_CONNECTOR_FILE=<本地路径>` 跳过下载（仍校验），
 `MIFFAN_CONNECTOR_SHA256` 覆盖期望摘要，仅用于测试与开发。
 
@@ -545,7 +546,7 @@ stdin 每行一条，坐标是窗口内 0–1 的比例：`move X Y`、`down 按
 
 ## 版本与安装
 
-当前 POSIX helper 为 50，Windows 为 20。POSIX 39 新增 `window` 命令，40 让它支持 KDE Plasma，41 支持 GNOME 和 X11，42 在 KDE 下重启为别的桌面启动的 portal，43 找会话环境时只认已登录（active/online）会话里的进程，44 在 KDE 下优先用 KWin 自己的单窗口录制和输入，45 修正 KDE 弹出菜单伸出窗口时的点击位置并改用常驻 KWin 脚本跟随窗口、字符键按 keysym 发送以跟随用户的键盘布局、按版本区分 Plasma 5 和 6.0–6.2、不再打开 GNOME 的用户扩展总开关、新增 `uninstall-extension` 和 `revoke`、只在有用时重启 portal 服务，并且 systemd 用户管理器的环境只在用户在这台电脑上登录着（有座席或图形会话，手机的 SSH 登录不算）时才用（不认 systemd 256 起的 class=manager 会话）、Wayland 套接字取最新的，46 在 KDE 窗口流因弹出菜单等改变尺寸时重建流而不是断开，47 在尺寸一变时就主动重建（二级菜单下 KWin 会卡住而不报错），48 在 `opened`、`geometry` 行末附上画面在屏幕上的位置、输入改按手机正在看的那一版画面换算，49 在 GNOME 远程桌面仍指向 `~/.miffan/rdp` 里已经不存在的证书和密钥（目录被清空）时重新配置它，而不是当作别人的配置拒绝，50 在终端窗口里用 Ctrl+Shift+V 粘贴文本（GNOME 下中文靠粘贴输入，终端里 Ctrl+V 是控制字符）。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
+当前 POSIX helper 为 52，Windows 为 22。POSIX 39 新增 `window` 命令，40 让它支持 KDE Plasma，41 支持 GNOME 和 X11，42 在 KDE 下重启为别的桌面启动的 portal，43 找会话环境时只认已登录（active/online）会话里的进程，44 在 KDE 下优先用 KWin 自己的单窗口录制和输入，45 修正 KDE 弹出菜单伸出窗口时的点击位置并改用常驻 KWin 脚本跟随窗口、字符键按 keysym 发送以跟随用户的键盘布局、按版本区分 Plasma 5 和 6.0–6.2、不再打开 GNOME 的用户扩展总开关、新增 `uninstall-extension` 和 `revoke`、只在有用时重启 portal 服务，并且 systemd 用户管理器的环境只在用户在这台电脑上登录着（有座席或图形会话，手机的 SSH 登录不算）时才用（不认 systemd 256 起的 class=manager 会话）、Wayland 套接字取最新的，46 在 KDE 窗口流因弹出菜单等改变尺寸时重建流而不是断开，47 在尺寸一变时就主动重建（二级菜单下 KWin 会卡住而不报错），48 在 `opened`、`geometry` 行末附上画面在屏幕上的位置、输入改按手机正在看的那一版画面换算，49 在 GNOME 远程桌面仍指向 `~/.miffan/rdp` 里已经不存在的证书和密钥（目录被清空）时重新配置它，而不是当作别人的配置拒绝，50 在终端窗口里用 Ctrl+Shift+V 粘贴文本（GNOME 下中文靠粘贴输入，终端里 Ctrl+V 是控制字符），52 与 Windows 22 将 `miffan-connector` 下载顺序改为优先官方 Cloudflare R2 镜像（`downloads.ayuilos.me/connector/v<版本>/`）并在失败或校验不匹配时回退 GitHub Release。POSIX 21 新增 `task` 命令，24 新增 `space` 命令，33 新增 `relay` 命令；Windows 15 新增 `relay` 命令。
 
 `RemoteMiffanHelper.ensureInstalled` 每次读取打包脚本原始 bytes，用
 `MIFFAN_HELPER_VERSION=(\d+)` 或 `HelperVersion = (\d+)` 抽版本。远端 version 查询

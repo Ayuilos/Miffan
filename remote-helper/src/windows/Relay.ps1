@@ -11,9 +11,9 @@
 
 $script:RelayConnectorVersion = '1.3.0'
 $script:RelayConnectorSha256 = @{ 'windows-amd64' = '091fe20ab8dfa1e3a7a709fe2ff4bcecb67c77fcbf7c033e65b40a8aac0de88c' }
+# Download locations tried in order (same file names): official Cloudflare R2 mirror first, GitHub release as fallback.
+$script:RelayMirrors = @('https://downloads.ayuilos.me/connector/v' + $script:RelayConnectorVersion)
 $script:RelayReleaseUrl = 'https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v' + $script:RelayConnectorVersion
-# Extra download locations tried after the GitHub release, same file names. None yet.
-$script:RelayMirrors = @()
 $script:RelayTaskName = 'Miffan-connector'
 
 # Ends the command with {"success":false,"reason":code,"detail":text} (exit 1).
@@ -54,21 +54,35 @@ function Get-RelayFileSha256([string]$Path) {
 
 function Get-RelayDownloadUrls([string]$Platform) {
     $name = 'miffan-connector-' + $Platform + '.exe'
-    $urls = @($script:RelayReleaseUrl + '/' + $name)
-    foreach ($mirror in $script:RelayMirrors) { $urls += ($mirror.TrimEnd('/') + '/' + $name) }
+    $urls = @()
+    foreach ($mirror in $script:RelayMirrors) {
+        if (-not [string]::IsNullOrWhiteSpace($mirror)) {
+            $urls += ($mirror.TrimEnd('/') + '/' + $name)
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($script:RelayReleaseUrl)) {
+        $urls += ($script:RelayReleaseUrl.TrimEnd('/') + '/' + $name)
+    }
     return $urls
 }
 
-# Downloads the first URL that works (the system proxy applies, as for the cua installer).
-function Save-RelayDownload($Urls, [string]$Destination) {
+# Downloads the first URL that works and matches $ExpectedSha (the system proxy applies, as for the cua installer).
+function Save-RelayDownload($Urls, [string]$Destination, [string]$ExpectedSha) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $sawMismatch = $false
     foreach ($url in $Urls) {
+        if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue }
         try {
-            Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $Destination -TimeoutSec 300
-            if ((Test-Path -LiteralPath $Destination) -and (Get-Item -LiteralPath $Destination).Length -gt 0) { return $true }
+            Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $Destination -TimeoutSec 90
+            if ((Test-Path -LiteralPath $Destination) -and (Get-Item -LiteralPath $Destination).Length -gt 0) {
+                if ($ExpectedSha -and (Get-RelayFileSha256 $Destination) -ceq $ExpectedSha) { return 'ok' }
+                $sawMismatch = $true
+            }
         } catch { }
     }
-    return $false
+    if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue }
+    if ($sawMismatch) { return 'checksum_mismatch' }
+    return 'download_failed'
 }
 
 function Get-RelayLastLine([string]$Text) {
@@ -177,8 +191,14 @@ function Install-RelayBinary([string]$Platform) {
         if ($useFile) {
             try { Copy-Item -LiteralPath $env:MIFFAN_CONNECTOR_FILE -Destination $temp -Force -ErrorAction Stop }
             catch { Stop-Relay 'install_failed' 'cannot read MIFFAN_CONNECTOR_FILE' }
-        } elseif (-not (Save-RelayDownload (Get-RelayDownloadUrls $Platform) $temp)) {
-            Stop-Relay 'download_failed' 'could not download the connector'
+        } else {
+            $downloadResult = Save-RelayDownload (Get-RelayDownloadUrls $Platform) $temp $expected
+            if ($downloadResult -eq 'checksum_mismatch') {
+                Stop-Relay 'checksum_mismatch' 'the connector does not match its pinned SHA-256; nothing was installed'
+            }
+            if ($downloadResult -ne 'ok') {
+                Stop-Relay 'download_failed' 'could not download the connector'
+            }
         }
         if (-not $expected -or (Get-RelayFileSha256 $temp) -cne $expected) {
             Stop-Relay 'checksum_mismatch' 'the connector does not match its pinned SHA-256; nothing was installed'

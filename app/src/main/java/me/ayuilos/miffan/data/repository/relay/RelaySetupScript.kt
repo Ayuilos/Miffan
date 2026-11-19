@@ -21,6 +21,7 @@ object RelaySetupScript {
     internal data class ConnectorPins(
         val version: String,
         val releaseUrl: String,
+        val downloadBaseUrls: List<String>,
         val shaDarwinArm64: String,
         val shaDarwinAmd64: String,
         val shaLinuxAmd64: String,
@@ -28,26 +29,38 @@ object RelaySetupScript {
     )
 
     internal fun parsePins(helperSh: String): ConnectorPins {
-        fun readVar(name: String): String =
+        fun readOptionalVar(name: String): String? =
             Regex("""(?m)^${Regex.escape(name)}=("[^"\r\n]*"|[^\s#\r\n]+)""")
                 .find(helperSh)
                 ?.groupValues?.get(1)
                 ?.removeSurrounding("\"")
-                ?: error("Missing $name in miffan.sh")
+        fun readVar(name: String): String = readOptionalVar(name) ?: error("Missing $name in miffan.sh")
         val version = readVar("MIFFAN_CONNECTOR_VERSION")
         require(version.matches(Regex("""[0-9A-Za-z._-]+"""))) { "Invalid connector version" }
-        val releaseUrl = readVar("MIFFAN_CONNECTOR_RELEASE_URL")
-            .replace("\${MIFFAN_CONNECTOR_VERSION}", version)
-            .replace("\$MIFFAN_CONNECTOR_VERSION", version)
-        require(releaseUrl.startsWith("https://") && releaseUrl.none { it.isWhitespace() || it == '\'' || it == '\\' || it == '"' || it == '$' }) {
-            "Invalid connector release URL"
-        }
+        fun normalizeUrl(raw: String): String =
+            raw.replace("\${MIFFAN_CONNECTOR_VERSION}", version)
+                .replace("\$MIFFAN_CONNECTOR_VERSION", version)
+                .trimEnd('/')
+                .also { url ->
+                    require(url.startsWith("https://") && url.none { it.isWhitespace() || it == '\'' || it == '\\' || it == '"' || it == '$' }) {
+                        "Invalid connector download URL"
+                    }
+                }
+        val releaseUrl = normalizeUrl(readVar("MIFFAN_CONNECTOR_RELEASE_URL"))
+        val mirrorUrls = readOptionalVar("MIFFAN_CONNECTOR_MIRRORS")
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.split(Regex("""\s+"""))
+            ?.map(::normalizeUrl)
+            .orEmpty()
+        val downloadBaseUrls = (mirrorUrls + releaseUrl).distinct()
         fun readSha(name: String): String = readVar(name).lowercase().also {
             require(sha256Pattern.matches(it)) { "Invalid $name in miffan.sh" }
         }
         return ConnectorPins(
             version = version,
             releaseUrl = releaseUrl,
+            downloadBaseUrls = downloadBaseUrls,
             shaDarwinArm64 = readSha("MIFFAN_CONNECTOR_SHA256_DARWIN_ARM64"),
             shaDarwinAmd64 = readSha("MIFFAN_CONNECTOR_SHA256_DARWIN_AMD64"),
             shaLinuxAmd64 = readSha("MIFFAN_CONNECTOR_SHA256_LINUX_AMD64"),
@@ -81,7 +94,7 @@ DEV="$devicePub"
 RELAY_B64="$relayB64"
 TOK_B64="$tokenB64"
 NAME_B64="$nameB64"
-REL_URL="${pins.releaseUrl}"
+DL_URLS="${pins.downloadBaseUrls.joinToString(" ")}"
 SHA_DA="${pins.shaDarwinArm64}"
 SHA_DX="${pins.shaDarwinAmd64}"
 SHA_LA="${pins.shaLinuxAmd64}"
@@ -125,27 +138,42 @@ else
   esac
   mkdir -p "${'$'}HOME/.miffan/bin" || fail "cannot create ~/.miffan/bin"
   TMP="${'$'}HOME/.miffan/bin/.miffan-connector.${'$'}${'$'}"
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL --connect-timeout 15 --max-time 300 -o "${'$'}TMP" "${'$'}REL_URL/miffan-connector-${'$'}PLAT" || fail "download failed"
-  elif command -v wget >/dev/null 2>&1; then
-    wget -qO "${'$'}TMP" "${'$'}REL_URL/miffan-connector-${'$'}PLAT" || fail "download failed"
-  else
-    fail "curl or wget is required"
+  DL_OK=0
+  DL_BAD=0
+  for U in ${'$'}DL_URLS; do
+    rm -f "${'$'}TMP"
+    if command -v curl >/dev/null 2>&1; then
+      curl -fsSL --connect-timeout 15 --max-time 90 --speed-time 20 --speed-limit 1024 -o "${'$'}TMP" "${'$'}U/miffan-connector-${'$'}PLAT" 2>/dev/null || continue
+    elif command -v wget >/dev/null 2>&1; then
+      wget -q -T 30 -O "${'$'}TMP" "${'$'}U/miffan-connector-${'$'}PLAT" 2>/dev/null || continue
+    else
+      fail "curl or wget is required"
+    fi
+    if command -v sha256sum >/dev/null 2>&1; then
+      set -- ${'$'}(sha256sum "${'$'}TMP")
+      ACT=${'$'}{1:-}
+    elif command -v shasum >/dev/null 2>&1; then
+      set -- ${'$'}(shasum -a 256 "${'$'}TMP")
+      ACT=${'$'}{1:-}
+    elif command -v openssl >/dev/null 2>&1; then
+      set -- ${'$'}(openssl dgst -sha256 "${'$'}TMP")
+      ACT=""
+      for w in "${'$'}@"; do ACT=${'$'}w; done
+    else
+      fail "sha256 tool is required"
+    fi
+    if [ "${'$'}ACT" = "${'$'}EXP" ]; then
+      DL_OK=1
+      break
+    fi
+    DL_BAD=1
+  done
+  if [ "${'$'}DL_OK" -ne 1 ]; then
+    if [ "${'$'}DL_BAD" -eq 1 ]; then
+      fail "connector checksum mismatch"
+    fi
+    fail "download failed"
   fi
-  if command -v sha256sum >/dev/null 2>&1; then
-    set -- ${'$'}(sha256sum "${'$'}TMP")
-    ACT=${'$'}{1:-}
-  elif command -v shasum >/dev/null 2>&1; then
-    set -- ${'$'}(shasum -a 256 "${'$'}TMP")
-    ACT=${'$'}{1:-}
-  elif command -v openssl >/dev/null 2>&1; then
-    set -- ${'$'}(openssl dgst -sha256 "${'$'}TMP")
-    ACT=""
-    for w in "${'$'}@"; do ACT=${'$'}w; done
-  else
-    fail "sha256 tool is required"
-  fi
-  [ "${'$'}ACT" = "${'$'}EXP" ] || fail "connector checksum mismatch"
   chmod 755 "${'$'}TMP" && mv -f "${'$'}TMP" "${'$'}HOME/.miffan/bin/miffan-connector" || fail "cannot install connector"
   TMP=""
   BIN="${'$'}HOME/.miffan/bin/miffan-connector"

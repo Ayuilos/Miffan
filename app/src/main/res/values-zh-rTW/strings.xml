@@ -4100,6 +4100,9 @@
   <string name="im_relay_rule_today_of">共 %1$d 分鐘</string>
   <string name="im_relay_rule_today_unlimited">不限制</string>
   <string name="im_relay_rule_fast">高畫質</string>
+  <string name="im_relay_rule_fast_on">支援</string>
+  <string name="im_relay_rule_fast_upgrade">需更新電腦端</string>
+  <string name="im_relay_rule_fast_udp_blocked">UDP 無法連線</string>
   <string name="im_relay_rule_fast_off">外出時不提供</string>
   <string name="im_relay_test_again">再測試一次</string>
   <string name="im_relay_test_copy">複製結果</string>

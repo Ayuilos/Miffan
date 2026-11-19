@@ -31,18 +31,26 @@ import me.rerere.stream.StreamSession
 import me.rerere.stream.StreamState
 import me.rerere.stream.StreamTcpChannel
 import me.rerere.stream.StreamTcpConnector
+import me.rerere.stream.StreamUdpTransport
 import me.rerere.workspace.RemoteWorkspaceSession
+import me.rerere.workspace.relay.RelayDatagramSession
+import me.rerere.workspace.relay.RelayException
 
-internal data class StreamOpenResult(val session: StreamDesktopSession? = null, val fallback: RemoteStreamFallback? = null, val address: String? = null)
+internal data class StreamOpenResult(
+    val session: StreamDesktopSession? = null,
+    val fallback: RemoteStreamFallback? = null,
+    val address: String? = null,
+    val relayMediaKbps: Int? = null,
+)
 
 internal class RemoteStreamEngine(private val identities: RemoteStreamIdentityStore, private val routes: RemoteStreamRoutes, private val context: Context) {
     /** Debug instrumentation can configure an emulator codec without weakening release policy. */
     internal var configureSessionForTest: ((StreamSession) -> Unit)? = null
         set(value) { check(me.ayuilos.miffan.BuildConfig.DEBUG); field = value }
     private val pendingUntil = ConcurrentHashMap<String, Long>()
-    fun host(ssh: RemoteWorkspaceSession, pin: String?): StreamHost = StreamHost(StreamTcpConnector { port ->
+    fun host(ssh: RemoteWorkspaceSession, pin: String?, streamTimeoutMillis: Int = 3_000): StreamHost = StreamHost(StreamTcpConnector { port ->
         // :stream routes every HTTP/HTTPS/RTSP TCP port through this connector.
-        ssh.openLoopbackStream(port, timeoutMillis = 3_000).let { StreamTcpChannel(it.input, it.output, it) }
+        ssh.openLoopbackStream(port, timeoutMillis = streamTimeoutMillis).let { StreamTcpChannel(it.input, it.output, it) }
     }, identities.get(), pin)
 
     fun verifyCertificate(stored: String?, probe: SunshineProbe) {
@@ -89,90 +97,164 @@ internal class RemoteStreamEngine(private val identities: RemoteStreamIdentitySt
 
     suspend fun open(ssh: RemoteWorkspaceSession, row: RemoteHostEntity, probe: SunshineProbe,
         writeClipboard: (String) -> Unit, budgetMillis: Long = STREAM_OPEN_BUDGET_MILLIS, config: StreamConfig = RemoteScreenQuality.BALANCED.streamConfig(),
-        platform: RemoteScreenPlatform = RemoteScreenPlatform.LINUX): StreamOpenResult {
+        platform: RemoteScreenPlatform = RemoteScreenPlatform.LINUX): StreamOpenResult =
+        runPreflightAndOpen(ssh, row, probe, budgetMillis, streamTimeoutMillis = 3_000) { host, app ->
+            val network = routes.snapshot()
+            val ordered = candidates(row, probe, network)
+            val attempted = mutableListOf<String>()
+            for (address in ordered.addresses) {
+                attempted += address
+                val outcome = tryCandidate(host, row, probe, app, address, config, writeClipboard, platform, udpTransport = null)
+                if (outcome.session != null) {
+                    if (routes.snapshot().key == network.key) {
+                        routes.success(row.id, row.connectionRevision, network.key, address)
+                    }
+                    return@runPreflightAndOpen outcome
+                }
+                if (outcome.fallback?.reason != RemoteStreamFallbackReason.UDP_UNREACHABLE) {
+                    return@runPreflightAndOpen outcome
+                }
+            }
+            unreachable(attempted, ordered.permissionSkipped)
+        }
+
+    suspend fun openRelayed(
+        ssh: RemoteWorkspaceSession,
+        row: RemoteHostEntity,
+        probe: SunshineProbe,
+        openDatagram: suspend () -> RelayDatagramSession,
+        writeClipboard: (String) -> Unit,
+        budgetMillis: Long = maxOf(STREAM_OPEN_BUDGET_MILLIS, 15_000L),
+        config: StreamConfig = RemoteScreenQuality.BALANCED.streamConfig(),
+        platform: RemoteScreenPlatform = RemoteScreenPlatform.LINUX,
+    ): StreamOpenResult = runPreflightAndOpen(ssh, row, probe, budgetMillis, streamTimeoutMillis = 5_000) { host, app ->
+        val dgram = try {
+            openDatagram()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            val relayError = generateSequence(error) { it.cause }.take(16)
+                .filterIsInstance<RelayException>().firstOrNull() ?: throw error
+            return@runPreflightAndOpen when (relayError.reason) {
+                "dgram_disabled", "dgram_unsupported" ->
+                    StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.RELAY))
+                RelayException.UNREACHABLE, "udp_unreachable" ->
+                    StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.UDP_UNREACHABLE, "Relay UDP unreachable"))
+                else -> throw relayError
+            }
+        }
+        val transport = object : StreamUdpTransport {
+            override fun send(flow: Byte, payload: ByteArray, offset: Int, length: Int): Boolean =
+                dgram.send(flow, payload, offset, length)
+            override fun receive(buffer: ByteArray, flowOut: ByteArray): Int =
+                dgram.receive(buffer, flowOut)
+            override fun close() = dgram.close()
+        }
+        val effectiveConfig = config.cappedForRelay(dgram.ready.pace.kbps)
+        val outcome = try {
+            tryCandidate(host, row, probe, app, "127.0.0.1", effectiveConfig, writeClipboard, platform, udpTransport = transport)
+        } catch (error: Throwable) {
+            runCatching { dgram.close() }
+            throw error
+        }
+        if (outcome.session != null) {
+            outcome.copy(address = "${dgram.udpHost}:${dgram.udpPort}", relayMediaKbps = dgram.ready.pace.kbps)
+        } else {
+            runCatching { dgram.close() }
+            outcome
+        }
+    }
+
+    private suspend fun runPreflightAndOpen(
+        ssh: RemoteWorkspaceSession,
+        row: RemoteHostEntity,
+        probe: SunshineProbe,
+        budgetMillis: Long,
+        streamTimeoutMillis: Int,
+        block: suspend (host: StreamHost, app: StreamApp) -> StreamOpenResult,
+    ): StreamOpenResult {
         verifyCertificate(row.streamCertificateSha256, probe)
         streamPreflightFallback(probe)?.let { return StreamOpenResult(fallback = RemoteStreamFallback(it)) }
-        val attempted = mutableListOf<String>()
-        var permissionSkipped = false
         var host: StreamHost? = null
-        var accepted: StreamDesktopSession? = null
         val identityKey = "${row.id}:${row.connectionRevision}"
         try {
             return withTimeout(budgetMillis.coerceAtLeast(1)) {
-                // HTTP discovery, DNS, pending-session backoff and every candidate share this budget.
-                host = host(ssh, row.streamCertificateSha256)
-                val info = host!!.serverInfo()
+                val created = host(ssh, row.streamCertificateSha256, streamTimeoutMillis)
+                host = created
+                val info = created.serverInfo()
                 streamPreflightFallback(probe, info.paired)?.let { return@withTimeout StreamOpenResult(fallback = RemoteStreamFallback(it)) }
-                // A lost/reinstalled device identity can leave the host paired but this installation unpinned.
-                if (row.streamCertificateSha256 == null)
+                if (row.streamCertificateSha256 == null) {
                     return@withTimeout StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.NOT_PAIRED))
-                val network = routes.snapshot()
-                val ordered = candidates(row, probe, network)
-                permissionSkipped = ordered.permissionSkipped
+                }
                 val app = if (info.currentApp != 0) StreamApp(info.currentApp, "Desktop") else
-                    host!!.apps().firstOrNull { it.name.equals("Desktop", ignoreCase = true) }
+                    created.apps().firstOrNull { it.name.equals("Desktop", ignoreCase = true) }
                         ?: return@withTimeout StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.HOST_REJECTED, "Desktop application unavailable"))
                 pendingUntil[identityKey]?.let { until -> delay(((until - System.nanoTime()) / 1_000_000).coerceAtLeast(0)) }
-                for (address in ordered.addresses) {
-                    attempted += address
-                    val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-                    var delegate: StreamSession? = null
-                    var handedOff = false
-                    val drain = HandlerThread("StreamPreflightSurface").apply { start() }
-                    var reader: ImageReader? = null
-                    try {
-                        reader = ImageReader.newInstance(config.width, config.height, ImageFormat.PRIVATE, 2)
-                        reader.setOnImageAvailableListener({ source ->
-                            runCatching { source.acquireLatestImage()?.close() }
-                        }, Handler(drain.looper))
-                        delegate = StreamSession(host!!, app, address, config, reader.surface, context)
-                        configureSessionForTest?.invoke(delegate)
-                        delegate.start(lifetime)
-                        when (val state = delegate.state.first { it !is StreamState.Connecting }) {
-                            StreamState.Streaming -> {
-                                delegate.setSurface(null)
-                                val session = StreamDesktopSession(delegate, lifetime, row.streamCertificateSha256,
-                                    row.name.ifBlank { app.name }, writeClipboard, platform)
-                                if (routes.snapshot().key == network.key)
-                                    routes.success(row.id, row.connectionRevision, network.key, address)
-                                accepted = session
-                                handedOff = true
-                                return@withTimeout StreamOpenResult(session = session, address = address)
-                            }
-                            is StreamState.Failed -> {
-                                if (state.reason == StreamFailureReason.CERTIFICATE_MISMATCH)
-                                    throw streamCertificateFailure(row.streamCertificateSha256, probe.certificateSha256)
-                                // UDP failures can improve with another route. Decoder/host failures cannot.
-                                if (state.reason != StreamFailureReason.UDP_UNREACHABLE)
-                                    return@withTimeout StreamOpenResult(fallback = RemoteStreamFallback(streamFailureFallback(state.reason)))
-                            }
-                            else -> return@withTimeout StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER))
-                        }
-                    } finally {
-                        try {
-                            if (!handedOff) {
-                                delegate?.close(); lifetime.cancel()
-                                val stopped = withContext(NonCancellable + Dispatchers.IO) { delegate?.awaitStopped(5_000) ?: true }
-                                // Never start another native session while this one still owns processLock.
-                                check(stopped) { "Stream cleanup did not finish" }
-                            }
-                        } finally { reader?.close(); drain.quitSafely() }
-                    }
-                }
-                unreachable(attempted, permissionSkipped)
+                block(created, app)
             }
         } catch (error: RemoteStreamCertificateChangedException) { throw error }
-        catch (_: TimeoutCancellationException) { accepted?.close(); return unreachable(attempted, permissionSkipped) }
-        catch (error: CancellationException) { accepted?.close(); throw error }
+        catch (error: RelayException) { throw error }
+        catch (_: TimeoutCancellationException) { return StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.UDP_UNREACHABLE)) }
+        catch (error: CancellationException) { throw error }
         catch (error: StreamException) {
             if (error.reason == StreamFailureReason.CERTIFICATE_MISMATCH)
                 throw streamCertificateFailure(row.streamCertificateSha256, probe.certificateSha256)
             return StreamOpenResult(fallback = RemoteStreamFallback(streamFailureFallback(error.reason)))
         } catch (_: Exception) {
-            accepted?.close()
             return StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER))
         } finally {
             host?.retryAfterMillis?.takeIf { it > 0 }?.let { pendingUntil[identityKey] = System.nanoTime() + it * 1_000_000 }
+        }
+    }
+
+    private suspend fun tryCandidate(
+        host: StreamHost,
+        row: RemoteHostEntity,
+        probe: SunshineProbe,
+        app: StreamApp,
+        address: String,
+        config: StreamConfig,
+        writeClipboard: (String) -> Unit,
+        platform: RemoteScreenPlatform,
+        udpTransport: StreamUdpTransport?,
+    ): StreamOpenResult {
+        val lifetime = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        var delegate: StreamSession? = null
+        var handedOff = false
+        val drain = HandlerThread("StreamPreflightSurface").apply { start() }
+        var reader: ImageReader? = null
+        try {
+            reader = ImageReader.newInstance(config.width, config.height, ImageFormat.PRIVATE, 2)
+            reader.setOnImageAvailableListener({ source ->
+                runCatching { source.acquireLatestImage()?.close() }
+            }, Handler(drain.looper))
+            delegate = StreamSession(host, app, address, config, reader.surface, context, udpTransport)
+            configureSessionForTest?.invoke(delegate)
+            delegate.start(lifetime)
+            return when (val state = delegate.state.first { it !is StreamState.Connecting }) {
+                StreamState.Streaming -> {
+                    delegate.setSurface(null)
+                    val session = StreamDesktopSession(delegate, lifetime, row.streamCertificateSha256!!,
+                        row.name.ifBlank { app.name }, writeClipboard, platform)
+                    handedOff = true
+                    StreamOpenResult(session = session, address = address)
+                }
+                is StreamState.Failed -> {
+                    if (state.reason == StreamFailureReason.CERTIFICATE_MISMATCH)
+                        throw streamCertificateFailure(row.streamCertificateSha256, probe.certificateSha256)
+                    StreamOpenResult(fallback = RemoteStreamFallback(streamFailureFallback(state.reason)))
+                }
+                else -> StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER))
+            }
+        } finally {
+            try {
+                if (!handedOff) {
+                    delegate?.close(); lifetime.cancel()
+                    val stopped = withContext(NonCancellable + Dispatchers.IO) { delegate?.awaitStopped(5_000) ?: true }
+                    // Never start another native session while this one still owns processLock.
+                    check(stopped) { "Stream cleanup did not finish" }
+                }
+            } finally { reader?.close(); drain.quitSafely() }
         }
     }
     private fun unreachable(attempted: List<String>, permissionSkipped: Boolean) = StreamOpenResult(fallback = RemoteStreamFallback(

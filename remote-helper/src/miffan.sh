@@ -26,7 +26,7 @@
 #   miffan window probe|list|focus|resize|shots|serve|locate|authorize|install-extension|uninstall-extension|revoke
 #                           one window of a Linux desktop on the phone (niri, KDE, GNOME, X11), video and input
 
-MIFFAN_HELPER_VERSION=51
+MIFFAN_HELPER_VERSION=52
 MIFFAN_CUA_MIN_VERSION=0.34.0
 
 set -u
@@ -6750,9 +6750,9 @@ MIFFAN_CONNECTOR_SHA256_DARWIN_ARM64=f3b8b33a2210153089017948ce9dbde64d6e2ff4ac0
 MIFFAN_CONNECTOR_SHA256_DARWIN_AMD64=c4bf19abdf14e396e72a7f332153779c422178840b3148c068af1178c4a8bc60
 MIFFAN_CONNECTOR_SHA256_LINUX_AMD64=a8d840abeeacf24490fb5aaaf08f1ac2a3d086ceb0cfdadf8cf7cc7584d5bdb2
 MIFFAN_CONNECTOR_SHA256_LINUX_ARM64=dbfc8aeead488b38420321bfa69f473c4d4e9ee0b3fe4ca99febc389aaaf0f87
+# Download locations tried in order (same file names): official Cloudflare R2 mirror first, GitHub release as fallback.
+MIFFAN_CONNECTOR_MIRRORS="https://downloads.ayuilos.me/connector/v$MIFFAN_CONNECTOR_VERSION"
 MIFFAN_CONNECTOR_RELEASE_URL="https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v$MIFFAN_CONNECTOR_VERSION"
-# Extra download locations tried after the GitHub release, space separated, same file names. None yet.
-MIFFAN_CONNECTOR_MIRRORS=""
 
 RELAY_BIN="$HOME/.miffan/bin/miffan-connector"
 RELAY_DIR="$HOME/.miffan/connector"
@@ -6803,15 +6803,28 @@ relay_sha256() {
     fi
 }
 
-# Downloads release file $1 to $2: the GitHub release first, then each mirror. Goes through the
-# computer's own proxy like the cua download does.
+# Downloads release file $1 to $2 (expected SHA-256 $3): official Cloudflare R2 mirror first, then
+# the GitHub release. Goes through the computer's own proxy like the cua download does.
+# Returns 0 when verified, 2 if a download finished with a wrong SHA-256, 1 if all downloads failed.
 relay_download() {
     cua_proxy
-    for base in "$MIFFAN_CONNECTOR_RELEASE_URL" $MIFFAN_CONNECTOR_MIRRORS; do
-        if curl -fsSL --connect-timeout 15 --max-time 300 --max-filesize 67108864 -o "$2" "$base/$1" 2>/dev/null; then
-            return 0
+    relay_dl_mismatch=0
+    relay_dl_expected=${3:-}
+    for base in $MIFFAN_CONNECTOR_MIRRORS "$MIFFAN_CONNECTOR_RELEASE_URL"; do
+        [ -n "$base" ] || continue
+        rm -f "$2"
+        if curl -fsSL --connect-timeout 15 --max-time 90 --speed-time 20 --speed-limit 1024 --max-filesize 67108864 -o "$2" "${base%/}/$1" 2>/dev/null; then
+            if [ -n "$relay_dl_expected" ] && [ "$(relay_sha256 "$2")" = "$relay_dl_expected" ]; then
+                return 0
+            fi
+            relay_dl_mismatch=1
+            rm -f "$2"
         fi
     done
+    rm -f "$2"
+    if [ "$relay_dl_mismatch" = 1 ]; then
+        return 2
+    fi
     return 1
 }
 
@@ -6835,7 +6848,15 @@ relay_fetch_binary() {
     if [ -n "${MIFFAN_CONNECTOR_FILE:-}" ]; then
         cp "$MIFFAN_CONNECTOR_FILE" "$tmp" 2>/dev/null || { rm -f "$tmp"; relay_fail install_failed "cannot read MIFFAN_CONNECTOR_FILE"; }
     else
-        relay_download "miffan-connector-$platform" "$tmp" || { rm -f "$tmp"; relay_fail download_failed "could not download the connector"; }
+        relay_dl_status=0
+        relay_download "miffan-connector-$platform" "$tmp" "$expected" || relay_dl_status=$?
+        if [ "$relay_dl_status" -eq 2 ]; then
+            rm -f "$tmp"
+            relay_fail checksum_mismatch "the connector does not match its pinned SHA-256; nothing was installed"
+        elif [ "$relay_dl_status" -ne 0 ]; then
+            rm -f "$tmp"
+            relay_fail download_failed "could not download the connector"
+        fi
     fi
     actual=$(relay_sha256 "$tmp")
     if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then

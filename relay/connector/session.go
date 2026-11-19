@@ -21,7 +21,7 @@ const (
 )
 
 // session serves one `open`: data connection → end-to-end handshake → forward to the configured target.
-func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace, edges []string, warm *tlsWarmer, viaStream bool, activeEdge string, streamCapable bool, h3 *h3Pool) {
+func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace, udpInfo *udpEndpoint, edges []string, warm *tlsWarmer, viaStream bool, activeEdge string, streamCapable bool, h3 *h3Pool) {
 	short := sid[:8]
 	start := time.Now()
 	deadline := start.Add(c.timing.handshake)
@@ -132,6 +132,10 @@ func (c *connector) session(ctx context.Context, l *link, sid, ch string, p pace
 		c.log.printf("session %s: device refused (%s)", short, reason)
 		_ = writeText(map[string]string{"t": "denied", "reason": reason})
 		closeWith(closeDenied, "denied")
+		return
+	}
+	if ch == "media-dgram" {
+		c.sessionDatagram(ctx, client, ws, &wmu, closeWith, short, deviceID, start, p, udpInfo)
 		return
 	}
 	target, err := validateTarget(cfg.Target)

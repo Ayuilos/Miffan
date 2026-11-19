@@ -186,4 +186,16 @@ class RemoteStreamTest {
         assertTrue(firewallCheckDue(0, 48 * hour))
         assertTrue(firewallCheckDue(10 * hour, 9 * hour))
     }
+    @Test fun relayBitrateCapPreservesHeadroomAndBumpsTimeout() {
+        val unlimited = me.rerere.stream.StreamConfig(1920, 1080, 60, 10_000).cappedForRelay(0)
+        assertEquals(10_000, unlimited.bitrateKbps)
+        assertEquals(12_000L, unlimited.connectTimeoutMillis)
+
+        val capped = me.rerere.stream.StreamConfig(1920, 1080, 60, 10_000).cappedForRelay(8_000)
+        assertEquals(6_800, capped.bitrateKbps)
+        assertEquals(12_000L, capped.connectTimeoutMillis)
+
+        val lowCap = me.rerere.stream.StreamConfig(1280, 720, 30, 4_000).cappedForRelay(500)
+        assertEquals(1_000, lowCap.bitrateKbps)
+    }
 }

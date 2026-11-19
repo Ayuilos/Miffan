@@ -4102,6 +4102,9 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="im_relay_rule_today_of">총 %1$d분 중</string>
   <string name="im_relay_rule_today_unlimited">제한 없음</string>
   <string name="im_relay_rule_fast">고화질</string>
+  <string name="im_relay_rule_fast_on">지원</string>
+  <string name="im_relay_rule_fast_upgrade">PC 업데이트 필요</string>
+  <string name="im_relay_rule_fast_udp_blocked">UDP 차단됨</string>
   <string name="im_relay_rule_fast_off">외출 중 미지원</string>
   <string name="im_relay_test_again">다시 테스트</string>
   <string name="im_relay_test_copy">결과 복사</string>

@@ -22,7 +22,7 @@ extern "C" {
 
 static JavaVM* vm;
 static jobject owner;
-static jmethodID openMethod, setupMethod, frameMethod, eventMethod, stoppedMethod, audioSetupMethod, audioDataMethod, receivedMethod;
+static jmethodID openMethod, openUdpMethod, setupMethod, frameMethod, eventMethod, stoppedMethod, audioSetupMethod, audioDataMethod, receivedMethod;
 static std::mutex inputMutex;
 static bool acceptingInput;
 static std::atomic<long long> audioPackets{0}, receivedBytes{0};
@@ -48,6 +48,13 @@ static void event(int kind, int stage, int code) {
 static int openTcp(unsigned short port) {
     bool attached; auto e = env(attached);
     int fd = e->CallIntMethod(owner, openMethod, (int)port);
+    if (e->ExceptionCheck()) { e->ExceptionClear(); fd = -1; }
+    if (fd < 0) errno = ECONNREFUSED;
+    detach(attached); return fd;
+}
+static int openUdp(unsigned char flow) {
+    bool attached; auto e = env(attached);
+    int fd = e->CallIntMethod(owner, openUdpMethod, (int)flow);
     if (e->ExceptionCheck()) { e->ExceptionClear(); fd = -1; }
     if (fd < 0) errno = ECONNREFUSED;
     detach(attached); return fd;
@@ -203,11 +210,13 @@ JNI(http) jbyteArray JNICALL Java_me_rerere_stream_StreamNative_http(JNIEnv* e, 
 }
 JNI(run) jint JNICALL Java_me_rerere_stream_StreamNative_run(JNIEnv* e, jobject, jobject session,
     jstring address, jstring version, jstring gfe, jint codecSupport, jstring url,
-    jint w, jint h, jint fps, jint bitrate, jint formats, jbyteArray key, jbyteArray iv) {
+    jint w, jint h, jint fps, jint bitrate, jint formats, jbyteArray key, jbyteArray iv,
+    jboolean useUdpHook) {
     auto a = str(e, address), v = str(e, version), g = str(e, gfe), u = str(e, url);
     unsigned char numeric[16]; if (inet_pton(AF_INET, a.c_str(), numeric) != 1 && inet_pton(AF_INET6, a.c_str(), numeric) != 1) return -111;
     owner = e->NewGlobalRef(session); auto cls = e->GetObjectClass(session);
-    openMethod = e->GetMethodID(cls, "openTcp", "(I)I"); setupMethod = e->GetMethodID(cls, "setupDecoder", "(IIII)Z");
+    openMethod = e->GetMethodID(cls, "openTcp", "(I)I"); openUdpMethod = e->GetMethodID(cls, "openUdp", "(I)I");
+    setupMethod = e->GetMethodID(cls, "setupDecoder", "(IIII)Z");
     frameMethod = e->GetMethodID(cls, "submitFrame", "([BJIZ)Z"); eventMethod = e->GetMethodID(cls, "nativeEvent", "(III)V");
     stoppedMethod = e->GetMethodID(cls, "waitForStop", "()V");
     audioSetupMethod = e->GetMethodID(cls, "setupAudio", "(IIIII[B)V");
@@ -216,7 +225,8 @@ JNI(run) jint JNICALL Java_me_rerere_stream_StreamNative_run(JNIEnv* e, jobject,
     receivedBytes = 0; audioPackets = 0; fecFailureEvents = 0; idrRequestsSent = 0;
     SERVER_INFORMATION server; LiInitializeServerInformation(&server);
     server.address = a.c_str(); server.serverInfoAppVersion = v.c_str(); server.serverInfoGfeVersion = g.c_str();
-    server.serverCodecModeSupport = codecSupport; server.rtspSessionUrl = u.c_str(); server.requireEncryptedStreams = true; server.openRtspTcp = openTcp; server.receivedMediaBytes = receivedMedia;
+    server.serverCodecModeSupport = codecSupport; server.rtspSessionUrl = u.c_str(); server.requireEncryptedStreams = true; server.openRtspTcp = openTcp;
+    server.openUdpChannel = useUdpHook ? openUdp : nullptr; server.receivedMediaBytes = receivedMedia;
     STREAM_CONFIGURATION config; LiInitializeStreamConfiguration(&config);
     config.width = w; config.height = h; config.fps = fps; config.bitrate = bitrate; config.packetSize = 1024;
     config.streamingRemotely = STREAM_CFG_REMOTE; config.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
@@ -265,4 +275,62 @@ JNI(networkStats) jlongArray JNICALL Java_me_rerere_stream_StreamNative_networkS
     jlong values[] = {n.videoEncrypted, n.audioEncrypted, n.controlV2, have ? (jlong)rtt : -1,
         audioPackets.load(), fecFailureEvents.load(), idrRequestsSent.load()};
     auto result = e->NewLongArray(7); e->SetLongArrayRegion(result, 0, 7, values); return result;
+}
+static void tunePairBuf(int fd, int opt) {
+    static const int sizes[] = {2 * 1024 * 1024, 1024 * 1024, 512 * 1024};
+    for (int sz : sizes) {
+        if (setsockopt(fd, SOL_SOCKET, opt, &sz, sizeof(sz)) == 0) break;
+    }
+}
+JNI(createDatagramPair) jintArray JNICALL Java_me_rerere_stream_StreamNative_createDatagramPair(JNIEnv* e, jobject) {
+    int fds[2]{-1, -1};
+    if (socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds) != 0) {
+        if (errno != EPROTONOSUPPORT && errno != EAFNOSUPPORT && errno != EOPNOTSUPP) return nullptr;
+        if (socketpair(AF_UNIX, SOCK_DGRAM, 0, fds) != 0) return nullptr;
+    }
+    tunePairBuf(fds[0], SO_RCVBUF); tunePairBuf(fds[0], SO_SNDBUF);
+    tunePairBuf(fds[1], SO_RCVBUF); tunePairBuf(fds[1], SO_SNDBUF);
+    jintArray out = e->NewIntArray(2);
+    if (!out) { close(fds[0]); close(fds[1]); return nullptr; }
+    jint vals[2]{fds[0], fds[1]};
+    e->SetIntArrayRegion(out, 0, 2, vals);
+    return out;
+}
+JNI(sendDatagram) jint JNICALL Java_me_rerere_stream_StreamNative_sendDatagram(JNIEnv* e, jobject,
+    jint fd, jbyteArray data, jint offset, jint length, jboolean nonBlocking) {
+    if (fd < 0 || !data || offset < 0 || length < 0 || length > 2048) return -1;
+    if (offset + length > e->GetArrayLength(data)) return -1;
+    char buf[2048];
+    if (length > 0) e->GetByteArrayRegion(data, offset, length, (jbyte*)buf);
+    int flags = MSG_NOSIGNAL | (nonBlocking ? MSG_DONTWAIT : 0);
+    ssize_t r;
+    do {
+        r = send(fd, buf, (size_t)length, flags);
+    } while (r < 0 && errno == EINTR);
+    if (r >= 0) return (jint)r;
+    if (nonBlocking && (errno == EAGAIN || errno == EWOULDBLOCK)) return 0;
+    return -1;
+}
+JNI(recvDatagram) jint JNICALL Java_me_rerere_stream_StreamNative_recvDatagram(JNIEnv* e, jobject,
+    jint fd, jbyteArray buffer) {
+    if (fd < 0 || !buffer) return -1;
+    jsize cap = e->GetArrayLength(buffer);
+    if (cap <= 0) return -1;
+    if (cap > 2048) cap = 2048;
+    char buf[2048];
+    ssize_t r;
+    do {
+        r = recv(fd, buf, (size_t)cap, 0);
+    } while (r < 0 && errno == EINTR);
+    if (r > 0) {
+        e->SetByteArrayRegion(buffer, 0, (jsize)r, (jbyte*)buf);
+        return (jint)r;
+    }
+    return -1;
+}
+JNI(shutdownFd) void JNICALL Java_me_rerere_stream_StreamNative_shutdownFd(JNIEnv*, jobject, jint fd) {
+    if (fd >= 0) shutdown(fd, SHUT_RDWR);
+}
+JNI(closeFd) void JNICALL Java_me_rerere_stream_StreamNative_closeFd(JNIEnv*, jobject, jint fd) {
+    if (fd >= 0) close(fd);
 }

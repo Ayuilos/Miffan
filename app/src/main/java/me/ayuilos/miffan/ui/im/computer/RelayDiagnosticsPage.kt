@@ -52,12 +52,14 @@ import kotlinx.coroutines.withContext
 import me.ayuilos.miffan.R
 import me.ayuilos.miffan.data.repository.WorkspaceRepository
 import me.ayuilos.miffan.data.repository.relay.RelayAccess
+import me.ayuilos.miffan.data.repository.relay.RelayDgramStatus
 import me.ayuilos.miffan.data.repository.relay.RelayProbe
 import me.ayuilos.miffan.data.repository.relay.RemoteRelaySetup
 import me.ayuilos.miffan.ui.im.ImPageBar
 import me.ayuilos.miffan.ui.pages.extensions.workspace.screen.relayConnectError
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Computer
+import me.rerere.hugeicons.stroke.Flash
 import me.rerere.hugeicons.stroke.FlashOff
 import me.rerere.workspace.relay.RelayException
 import org.koin.compose.koinInject
@@ -172,9 +174,20 @@ fun RelayDiagnosticsPage(hostId: String) {
                                 color = MaterialTheme.colorScheme.primary)
                         }
                     }
-                    RuleTile(Modifier.weight(1f), stringResource(R.string.im_relay_rule_fast),
-                        stringResource(R.string.im_relay_rule_fast_off), good = false) {
-                        RuleIcon(HugeIcons.FlashOff, false)
+                    val dgramStatus = probe?.dgramStatus ?: if (media && ready?.capabilities?.dgram == "udp") {
+                        RelayDgramStatus.AVAILABLE
+                    } else {
+                        RelayDgramStatus.UNSUPPORTED
+                    }
+                    val fastOk = dgramStatus == RelayDgramStatus.AVAILABLE
+                    val fastBadge = when (dgramStatus) {
+                        RelayDgramStatus.AVAILABLE -> stringResource(R.string.im_relay_rule_fast_on)
+                        RelayDgramStatus.CONNECTOR_OUTDATED -> stringResource(R.string.im_relay_rule_fast_upgrade)
+                        RelayDgramStatus.UDP_BLOCKED -> stringResource(R.string.im_relay_rule_fast_udp_blocked)
+                        RelayDgramStatus.UNSUPPORTED -> stringResource(R.string.im_relay_rule_fast_off)
+                    }
+                    RuleTile(Modifier.weight(1f), stringResource(R.string.im_relay_rule_fast), fastBadge, good = fastOk) {
+                        RuleIcon(if (fastOk) HugeIcons.Flash else HugeIcons.FlashOff, fastOk)
                     }
                 }
             }
@@ -189,7 +202,7 @@ fun RelayDiagnosticsPage(hostId: String) {
                         appendLine("entry=${check.edgeMillis}ms ${check.edgeRegion.orEmpty()}")
                         probe?.let {
                             appendLine("open=${it.openMillis}ms (relay ${it.relayOpenMillis}ms) answer=${it.commandMillis}ms warm=${it.warmCommandMillis}ms ping=${it.relayPingMillis}ms")
-                            appendLine("media=${it.policy.media.allowed} ${it.policy.media.kbps}kbps today=${it.usage.dayActiveMin}min")
+                            appendLine("media=${it.policy.media.allowed} ${it.policy.media.kbps}kbps today=${it.usage.dayActiveMin}min dgram=${it.capabilities?.dgram ?: "none"}(${it.dgramStatus})")
                         }
                         check.failure?.let { appendLine("failure=$it") }
                     }

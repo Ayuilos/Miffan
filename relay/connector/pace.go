@@ -97,6 +97,27 @@ func (b *bucket) take(ctx context.Context, n int) error {
 	return b.sleep(ctx, wait)
 }
 
+// tryTake consumes n bytes immediately if capacity is available without sleeping, returning false if
+// doing so would exceed the bucket. A zero or negative rate never drops.
+func (b *bucket) tryTake(n int) bool {
+	if b.rate <= 0 {
+		return true
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := b.now()
+	b.tokens += now.Sub(b.last).Seconds() * b.rate
+	if b.tokens > b.burst {
+		b.tokens = b.burst
+	}
+	b.last = now
+	if b.tokens < float64(n) {
+		return false
+	}
+	b.tokens -= float64(n)
+	return true
+}
+
 type deadlineReader interface {
 	io.Reader
 	SetReadDeadline(time.Time) error

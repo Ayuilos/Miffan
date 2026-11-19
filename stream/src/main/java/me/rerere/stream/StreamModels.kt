@@ -6,6 +6,11 @@ import java.io.OutputStream
 
 fun interface StreamTcpConnector { fun open(remotePort: Int): StreamTcpChannel }
 class StreamTcpChannel(val input: InputStream, val output: OutputStream, val closeable: Closeable)
+interface StreamUdpTransport : Closeable {
+    fun send(flow: Byte, payload: ByteArray, offset: Int = 0, length: Int = payload.size): Boolean
+    /** Reads the next datagram into [buffer], writes its flow byte into [flowOut][0], and returns length or -1 on close. */
+    fun receive(buffer: ByteArray, flowOut: ByteArray): Int
+}
 data class StreamIdentity(val certificatePem: String, val privateKeyPem: String, val uniqueId: String)
 object StreamIdentities {
     fun generate(): StreamIdentity {

@@ -4102,6 +4102,9 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="im_relay_rule_today_of">%1$d分中</string>
   <string name="im_relay_rule_today_unlimited">無制限</string>
   <string name="im_relay_rule_fast">高画質</string>
+  <string name="im_relay_rule_fast_on">対応</string>
+  <string name="im_relay_rule_fast_upgrade">PC側を更新</string>
+  <string name="im_relay_rule_fast_udp_blocked">UDP不可</string>
   <string name="im_relay_rule_fast_off">外出先では非対応</string>
   <string name="im_relay_test_again">もう一度テスト</string>
   <string name="im_relay_test_copy">結果をコピー</string>

@@ -33,6 +33,8 @@ type netEnv struct {
 	quic bool
 	// quicDial overrides QUIC dialing in tests; nil uses quic.DialAddrEarly.
 	quicDial func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (*quic.Conn, error)
+	// sunshineUDPTargets overrides the 127.0.0.1 Sunshine UDP flow targets (0x01/0x02/0x03) in tests.
+	sunshineUDPTargets map[byte]string
 }
 
 func defaultNetEnv() netEnv {
@@ -432,8 +434,10 @@ type relayInfo struct {
 	Access       string   `json:"access"`
 	Edges        []string `json:"edges"`
 	Capabilities struct {
-		Dgram  string `json:"dgram"`
-		Stream bool   `json:"stream"`
+		Dgram   string `json:"dgram"`
+		UDPPort int    `json:"udpPort"`
+		UDPHost string `json:"udpHost"`
+		Stream  bool   `json:"stream"`
 	} `json:"capabilities"`
 }
 

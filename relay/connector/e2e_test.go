@@ -28,12 +28,13 @@ type fakeRelay struct {
 	upg    websocket.Upgrader
 	hostID string
 
-	mu       sync.Mutex
-	control  *websocket.Conn
-	cwmu     sync.Mutex
-	pending  map[string]chan *websocket.Conn
-	pings    int
-	registry []registration
+	mu        sync.Mutex
+	control   *websocket.Conn
+	cwmu      sync.Mutex
+	pending   map[string]chan *websocket.Conn
+	pings     int
+	registry  []registration
+	authDgram bool
 }
 
 type registration struct {
@@ -87,7 +88,11 @@ func (f *fakeRelay) handleHost(w http.ResponseWriter, r *http.Request) {
 	nonce := b64u.EncodeToString(nonceRaw)
 	_ = ws.WriteJSON(map[string]string{"t": "challenge", "nonce": nonce})
 	_ = ws.SetReadDeadline(time.Now().Add(10 * time.Second))
-	var auth struct{ T, Sig string }
+	var auth struct {
+		T     string
+		Sig   string
+		Dgram bool
+	}
 	if err := ws.ReadJSON(&auth); err != nil {
 		ws.Close()
 		return
@@ -104,6 +109,7 @@ func (f *fakeRelay) handleHost(w http.ResponseWriter, r *http.Request) {
 	old := f.control
 	f.control = ws
 	f.hostID = hostID
+	f.authDgram = auth.Dgram
 	f.registry = append(f.registry, registration{hostID, r.URL.Query().Get("hint"), strings.ToLower(r.Host), r.Header.Get("Authorization")})
 	f.mu.Unlock()
 	if old != nil {
@@ -187,6 +193,10 @@ func (f *fakeRelay) open(chn string, p pace) (string, *websocket.Conn) {
 }
 
 func (f *fakeRelay) openSID(sid, chn string, p pace) *websocket.Conn {
+	return f.openSIDExtra(sid, chn, p, nil)
+}
+
+func (f *fakeRelay) openSIDExtra(sid, chn string, p pace, extra map[string]any) *websocket.Conn {
 	f.t.Helper()
 	ch := make(chan *websocket.Conn, 1)
 	f.mu.Lock()
@@ -196,8 +206,12 @@ func (f *fakeRelay) openSID(sid, chn string, p pace) *websocket.Conn {
 	if control == nil {
 		f.t.Fatal("no control connection")
 	}
+	msg := map[string]any{"t": "open", "sid": sid, "ch": chn, "pace": p}
+	for k, v := range extra {
+		msg[k] = v
+	}
 	f.cwmu.Lock()
-	err := control.WriteJSON(map[string]any{"t": "open", "sid": sid, "ch": chn, "pace": p})
+	err := control.WriteJSON(msg)
 	f.cwmu.Unlock()
 	if err != nil {
 		f.t.Fatal(err)
@@ -271,6 +285,7 @@ type harness struct {
 	paths dataPaths
 	id    *identity
 	app   *testApp
+	env   netEnv
 	conn  *connector
 	stop  func()
 	done  chan struct{}
@@ -284,7 +299,13 @@ func testTiming() timing {
 
 func startHarness(t *testing.T, token string, configure func(*harness)) *harness {
 	t.Helper()
-	h := &harness{t: t, relay: newFakeRelay(t, token), echo: newEchoServer(t), app: newTestApp(t)}
+	h := &harness{
+		t:     t,
+		relay: newFakeRelay(t, token),
+		echo:  newEchoServer(t),
+		app:   newTestApp(t),
+		env:   netEnv{dial: (&net.Dialer{Timeout: 3 * time.Second}).DialContext},
+	}
 	h.paths = dataPaths{t.TempDir() + "/connector"}
 	if err := ensureDataDir(h.paths); err != nil {
 		t.Fatal(err)
@@ -302,8 +323,7 @@ func startHarness(t *testing.T, token string, configure func(*harness)) *harness
 	if configure != nil {
 		configure(h)
 	}
-	env := netEnv{dial: (&net.Dialer{Timeout: 3 * time.Second}).DialContext}
-	h.conn = newConnector(h.paths, h.id, "test", env, newLogger(testWriter{t}))
+	h.conn = newConnector(h.paths, h.id, "test", h.env, newLogger(testWriter{t}))
 	h.conn.timing = testTiming()
 	ctx, cancel := contextWithCancel()
 	h.done = make(chan struct{})

@@ -4168,6 +4168,9 @@
   <string name="im_relay_rule_today_of">из %1$d мин</string>
   <string name="im_relay_rule_today_unlimited">Без ограничений</string>
   <string name="im_relay_rule_fast">Высокое качество</string>
+  <string name="im_relay_rule_fast_on">Поддерживается</string>
+  <string name="im_relay_rule_fast_upgrade">Обновите ПК</string>
+  <string name="im_relay_rule_fast_udp_blocked">UDP недоступен</string>
   <string name="im_relay_rule_fast_off">Вне дома недоступно</string>
   <string name="im_relay_test_again">Проверить снова</string>
   <string name="im_relay_test_copy">Скопировать результаты</string>

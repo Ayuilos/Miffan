@@ -20,7 +20,8 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class StreamSession(private val host: StreamHost, private val app: StreamApp, private val udpAddress: String,
-    private val config: StreamConfig, surface: Surface, audioContext: Context? = null) : Closeable {
+    private val config: StreamConfig, surface: Surface, audioContext: Context? = null,
+    udpTransport: StreamUdpTransport? = null) : Closeable {
     private val mutableState = MutableStateFlow<StreamState>(StreamState.Connecting)
     val state: StateFlow<StreamState> = mutableState.asStateFlow()
     private val mutableStats = MutableStateFlow(StreamStats())
@@ -34,6 +35,7 @@ class StreamSession(private val host: StreamHost, private val app: StreamApp, pr
     private val finished = CountDownLatch(1)
     @Volatile private var stop = CountDownLatch(1)
     @Volatile private var bridge = TcpBridge(host.connector)
+    private val udpBridge = udpTransport?.let { UdpBridge(it) }
     @Volatile private var currentSurface: Surface? = surface
     @Volatile private var stage = 0
     @Volatile private var failure: StreamState.Failed? = null
@@ -63,7 +65,7 @@ class StreamSession(private val host: StreamHost, private val app: StreamApp, pr
         check(!closed.get() && started.compareAndSet(false, true)) { "Session already started or closed" }
         synchronized(processLock) {
             if (active != null) {
-                audio?.close(); mutableState.value = StreamState.Failed(StreamFailureReason.BUSY, 0, -201); finished.countDown(); return
+                audio?.close(); udpBridge?.close(); mutableState.value = StreamState.Failed(StreamFailureReason.BUSY, 0, -201); finished.countDown(); return
             }
             active = this
         }
@@ -80,7 +82,7 @@ class StreamSession(private val host: StreamHost, private val app: StreamApp, pr
                         stage >= 8 -> StreamFailureReason.UDP_UNREACHABLE
                         else -> StreamFailureReason.TCP_RTSP
                     }, stage, -202)
-                    stop.countDown(); bridge.close()
+                    stop.countDown(); bridge.close(); udpBridge?.resetChannels()
                 }
                 if (closed.get() || failure != null) interruptOwned()
                 Thread.sleep(20)
@@ -121,9 +123,10 @@ class StreamSession(private val host: StreamHost, private val app: StreamApp, pr
                 val result = try {
                     StreamNative.run(this, udpAddress, info.version, info.gfeVersion, info.codecModeSupport, url,
                         config.width, config.height, config.fps, config.bitrateKbps,
-                        (if (StreamCodec.H264 in codecs) 1 else 0) or (if (StreamCodec.HEVC in codecs) 0x100 else 0), key, iv)
+                        (if (StreamCodec.H264 in codecs) 1 else 0) or (if (StreamCodec.HEVC in codecs) 0x100 else 0),
+                        key, iv, udpBridge != null)
                 } finally { nativeActive = false; key.fill(0); iv.fill(0) }
-                decoder?.close(); decoder = null; bridge.close(); bridge.awaitStopped(2000)
+                decoder?.close(); decoder = null; bridge.close(); bridge.awaitStopped(2000); udpBridge?.resetChannels()
                 if (!controlReady && launchCompletedAt != 0L) host.deferLaunch(launchCompletedAt)
                 val wasStreaming = mutableState.value is StreamState.Streaming
                 if (decoderFailure && wasStreaming) connectionDeadline = System.nanoTime() + config.connectTimeoutMillis * 1_000_000
@@ -140,7 +143,7 @@ class StreamSession(private val host: StreamHost, private val app: StreamApp, pr
                 else StreamState.Failed(StreamFailureReason.TCP_RTSP, stage, -203)
         } finally {
             if (!controlReady && launchCompletedAt != 0L) host.deferLaunch(launchCompletedAt)
-            audio?.close(); releaseAllInput(); bridge.close(); bridge.awaitStopped(2000); decoder?.close(); decoder = null
+            audio?.close(); releaseAllInput(); bridge.close(); bridge.awaitStopped(2000); udpBridge?.close(); decoder?.close(); decoder = null
             mutableState.value = failure ?: StreamState.Closed
             synchronized(processLock) { if (active === this) active = null }
             finished.countDown(); watchdog.join(1000); watcher?.cancel()
@@ -155,6 +158,7 @@ class StreamSession(private val host: StreamHost, private val app: StreamApp, pr
     }
     private fun submitAudio(data: ByteArray) { audio?.packet(data) }
     private fun openTcp(port: Int): Int = if (closed.get() || failure != null || decoderFailure) -1 else bridge.open(port)
+    private fun openUdp(flow: Int): Int = if (closed.get() || failure != null || decoderFailure) -1 else (udpBridge?.open(flow.toByte()) ?: -1)
     private fun setupDecoder(format: Int, width: Int, height: Int, fps: Int): Boolean {
         mutableStats.update { it.copy(codec = if (format and 0x100 != 0) StreamCodec.HEVC else StreamCodec.H264, width = width, height = height, fps = fps) }
         decoderConfiguring = true
@@ -251,7 +255,7 @@ class StreamSession(private val host: StreamHost, private val app: StreamApp, pr
     }
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
-        audio?.close(); releaseAllInput(); stop.countDown(); bridge.close(); interruptOwned()
+        audio?.close(); releaseAllInput(); stop.countDown(); bridge.close(); udpBridge?.close(); interruptOwned()
         if (!started.get()) { mutableState.value = StreamState.Closed; finished.countDown() }
     }
     /** Wait off the UI thread before starting another candidate. */

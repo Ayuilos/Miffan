@@ -3,11 +3,13 @@ package me.rerere.workspace.relay
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.DatagramSocket
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.Base64
 import java.util.concurrent.Callable
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorCompletionService
@@ -398,6 +400,46 @@ class RelayClient(
                 ?: runCatching { fetchInfo(endpoint.baseUrl.trimEnd('/')) }.getOrNull()
             if (freshInfo?.capabilities?.stream != true) throw error
             return openViaStream(st, endpoint, hostId, channel, signer, timeoutMillis)
+        }
+    }
+
+    /**
+     * Opens a `ch=media-dgram` session and verifies UDP reachability (`0xFF`/`0xFE`) before
+     * returning. Closes the control session on probe or validation failure.
+     */
+    fun openDatagram(
+        endpoint: RelayEndpoint,
+        hostId: String,
+        signer: RelayDeviceSigner,
+        networkKey: String,
+        timeoutMillis: Long = 20_000,
+        probeTimeoutMillis: Long = RelayDatagramSession.DEFAULT_PROBE_TIMEOUT_MILLIS,
+    ): RelayDatagramSession {
+        val socket = open(endpoint, hostId, RelayChannel.MEDIA_DGRAM, signer, networkKey, timeoutMillis)
+        return try {
+            val udp = socket.ready.udp
+                ?: throw RelayException(RelayException.UNREACHABLE, message = "missing udp endpoint")
+            if (udp.port !in 1..65535) {
+                throw RelayException(RelayException.UNREACHABLE, message = "invalid udp port")
+            }
+            val token = try {
+                Base64.getUrlDecoder().decode(udp.token)
+            } catch (e: IllegalArgumentException) {
+                throw RelayException(RelayException.UNREACHABLE, message = "invalid udp token", cause = e)
+            }
+            if (token.size != RelayDatagramSession.TOKEN_SIZE) {
+                throw RelayException(RelayException.UNREACHABLE, message = "invalid udp token size")
+            }
+            val udpHost = udp.host?.takeIf { it.isNotBlank() } ?: endpoint.baseUrl.toHttpUrl().host
+            val session = RelayDatagramSession(socket, udpHost, udp.port, token, DatagramSocket())
+            if (!session.probe(probeTimeoutMillis)) {
+                session.close()
+                throw RelayException(RelayException.UNREACHABLE, message = "udp probe timed out")
+            }
+            session
+        } catch (t: Throwable) {
+            runCatching { socket.close() }
+            throw t
         }
     }
 

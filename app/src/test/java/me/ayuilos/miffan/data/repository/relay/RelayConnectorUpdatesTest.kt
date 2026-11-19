@@ -14,9 +14,12 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class RelayConnectorUpdatesTest {
     @Test
-    fun `a connector is outdated only when both versions are known and differ`() {
+    fun `a connector is outdated only when both versions are known and installed is older`() {
         assertTrue(RelayConnectorStatus(installed = true, version = "1.1.0", pinnedVersion = "1.2.0").outdated)
         assertFalse(RelayConnectorStatus(installed = true, version = "1.2.0", pinnedVersion = "1.2.0").outdated)
+        assertFalse(RelayConnectorStatus(installed = true, version = "1.4.0", pinnedVersion = "1.3.0").outdated)
+        assertFalse(RelayConnectorStatus(installed = true, version = "1.4.0-dev", pinnedVersion = "1.3.0").outdated)
+        assertFalse(RelayConnectorStatus(installed = true, version = "dev", pinnedVersion = "1.3.0").outdated)
         assertFalse(RelayConnectorStatus(installed = true, version = "", pinnedVersion = "1.2.0").outdated)
         assertFalse(RelayConnectorStatus(installed = true, version = "1.1.0", pinnedVersion = "").outdated)
         assertFalse(RelayConnectorStatus(installed = false).outdated)

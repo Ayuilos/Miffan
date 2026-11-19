@@ -404,6 +404,14 @@ describe("policy", () => {
     const r = await upgradeAttempt(wsUrl(B, `/v1/connect/${key.hostId}?ch=media`), { authorization: `Bearer ${ACCESS_TOKEN}` });
     expect((r.json as any).reason).toBe("host_offline");
   });
+
+  test("media-dgram is refused with dgram_disabled when UDP forwarding is off", async () => {
+    const host = await HostControl.connect(A, undefined, { dgram: true });
+    const denied = await upgradeAttempt(wsUrl(A, `/v1/connect/${host.hostId}?ch=media-dgram`));
+    expect(denied.status).toBe(403);
+    expect((denied.json as any).reason).toBe("dgram_disabled");
+    host.close();
+  });
 });
 
 // ---- metering ------------------------------------------------------------------------------

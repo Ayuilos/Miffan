@@ -43,7 +43,7 @@ relay 的基础地址记作 `BASE`（例如 `https://relay.miffan.ayuilos.me`）
 | `GET /v1/info` | 无 | 中转的能力、公开策略、入口候选 |
 | `GET` (WS) 或 `POST` (Stream) `/v1/host` | 访问码（若需要）+ 主机签名 | connector 控制连接 |
 | `GET` (WS) 或 `POST` (Stream) `/v1/host/{hostId}/session/{sid}` | `sid`（只有 connector 通过控制连接知道） | connector 的会话数据连接 |
-| `GET` (WS) 或 `POST` (Stream) `/v1/connect/{hostId}?ch={control\|media}` | 访问码（若需要） | App 的会话连接 |
+| `GET` (WS) 或 `POST` (Stream) `/v1/connect/{hostId}?ch={control\|media\|media-dgram}` | 访问码（若需要） | App 的会话连接 |
 | `GET /v1/admin/stats` | `Authorization: Bearer <ADMIN_TOKEN>` | 部署者查看全局用量 |
 
 访问码：`/v1/info` 的 `access` 为 `"token"` 时，connector 和 App 的 WebSocket 请求都必须带 `Authorization: Bearer <访问码>`，否则返回 401 `unauthorized`。`access` 为 `"open"` 时忽略该头。
@@ -63,7 +63,7 @@ relay 的基础地址记作 `BASE`（例如 `https://relay.miffan.ayuilos.me`）
 ```
 
 - `impl`：`"worker"`（Cloudflare）或 `"bun"`（VPS）。
-- `capabilities.dgram`：`"none"`（v1 固定），R2 增加 `"ws"`、`"udp"`。
+- `capabilities.dgram`：`"none"`（未开启数据报转发）或 `"udp"`（提供 §5.5 原生 UDP 数据报转发）。当为 `"udp"` 时，还包含 `"udpPort"`（`uint16`，服务端监听的 UDP 端口）以及可选 `"udpHost"`（字符串，未提供时取中转 URL 主机名）。
 - `capabilities.stream`：可选布尔值；为 `true` 时表示服务端支持 §3.3 的 HTTP 双向流传输（主要用于 HTTP/3 over QUIC / UDP，无需 WebSocket `Upgrade`）。
 - `edges`：入口 IP 候选（IPv4 或 IPv6 文本），可为空。客户端按 §8 使用。
 
@@ -102,7 +102,7 @@ connector                          relay
    │ WS GET /v1/host?pub=<b64u hostPub>[&hint=<locationHint>]
    │ ───────────────────────────────▶
    │ ◀── {"t":"challenge","nonce":"<b64u>"}
-   │ ── {"t":"auth","sig":"<b64u>"} ──▶
+   │ ── {"t":"auth","sig":"<b64u>"[,"dgram":true]} ──▶
    │ ◀── {"t":"hello", …}            （或关闭 4401）
    │ ◀── {"t":"open", …}             （每个新会话一条）
    │ ── "ping"（每 30 秒）──▶  ◀── "pong"
@@ -110,7 +110,7 @@ connector                          relay
 
 - `pub`：`b64u(hostPub)`。relay 由它计算 `hostId`。
 - `hint`：可选，只在该 `hostId` 的状态第一次创建时有意义（Cloudflare Durable Object 的 `locationHint`；Bun 实现忽略）。
-- 签名：`sig = Ed25519(hostKey, UTF8("miffan-relay/v1 host\n" + host + "\n" + nonce))`，其中 `host` 是请求的 `Host` 头的值（小写），`nonce` 是 challenge 中的 b64u 文本原样。
+- `签名`：`sig = Ed25519(hostKey, UTF8("miffan-relay/v1 host\n" + host + "\n" + nonce))`，其中 `host` 是请求的 `Host` 头的值（小写），`nonce` 是 challenge 中的 b64u 文本原样。支持 `ch=media-dgram` 的 connector 在 `auth` 中附带 `"dgram": true`。
 - relay 必须在 10 秒内收到正确签名，否则关闭 4401。
 - 同一 `hostId` 只保留一条控制连接：新连接**验签通过后**，旧连接以 4000 `replaced` 关闭。
 - 首次出现的 `hostId` 受按来源 IP 的注册频率限制（策略 `access.registrationsPerIpPerDay`）：升级前检查，超出返回 429 `too_many_registrations`；只有**验签通过**后才计数并为它建立状态，未通过验签的连接不留下任何记录。IPv6 地址按 /64 前缀计数，IPv4 映射地址按其 IPv4 地址计数。
@@ -130,10 +130,16 @@ connector                          relay
 `open`：
 
 ```json
-{ "t": "open", "sid": "…", "ch": "control", "pace": { "kbps": 1000, "burstKb": 2048 } }
+{
+  "t": "open",
+  "sid": "…",
+  "ch": "control",
+  "pace": { "kbps": 1000, "burstKb": 2048 },
+  "udp": { "port": 8444, "host": "relay.example.com", "token": "<b64u 16B hostToken>" }
+}
 ```
 
-收到 `open` 后，connector 必须在 10 秒内打开会话数据连接（§5.1），否则 relay 以 4408 `host_timeout` 关闭 App 一侧。
+仅当 `ch` 为 `"media-dgram"` 时携带 `udp` 对象（`host` 可选）。收到 `open` 后，connector 必须在 10 秒内打开会话数据连接（§5.1），否则 relay 以 4408 `host_timeout` 关闭 App 一侧。
 
 relay 还可能发送：
 
@@ -169,10 +175,16 @@ App                         relay                         connector
   "sid": "…",
   "ch": "control",
   "pace": { "kbps": 1000, "burstKb": 2048 },
+  "capabilities": { "dgram": "none", "stream": true },
   "policy": { …§6.1… },
-  "usage": { …§6.3… }
+  "usage": { …§6.3… },
+  "udp": { "port": 8444, "host": "relay.example.com", "token": "<b64u 16B clientToken>" }
 }
 ```
+
+- `capabilities`：与 `hello` 相同的能力对象（可选；旧版中转可省略，新客户端可据此立即感知新开启的 UDP 能力）。
+- `udp`：仅当 `ch` 为 `"media-dgram"` 时提供（`host` 可选；未提供时使用中转 URL 的主机名）。
+- `ch` 为 `"media-dgram"` 时，§5.2 的端到端握手仍在控制连接（WS / HTTP 流）上完成，`auth` 签名中的 `ch` 字段即为 `"media-dgram"`；但之后的音视频与输入控制数据不再走 WS 二进制帧，而是通过 §5.5 的原生 UDP 数据报通道转发，控制连接仅用于端到端握手、`ping`/`pong` 保活与关闭通知。
 
 `ready` 之后，relay **原样转发**两侧的文本帧和二进制帧，唯一例外是文本 `ping`：由 relay 直接回复 `pong`，不转发。
 
@@ -227,6 +239,40 @@ App                         relay                         connector
   - 会话：任一侧消失，就以 1000 `peer_closed` 关闭整条会话，并且不再占用 `sessionsPerHost` 的名额。
   - 因此连接两侧的 `ping` 间隔不得超过 30 秒（电脑一侧的 75 秒允许丢一次）。
 - App 在经 relay 的 SSH 会话上不应当启用 SSH 层保活（JSch `ServerAliveInterval`）。
+
+### 5.5 原生 UDP 数据报转发（`ch=media-dgram`）
+
+当服务端宣告 `capabilities.dgram == "udp"` 且在线 connector 在 `auth` 中宣告 `"dgram": true` 时，App 可请求 `ch=media-dgram` 会话用于 Sunshine 高性能串流。
+
+#### 报文格式
+
+每个发往或来自中转 UDP 端口（`capabilities.udpPort`）的数据报格式为：
+
+```text
+[0..15]  16 字节会话令牌（App 持 clientToken，connector 持 hostToken）
+[16]     1 字节流标识 flow
+[17..N]  载荷字节（总包长 17..2048 字节）
+```
+
+`flow` 取值：
+
+| `flow` | 方向 / 用途 | 电脑端本机目标（仅 `127.0.0.1`） |
+|---|---|---|
+| `0x01` | Sunshine 视频 RTP / FEC 数据与回包 | `127.0.0.1:47998` |
+| `0x02` | Sunshine ENet 控制 / 键鼠输入 | `127.0.0.1:47999` |
+| `0x03` | Sunshine 音频 RTP / ping | `127.0.0.1:48000` |
+| `0xFF` | 绑定 / 探测 / NAT 保活（载荷 `0..16` 字节，由客户端发给 relay） | 不转发 |
+| `0xFE` | 探测回显（由 relay 发回发送端，原样带回 `0xFF` 的令牌与 `0..16` 字节载荷） | 不转发 |
+
+#### 绑定、防放大与转发规则
+
+- **地址绑定与防放大**：relay 不根据控制连接的来源 IP 预设数据报目标地址。当且仅当携带合法 `clientToken` 或 `hostToken` 的数据报（`0xFF` 或 `0x01..0x03`）到达时，relay 记录该侧最新的 `(address, port)`（允许手机切网或 NAT 重绑定后无缝切换）。对端尚未绑定地址前，发往该对端的数据报静默丢弃；未知令牌静默丢弃，不产生任何响应字节。
+- **零放大探测**：`0xFF` 载荷上限 16 字节，relay 原地将 `flow` 改写为 `0xFE` 后直接发回原 `(address, port)`，响应字节数与请求完全相等（最多 33 字节）。App 与 connector 均应当通过 `0xFF`/`0xFE` 验证 UDP 端口可达性后再开始媒体流传输，并每 15 秒发送一次空的 `0xFF` 维持 NAT 映射。
+- **原地令牌替换与非阻塞转发**：转发 `0x01`/`0x02`/`0x03` 时，relay 将报文头部的发送方 16 字节令牌原地替换为对端令牌，经 `media` 通道令牌桶监督后转发给对端已绑定的 `(address, port)`。
+- **限速、计量与生命周期**：
+  - 字节率限制与 `ch=media` 共用 `policy.media` 的 `kbps` / `burstKb` 与 1.5 倍突发窗口，但帧率上限为 `0`（不限 UDP 包数）。**超速的数据报直接静默丢弃**，不关闭会话控制连接。
+  - 仅 `0x01`/`0x02`/`0x03` 成功转发的数据报计入该电脑 `media` 流量与活跃分钟并重置 `idleTimeoutS`（不计入 `hostDailyMessages` / `globalDailyRequests`）；`0xFF`/`0xFE` 探测与保活不计流量，也不重置 `idleTimeoutS`。
+  - 会话控制连接关闭、空闲超时、或 `media` 配额 / 全局预算耗尽时，relay 关闭控制连接并立即注销 `clientToken` 与 `hostToken`。
 
 ## 6. 策略、限速与计量
 
@@ -301,19 +347,22 @@ relay 只记录 `hostId`、字节数、分钟数与时间。不得记录帧内�
 | 访问码不符 | 401 `unauthorized` |
 | `ch` 非法 | 400 `bad_request` |
 | 电脑不在线 | 404 `host_offline` |
-| `ch=media` 且 `media.allowed=false` | 403 `media_disabled` |
+| `ch` 为 `media` / `media-dgram` 且 `media.allowed=false` | 403 `media_disabled` |
+| `ch=media-dgram` 且中转未启用 `dgram="udp"` | 403 `dgram_disabled` |
+| `ch=media-dgram` 且在线 connector 未声明 `dgram: true` | 403 `dgram_unsupported` |
 | 全局预算 `closed` | 503 `relay_busy` |
-| `ch=media` 且全局预算 `media_paused` | 503 `relay_busy` |
+| `ch` 为 `media` / `media-dgram` 且全局预算 `media_paused` | 503 `relay_busy` |
 | 该电脑任一日/月配额用完 | 429 `quota_exhausted`（`retryAfter` 到重置时间） |
 | 该电脑会话数已达上限 | 429 `too_many_sessions` |
 
-会话进行中配额或预算耗尽：画面会话以 4429 `quota_exhausted` / 4503 `relay_busy` 关闭；控制会话允许继续到自然结束，但不得开新会话。例外是 `hostDailyMessages`：它用完时，该电脑**所有**正在进行的会话（控制和画面）都以 4429 `quota_exhausted` 关闭，超出配额的那一帧不转发；只影响这台电脑，控制连接保持在线并收到 `usage` 推送。
+会话进行中配额或预算耗尽：画面会话（`media` 与 `media-dgram`）以 4429 `quota_exhausted` / 4503 `relay_busy` 关闭并立即注销对应 UDP 令牌；控制会话允许继续到自然结束，但不得开新会话。例外是 `hostDailyMessages`：它用完时，该电脑**所有**正在进行的会话（控制和画面）都以 4429 `quota_exhausted` 关闭，超出配额的那一帧不转发；只影响这台电脑，控制连接保持在线并收到 `usage` 推送。
 
 ## 7. connector 的转发目标
 
-- 会话只能转发到 connector 配置的目标，默认 `127.0.0.1:22`。
+- TCP 流会话（`control`、`media`）只能转发到 connector 配置的目标，默认 `127.0.0.1:22`。
+- UDP 数据报会话（`media-dgram`）仅转发到本机 `127.0.0.1` 的 Sunshine UDP 端口：`47998`（视频 `flow=0x01`）、`47999`（控制 `flow=0x02`）与 `48000`（音频 `flow=0x03`）。
 - connector 不得根据 relay 或 App 发来的任何内容改变目标；v1 没有"指定目标"的消息。
-- 两个通道（`control`、`media`）都转发到同一个 sshd；画面流量在 App 一侧通过第二条 SSH 连接的 direct-tcpip 通道到达 VNC 等服务。
+- 经 `control` / `media` 转发的 VNC、RDP 及 Sunshine 控制信令/RTSP（TCP 47984/47989/48010）仍通过 SSH direct-tcpip 通道到达本机服务。
 
 ## 8. 入口优选
 
@@ -331,6 +380,8 @@ relay 只记录 `hostId`、字节数、分钟数与时间。不得记录帧内�
 | `bad_request` | 400 | 1008 | 路径、参数或消息格式错误；WebSocket 上：`ready` 之前发帧、握手之外的文本帧、已认证控制连接上的非 `ping` 消息 |
 | `unauthorized` | 401 | 4401 | 访问码错误，或主机签名错误/超时 |
 | `media_disabled` | 403 | — | 本中转不提供画面通道 |
+| `dgram_disabled` | 403 | — | 本中转未开启 UDP 数据报转发 |
+| `dgram_unsupported` | 403 | — | 在线电脑的 connector 版本过旧，不支持 `media-dgram` |
 | `denied` | — | 4403 | connector 拒绝了设备（端到端握手失败） |
 | `host_offline` | 404 | 4404 | 电脑的 connector 不在线；WebSocket 上：控制连接超过 75 秒没有 `ping`（§5.4） |
 | `host_timeout` | — | 4408 | connector 没有及时接起会话 |

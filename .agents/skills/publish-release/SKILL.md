@@ -69,7 +69,7 @@ Updates:
 - xxx
 ```
 
-展示草案时，同时给出一段不属于 Release 正文的来源核对摘要：起始 tag、目标 commit、识别到的上游同步点，以及两类原始提交数量；再列出 README 打算改动的段落和新增的历史行（见“更新 README”）以及文档站计划更新的 Help Skill 版本与涉及 topic（见“更新文档站”）。随后请求用户确认日志、README 改动和版本号。只有用户明确确认可以发布后，才进入下一阶段；如日志发生实质修改，需要再次确认。
+展示草案时，同时给出一段不属于 Release 正文的来源核对摘要：起始 tag、目标 commit、识别到的上游同步点，以及两类原始提交数量；再列出 README 打算改动的段落和新增的历史行（见“更新 README”）、文档站计划更新的 Help Skill 版本与涉及 topic（见“更新文档站”），以及核对 `remote-helper/src/miffan.sh` 中当前固定的 `MIFFAN_CONNECTOR_VERSION` 是否已镜像到 R2（`https://downloads.ayuilos.me/connector/v<版本>/SHA256SUMS`，若尚未镜像如待补传的 `relay-connector-v1.3.0`，在摘要中提醒用户）。随后请求用户确认日志、README 改动和版本号。只有用户明确确认可以发布后，才进入下一阶段；如日志发生实质修改，需要再次确认。
 
 ## 更新 README
 
@@ -98,5 +98,6 @@ Updates:
 4. 在临时目录创建带版本号的上传副本，文件名使用 `<项目名>-<版本号>-arm64-v8a.apk`，并在同一目录用 `shasum -a 256 <文件名> > <文件名>.sha256` 生成校验文件；不要改动或上传其他架构的 APK。
 5. 使用 `gh release create` 在目标 commit 上创建 Release，标题为版本号，正文必须是用户最后确认的双语更新日志，并在同一条命令里同时上传 APK 和 `.sha256` 校验文件。本仓库的 Release 发布后不可修改：之后无法补传文件，删除后同一版本号也不能再用；下载站同步流程缺少校验文件会失败。
 6. 发布后用 `gh release view` 核对 tag、目标 commit、Release 正文、唯一的 arm64 APK 及其 `.sha256`，并确认 “Publish APK to R2” 工作流成功；同步完成 `miffan-site` 文档站更新并确认线上 `manifest.json` 生效后，向用户返回 Release 链接、资源文件名与文档站状态。
+7. 核对 `remote-helper/src/miffan.sh` 中固定的 `MIFFAN_CONNECTOR_VERSION` 是否已存在于 R2（检查 `https://downloads.ayuilos.me/connector/v<版本>/SHA256SUMS`）；若尚未镜像（例如首次合并 `.github/workflows/publish-connector-r2.yml` 到 `master` 后，需补传历史已发布的 `relay-connector-v1.3.0`），明确提醒用户运行 `gh workflow run publish-connector-r2.yml -f release_tag=relay-connector-v<版本>`（或在用户确认后代为触发）并确认 “Publish connector to R2” 工作流成功。
 
 任何发布前检查失败时停止，不得用强制覆盖、删 tag 或替换已有 Release 的方式继续。

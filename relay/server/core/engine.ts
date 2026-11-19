@@ -8,8 +8,8 @@
 // metering) is kept in the socket attachment, and every timeout goes through the single alarm.
 
 import type { BudgetState } from "./budget.ts";
-import { CLOSE_CODE, LIMITS, type Channel, type Reason } from "./codes.ts";
-import { paceFor, publicPolicy, type RelayConfig } from "./config.ts";
+import { CLOSE_CODE, LIMITS, meterChannel, type Channel, type Reason } from "./codes.ts";
+import { capabilitiesObject, paceFor, publicPolicy, type DgramCapability, type RelayConfig } from "./config.ts";
 import { b64uDecode, b64uEncode, randomBytes, randomSid, verifyHostSignature, type Bytes } from "./crypto.ts";
 import type { Route } from "./http.ts";
 import { reject } from "./http.ts";
@@ -55,6 +55,16 @@ export interface BudgetPort {
   registerIp(ip: string): Promise<{ ok: true } | { ok: false; retryAfter: number }>;
 }
 
+export interface DgramPlatform extends DgramCapability {
+  register(
+    sid: string,
+    clientToken: Uint8Array,
+    hostToken: Uint8Array,
+    onForward: (role: "c" | "h", bytes: number) => boolean,
+  ): void;
+  unregister(sid: string): void;
+}
+
 export interface Platform {
   now(): number;
   /** Open sockets carrying `tag`. */
@@ -68,6 +78,8 @@ export interface Platform {
   log(line: Record<string, unknown>): void;
   /** True when the adapter accepts bidirectional HTTP stream transport (`x-miffan-relay-v1`). */
   stream?: boolean;
+  /** Present when the adapter provides native UDP datagram forwarding (Bun VPS). */
+  dgram?: DgramPlatform;
 }
 
 export interface RequestCtx {
@@ -106,6 +118,8 @@ export interface HostAtt {
   at: number;
   /** Key of the last usage level pushed to the connector. */
   ub: string;
+  /** Whether this connector declared UDP datagram support (`"dgram": true`) in `auth`. */
+  dgram?: boolean;
   /** Source address of a host that is not registered yet; counted (and dropped) once it authenticates. */
   reg?: string;
   /** Last `ping` the engine itself answered (Bun; the Worker answers pings without the engine). */
@@ -126,6 +140,10 @@ export interface SessAtt {
   tx?: number;
   /** Last `ping` the engine itself answered (Bun; the Worker answers pings without the engine). */
   lp?: number;
+  /** Base64url 16-byte client UDP token (stored on app socket while pairing). */
+  ct?: string;
+  /** Base64url 16-byte host UDP token (stored on app socket while pairing). */
+  ht?: string;
   p: PendAtt;
   x?: 1;
 }
@@ -158,6 +176,7 @@ export class Engine {
   /** Increments the global budget has not acknowledged yet; `reqs` is in request units. */
   private unreported = { bytes: 0, minutes: 0, reqs: 0 };
   private windows = new Map<string, RateWindow>();
+  private dayCache?: { num: number; str: string };
 
   constructor(
     private p: Platform,
@@ -170,7 +189,7 @@ export class Engine {
       const a = s.att();
       if (!this.hid) this.hid = a.hid;
       if (a.role === "host") continue;
-      this.pend[a.ch] += a.p.b;
+      this.pend[meterChannel(a.ch)] += a.p.b;
       this.pend.minutes += a.p.m;
       this.pend.msgs += a.p.n ?? 0;
       this.pend.reqs += a.p.o ?? 0;
@@ -180,6 +199,18 @@ export class Engine {
   }
 
   // ---- small accessors ----
+
+  private dayStr(now: number): string {
+    const num = Math.floor(now / 86_400_000);
+    if (this.dayCache?.num === num) return this.dayCache.str;
+    const str = utcDay(now);
+    this.dayCache = { num, str };
+    return str;
+  }
+
+  private capabilities() {
+    return capabilitiesObject(Boolean(this.p.stream), this.p.dgram);
+  }
 
   private get ledger(): HostLedger {
     this.ledgerRef ??= new HostLedger(this.p.sql, this.hid);
@@ -308,12 +339,20 @@ export class Engine {
       counted: host ? counted(this.ledger.totals(now), this.pend) : counted(this.ledger.totals(now), zeroPending()),
       sessions: this.live("c").length,
       now,
+      dgramEnabled: this.p.dgram?.mode === "udp",
+      hostDgram: host ? (host.att() as HostAtt).dgram === true : false,
     });
     if (rej || !host) {
       this.log("session_refused", { reason: rej?.reason });
       return reject(rej!.reason, rej!.retryAfter, rej!.status);
     }
     const sid = randomSid();
+    let ct: string | undefined;
+    let ht: string | undefined;
+    if (route.ch === "media-dgram") {
+      ct = b64uEncode(randomBytes(16));
+      ht = b64uEncode(randomBytes(16));
+    }
     const att: SessAtt = {
       role: "c",
       hid: this.hid,
@@ -322,12 +361,26 @@ export class Engine {
       at: now,
       paired: false,
       lb: now,
-      p: { b: 0, m: 0, lm: 0, d: utcDay(now), o: 1 },
+      ...(ct && ht ? { ct, ht } : {}),
+      p: { b: 0, m: 0, lm: 0, d: this.dayStr(now), o: 1 },
     };
     const res = rc.accept(["c", `c:${sid}`], att, () => {});
     this.countRequest();
     try {
-      host.send(JSON.stringify({ t: "open", sid, ch: route.ch, pace: paceFor(this.cfg, route.ch) }));
+      const openMsg: Record<string, unknown> = {
+        t: "open",
+        sid,
+        ch: route.ch,
+        pace: paceFor(this.cfg, route.ch),
+      };
+      if (route.ch === "media-dgram" && this.p.dgram && ht) {
+        openMsg.udp = {
+          port: this.p.dgram.port,
+          ...(this.p.dgram.host ? { host: this.p.dgram.host } : {}),
+          token: ht,
+        };
+      }
+      host.send(JSON.stringify(openMsg));
     } catch {
       // The control connection is gone; the pairing timeout will report host_timeout.
     }
@@ -342,6 +395,20 @@ export class Engine {
     if (!client || !ca || ca.role !== "c" || ca.paired || ca.x || this.p.sockets(`h:${route.sid}`).length > 0) {
       return reject("bad_request", undefined, 404);
     }
+    let udpReady: { port: number; host?: string; token: string } | undefined;
+    if (ca.ch === "media-dgram") {
+      const ct = ca.ct ? b64uDecode(ca.ct) : null;
+      const ht = ca.ht ? b64uDecode(ca.ht) : null;
+      if (!ct || !ht || !this.p.dgram || this.p.dgram.mode !== "udp") {
+        return reject("dgram_disabled", undefined, 403);
+      }
+      this.p.dgram.register(route.sid, ct, ht, (role, bytes) => this.onUdpForward(route.sid, role, bytes));
+      udpReady = {
+        port: this.p.dgram.port,
+        ...(this.p.dgram.host ? { host: this.p.dgram.host } : {}),
+        token: ca.ct!,
+      };
+    }
     const now = this.p.now();
     const att: SessAtt = {
       role: "h",
@@ -351,19 +418,21 @@ export class Engine {
       at: now,
       paired: true,
       lb: now,
-      p: { b: 0, m: 0, lm: 0, d: utcDay(now), o: 1 },
+      p: { b: 0, m: 0, lm: 0, d: this.dayStr(now), o: 1 },
     };
     const res = rc.accept(["h", `h:${route.sid}`], att, () => {});
     this.countRequest();
-    client.setAtt({ ...ca, paired: true, lb: now });
+    client.setAtt({ ...ca, ct: undefined, ht: undefined, paired: true, lb: now });
     client.send(
       JSON.stringify({
         t: "ready",
         sid: route.sid,
         ch: ca.ch,
         pace: paceFor(this.cfg, ca.ch),
+        capabilities: this.capabilities(),
         policy: publicPolicy(this.cfg),
         usage: this.usage(now),
+        ...(udpReady ? { udp: udpReady } : {}),
       }),
     );
     this.log("session_ready", { ch: ca.ch });
@@ -469,9 +538,11 @@ export class Engine {
     if (typeof msg !== "string" || now - a.at > LIMITS.challengeMs) return this.shut(s, CLOSE_CODE.unauthorized, "unauthorized");
 
     let sig: Bytes | null = null;
+    let dgram = false;
     try {
-      const j = JSON.parse(msg) as { t?: unknown; sig?: unknown };
+      const j = JSON.parse(msg) as { t?: unknown; sig?: unknown; dgram?: unknown };
       if (j.t === "auth" && typeof j.sig === "string") sig = b64uDecode(j.sig);
+      dgram = j.dgram === true;
     } catch {
       // falls through to the rejection below
     }
@@ -505,7 +576,7 @@ export class Engine {
     const usage = this.usage();
     const level = this.usageKey(usage);
     const { reg: _reg, ...rest } = cur;
-    s.setAtt({ ...rest, authed: true, nonce: "", ub: level });
+    s.setAtt({ ...rest, authed: true, nonce: "", ub: level, dgram });
     // The control connection's upgrade and its auth message, counted only once the host is known.
     this.countRequest();
     this.unreported.reqs += requestUnits(1, 0);
@@ -515,7 +586,7 @@ export class Engine {
         hostId: this.hid,
         policy: publicPolicy(this.cfg),
         usage,
-        capabilities: { dgram: "none", ...(this.p.stream ? { stream: true } : {}) },
+        capabilities: this.capabilities(),
       }),
     );
     this.log("host_online");
@@ -581,17 +652,56 @@ export class Engine {
   }
 
   /**
+   * Meter and police one forwarded UDP datagram (`ch=media-dgram`). Returns false when the session
+   * is closed/missing or the byte rate window is full (the caller silently drops the packet).
+   */
+  onUdpForward(sid: string, role: "c" | "h", bytes: number): boolean {
+    const sock = this.live(`${role}:${sid}`)[0];
+    if (!sock) return false;
+    const a = sock.att();
+    if (a.role !== role || !a.paired || a.x) return false;
+    const now = this.p.now();
+    const key = `${sid}|${role}`;
+    let win = this.windows.get(key);
+    if (!win) this.windows.set(key, (win = new RateWindow()));
+    if (win.wouldExceed(now, bytes, allowanceBytes(paceFor(this.cfg, a.ch)), 0)) {
+      return false;
+    }
+    win.add(now, bytes);
+    const day = this.dayStr(now);
+    if (day !== this.pendDay) {
+      void this.flush();
+      this.pendDay = day;
+    }
+    const wasEmpty = pendingIsEmpty(this.pend);
+    this.pend.media += bytes;
+    a.lb = now;
+    a.p.b += bytes;
+    a.p.d = day;
+    const minute = Math.floor(now / 60_000);
+    if (minute > this.lastMinute()) {
+      this.lm = minute;
+      this.pend.minutes += 1;
+      a.p.m += 1;
+      a.p.lm = minute;
+    }
+    sock.setAtt(a);
+    if (wasEmpty) this.reschedule();
+    return true;
+  }
+
+  /**
    * Meter one forwarded frame: its bytes always, and for binary frames also the activity time and
    * the active UTC minute (PROTOCOL §5.3, §6.3: only binary frames count as activity).
    */
   private account(s: Sock, a: SessAtt, bytes: number, now: number, binary: boolean): void {
-    const day = utcDay(now);
+    const day = this.dayStr(now);
     if (day !== this.pendDay) {
       void this.flush(); // counts so far belong to the previous day
       this.pendDay = day;
     }
     const wasEmpty = pendingIsEmpty(this.pend);
-    this.pend[a.ch] += bytes;
+    this.pend[meterChannel(a.ch)] += bytes;
     const next: SessAtt = { ...a, lb: binary ? now : a.lb, p: { ...a.p, b: a.p.b + bytes, n: (a.p.n ?? 0) + 1, d: day } };
     const minute = Math.floor(now / 60_000);
     if (binary && minute > this.lastMinute()) {
@@ -622,6 +732,7 @@ export class Engine {
   }
 
   private closeSession(sid: string, code: number, reason: Reason | string): void {
+    this.p.dgram?.unregister(sid);
     for (const tag of [`c:${sid}`, `h:${sid}`]) for (const s of this.p.sockets(tag)) this.shut(s, code, reason);
     this.windows.delete(`${sid}|c`);
     this.windows.delete(`${sid}|h`);
@@ -647,6 +758,7 @@ export class Engine {
       this.reschedule();
       return;
     }
+    this.p.dgram?.unregister(a.sid);
     if (!a.x) this.peerClosed(a); // one side closed (any code): close the other with 1000 peer_closed
     this.windows.delete(`${a.sid}|c`);
     this.windows.delete(`${a.sid}|h`);
@@ -712,7 +824,7 @@ export class Engine {
     if (verdict) {
       for (const s of this.p.sockets("c")) {
         const a = s.att();
-        if (a.role === "c" && a.ch === "media" && !a.x) {
+        if (a.role === "c" && meterChannel(a.ch) === "media" && !a.x) {
           this.log("session_cut", { reason: verdict.code });
           if (verdict.code === "relay_busy") this.closeSession(a.sid, CLOSE_CODE.relay_busy, "relay_busy");
           else this.closeSession(a.sid, CLOSE_CODE.quota_exhausted, "quota_exhausted");

@@ -30,9 +30,9 @@ $env:LOCALAPPDATA = $sandbox
 $env:MIFFAN_CONNECTOR_FILE = ''
 $env:MIFFAN_CONNECTOR_SHA256 = ''
 try {
-    Test 'the pinned digest is a placeholder that never matches, and the version is pinned' {
-        Assert-Equal $script:RelayConnectorVersion '1.0.0' 'pinned version'
-        Assert-Equal (Get-RelayExpectedSha 'windows-amd64') ('0' * 64) 'placeholder until the release exists'
+    Test 'the connector version and SHA-256 are pinned' {
+        Assert-Equal $script:RelayConnectorVersion '1.3.0' 'pinned version'
+        Assert-Equal (Get-RelayExpectedSha 'windows-amd64') '091fe20ab8dfa1e3a7a709fe2ff4bcecb67c77fcbf7c033e65b40a8aac0de88c' 'pinned SHA-256'
         Assert-Equal (Get-RelayExpectedSha 'linux-amd64') '' 'unknown platform has no digest'
         $env:MIFFAN_CONNECTOR_SHA256 = 'ABCDEF'
         Assert-Equal (Get-RelayExpectedSha 'windows-amd64') 'abcdef' 'override is lower-cased'
@@ -48,15 +48,18 @@ try {
             $env:PROCESSOR_ARCHITEW6432 = 'AMD64'; Assert-Equal (Get-RelayPlatform) 'windows-amd64' '32-bit host on 64-bit Windows'
         } finally { $env:PROCESSOR_ARCHITECTURE = $saved[0]; $env:PROCESSOR_ARCHITEW6432 = $saved[1] }
     }
-    Test 'download locations: the GitHub release first, then mirrors' {
+    Test 'download locations: official R2 mirror first, then GitHub release fallback' {
         $urls = @(Get-RelayDownloadUrls 'windows-amd64')
-        Assert-Equal $urls.Count 1 'no mirrors yet'
-        Assert-Equal $urls[0] 'https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v1.0.0/miffan-connector-windows-amd64.exe' 'release URL'
+        Assert-Equal $urls.Count 2 'official mirror plus GitHub fallback'
+        Assert-Equal $urls[0] 'https://downloads.ayuilos.me/connector/v1.3.0/miffan-connector-windows-amd64.exe' 'official R2 URL'
+        Assert-Equal $urls[1] 'https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v1.3.0/miffan-connector-windows-amd64.exe' 'GitHub fallback URL'
         $saved = $script:RelayMirrors
         try {
             $script:RelayMirrors = @('https://mirror.example/connector/')
             $urls = @(Get-RelayDownloadUrls 'windows-amd64')
-            Assert-Equal $urls[1] 'https://mirror.example/connector/miffan-connector-windows-amd64.exe' 'mirror URL'
+            Assert-Equal $urls.Count 2 'custom mirror plus GitHub fallback'
+            Assert-Equal $urls[0] 'https://mirror.example/connector/miffan-connector-windows-amd64.exe' 'custom mirror first'
+            Assert-Equal $urls[1] 'https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v1.3.0/miffan-connector-windows-amd64.exe' 'GitHub fallback second'
         } finally { $script:RelayMirrors = $saved }
     }
     Test 'status line merging' {
@@ -86,7 +89,7 @@ try {
             $env:MIFFAN_CONNECTOR_SHA256 = ('f' * 64)
             Assert-Equal (Get-RelayFailure { Install-RelayBinary 'windows-amd64' }) 'checksum_mismatch' 'wrong digest'
             $env:MIFFAN_CONNECTOR_SHA256 = ''
-            Assert-Equal (Get-RelayFailure { Install-RelayBinary 'windows-amd64' }) 'checksum_mismatch' 'placeholder digest'
+            Assert-Equal (Get-RelayFailure { Install-RelayBinary 'windows-amd64' }) 'checksum_mismatch' 'pinned digest mismatch'
         } finally { $env:MIFFAN_CONNECTOR_FILE = ''; $env:MIFFAN_CONNECTOR_SHA256 = '' }
         Assert-True (-not (Test-Path -LiteralPath $paths.bin)) 'nothing installed'
         Assert-Equal @(Get-ChildItem -LiteralPath $paths.binDir -Force -ErrorAction SilentlyContinue).Count 0 'no leftovers'

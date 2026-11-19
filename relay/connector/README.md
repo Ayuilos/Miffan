@@ -59,4 +59,6 @@ CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=1.0.0" -o miffa
 ```
 
 The `relay-connector-v*` tag workflow (`.github/workflows/relay-connector.yml`) builds the five release
-binaries and `SHA256SUMS`.
+binaries and `SHA256SUMS`. Once it succeeds, `.github/workflows/publish-connector-r2.yml` automatically
+mirrors them to `https://downloads.ayuilos.me/connector/v<version>/` (and also supports manual
+`workflow_dispatch` runs for backfill or retry).

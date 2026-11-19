@@ -707,14 +707,18 @@ class RemoteScreenRepository(
             // Through a relay: Sunshine's UDP picture cannot follow (protocol v1 has no datagrams), and
             // VNC/RDP bytes go over a second session on the relay's media channel (RELAY_PLAN §4).
             val relayed = ssh.route is RemoteRoute.Relay
-            // Every screen through a relay runs on the relay's media channel: open that session while
-            // the computer is probed below. Closed again if this screen ends up not using it.
-            val earlyMedia = if (relayed) EarlyOpen(callerJob) {
+            val relayDgram = relayed && workspaces.relaySupportsDatagram(ssh)
+            streamRequested = windows || streamRequested
+            val tryRelayedStream = relayed && relayDgram && streamRequested
+            // Every screen without UDP stream through a relay runs on the relay's media channel: open
+            // that session while the computer is probed below. Closed again if unused.
+            val earlyMedia = if (relayed && !tryRelayedStream) EarlyOpen(callerJob) {
                 openRelayMedia(host.id, ssh)
             } else null
+            suspend fun takeRelayMedia(): RemoteWorkspaceSession =
+                earlyMedia?.take() ?: openRelayMedia(host.id, ssh)
             try {
             if (windows) clipboard = WindowsClipboardChannel { ssh.openProcess(screenHelperCommand(ssh.platform, "clip serve")) }
-            streamRequested = windows || streamRequested
             val endpoint = if (windows) RemoteScreenEndpoint.Helper else configuredEndpoint
                 ?: throw RemoteScreenUnavailableException(RemoteScreenProblem.BAD_ENDPOINT)
             val selection = RemoteScreenProtocol.parse(host.screenProtocol)
@@ -731,22 +735,92 @@ class RemoteScreenRepository(
                     "Linux" -> RemoteScreenPlatform.LINUX
                     else -> RemoteScreenPlatform.UNKNOWN
                 }
-            // Through a relay a stream's frames crawl, so a computer with cua-driver shows still pictures.
+            var probedCache = machine
+            fun getProbed() = probedCache ?: runCatching {
+                ensureHelper(ssh)
+                parseHelperProbe(ssh.execute(screenHelperCommand(ssh.platform, "probe"), timeoutMillis = 20_000).stdout)
+            }.getOrNull().also { probedCache = it }
+
+            val relayedAttempt = if (tryRelayedStream) {
+                runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) {
+                    attemptRemoteStream(true) {
+                        if (detected !in setOf(RemoteScreenPlatform.LINUX, RemoteScreenPlatform.MACOS, RemoteScreenPlatform.WINDOWS)) {
+                            return@attemptRemoteStream StreamOpenResult(
+                                fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER, "Sunshine requires Linux, macOS or Windows"),
+                            )
+                        }
+                        try {
+                            ensureHelper(ssh)
+                            val deadline = System.nanoTime() + maxOf(STREAM_OPEN_BUDGET_MILLIS, 15_000L) * 1_000_000
+                            val initial = sunshineProbe(ssh)
+                            streams.verifyCertificate(host.streamCertificateSha256, initial)
+                            val platform = requireNotNull(detected)
+                            val probe = prepareStreamProbe(platform, initial) {
+                                val result = ssh.execute("$HELPER sunshine wake", timeoutMillis = 10_000)
+                                if (result.exitCode == 0 && !result.timedOut) parseSunshineCommand(result.stdout)
+                                else SunshineCommand(false, "Display wake failed", true)
+                            }
+                            val remaining = (deadline - System.nanoTime()) / 1_000_000
+                            val opened = streams.openRelayed(
+                                ssh = ssh,
+                                row = host,
+                                probe = probe,
+                                openDatagram = {
+                                    workspaces.openRelayDatagramSession(host.id, ssh)
+                                        ?: throw RelayException("host_offline")
+                                },
+                                writeClipboard = { text -> if (clipboard?.write(text) != true) writeStreamClipboard(ssh, text) },
+                                budgetMillis = remaining,
+                                config = stream.quality.streamConfig(machine?.rdp?.width, machine?.rdp?.height, stream.custom),
+                                platform = platform,
+                            )
+                            if (platform == RemoteScreenPlatform.MACOS && opened.fallback != null) {
+                                val diagnostic = try { sunshineProbe(ssh) }
+                                catch (error: CancellationException) { throw error }
+                                catch (_: Exception) { return@attemptRemoteStream opened }
+                                streams.verifyCertificate(host.streamCertificateSha256, diagnostic)
+                                opened.copy(fallback = streamDiagnosticFallback(diagnostic, opened.fallback))
+                            } else opened
+                        } catch (error: RemoteStreamCertificateChangedException) { throw error }
+                        catch (error: RemoteScreenUnavailableException) { throw error }
+                        catch (error: CancellationException) { throw error }
+                        catch (error: Exception) {
+                            val reason = generateSequence<Throwable>(error) { it.cause }.take(16)
+                                .filterIsInstance<RelayException>().firstOrNull()?.reason
+                            if (reason != null) {
+                                throw RemoteScreenUnavailableException(RemoteScreenProblem.RELAY_SCREEN_UNAVAILABLE, reason)
+                            }
+                            StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.OTHER))
+                        }
+                    }
+                }
+            } else null
+
+            if (relayedAttempt?.session != null) {
+                streamFallback = null
+                streamAddress = relayedAttempt.address
+                relayMediaKbps = relayedAttempt.relayMediaKbps
+                return@openLeasedRemote relayedAttempt.session
+            }
+
+            // Through a relay without UDP stream, a computer with cua-driver shows still pictures.
             if (relayed && (stream.snapshot || windows)) {
-                val probed = machine ?: runCatching {
-                    ensureHelper(ssh)
-                    parseHelperProbe(ssh.execute(screenHelperCommand(ssh.platform, "probe"), timeoutMillis = 20_000).stdout)
-                }.getOrNull()
+                val probed = getProbed()
                 if (probed?.cua?.ok == true) {
-                    val media = runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { requireNotNull(earlyMedia).take() }
+                    val media = runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { takeRelayMedia() }
                     relayMediaKbps = (media.route as? RemoteRoute.Relay)?.socket?.ready?.pace?.kbps
                     return@openLeasedRemote try {
                         openSnapshot(media, host.name, sink, windows, detected == RemoteScreenPlatform.MACOS, stream.quality.snapshotQuality())
                     } catch (error: Throwable) { media.close(); throw error }
                 }
             }
-            if (windows && relayed) throw RemoteScreenUnavailableException(RemoteScreenProblem.RELAY_STREAM_ONLY)
-            val attempt = if (relayed) {
+            if (windows && relayed) {
+                if (relayedAttempt == null || relayedAttempt.fallback?.reason == RemoteStreamFallbackReason.RELAY) {
+                    throw RemoteScreenUnavailableException(RemoteScreenProblem.RELAY_STREAM_ONLY)
+                }
+                throw windowsStreamUnavailable(relayedAttempt.fallback)
+            }
+            val attempt = relayedAttempt ?: if (relayed) {
                 StreamOpenResult(fallback = RemoteStreamFallback(RemoteStreamFallbackReason.RELAY).takeIf { streamRequested })
             } else runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) {
                 attemptRemoteStream(streamRequested) {
@@ -796,7 +870,7 @@ class RemoteScreenRepository(
             if (attempt.session != null) return@openLeasedRemote attempt.session
             if (windows) throw windowsStreamUnavailable(attempt.fallback)
             val protocol = machine?.let { selectDesktopProtocol(selection, it, endpoint) } ?: RemoteDesktopProtocol.VNC
-            val media = if (relayed) runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { requireNotNull(earlyMedia).take() } else null
+            val media = if (relayed) runBlocking(callerJob ?: kotlin.coroutines.EmptyCoroutineContext) { takeRelayMedia() } else null
             val tunnel = media ?: ssh
             relayMediaKbps = (media?.route as? RemoteRoute.Relay)?.socket?.ready?.pace?.kbps
             try {

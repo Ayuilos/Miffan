@@ -4145,6 +4145,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="im_relay_rule_today_of">共 %1$d 分</string>
   <string name="im_relay_rule_today_unlimited">不限</string>
   <string name="im_relay_rule_fast">高性能</string>
+  <string name="im_relay_rule_fast_on">支持</string>
+  <string name="im_relay_rule_fast_upgrade">需更新电脑端</string>
+  <string name="im_relay_rule_fast_udp_blocked">UDP 不可达</string>
   <string name="im_relay_rule_fast_off">在外不支持</string>
   <string name="im_relay_test_again">再测一次</string>
   <string name="im_relay_test_copy">复制结果</string>

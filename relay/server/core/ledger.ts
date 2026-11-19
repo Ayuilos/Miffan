@@ -2,7 +2,7 @@
 // and the usage object derived from them.
 
 import type { BudgetState } from "./budget.ts";
-import type { Channel } from "./codes.ts";
+import { meterChannel, type Channel } from "./codes.ts";
 import type { Policy } from "./config.ts";
 import type { Sql } from "./sql.ts";
 import { MIB, isoNoMillis, nextUtcMidnight, nextUtcMonth, utcDay, utcMonth } from "./time.ts";
@@ -98,12 +98,13 @@ export function quotaStatus(
   const q = policy.quotas;
   const midnight = nextUtcMidnight(now);
   const month = nextUtcMonth(now);
+  const mch = ch ? meterChannel(ch) : null;
   const checks: { used: number; limit: number; reset: number; applies: boolean }[] = [
     { used: c.dayBytes, limit: q.hostDailyMb * MIB, reset: midnight, applies: true },
     { used: c.dayActiveMin, limit: q.hostDailyActiveMin, reset: midnight, applies: true },
     { used: c.dayMsgs, limit: q.hostDailyMessages, reset: midnight, applies: true },
-    { used: c.monthControlBytes, limit: q.hostMonthlyControlMb * MIB, reset: month, applies: ch === null || ch === "control" },
-    { used: c.monthMediaBytes, limit: q.hostMonthlyMediaMb * MIB, reset: month, applies: ch === null || ch === "media" },
+    { used: c.monthControlBytes, limit: q.hostMonthlyControlMb * MIB, reset: month, applies: mch === null || mch === "control" },
+    { used: c.monthMediaBytes, limit: q.hostMonthlyMediaMb * MIB, reset: month, applies: mch === null || mch === "media" },
   ];
   let resetAt = midnight;
   let exhausted = false;

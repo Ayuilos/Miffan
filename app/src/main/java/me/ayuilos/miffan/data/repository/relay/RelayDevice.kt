@@ -150,6 +150,9 @@ fun Throwable.relaySessionClose(): me.rerere.workspace.relay.RelaySessionClosedE
     generateSequence(this) { it.cause }.take(16).flatMap { sequenceOf(it) + it.suppressed.asSequence() }
         .filterIsInstance<me.rerere.workspace.relay.RelaySessionClosedException>().firstOrNull()
 
+/** Live UDP datagram streaming support over a relay (`ch=media-dgram`). */
+enum class RelayDgramStatus { AVAILABLE, CONNECTOR_OUTDATED, UDP_BLOCKED, UNSUPPORTED }
+
 /** One forced trip through a relay: how long the session took to open and one command took to answer. */
 data class RelayProbe(
     val openMillis: Long,
@@ -162,4 +165,6 @@ data class RelayProbe(
     val relayOpenMillis: Long? = null,
     /** A second command on the same session, with its file channel already open. */
     val warmCommandMillis: Long? = null,
+    val capabilities: me.rerere.workspace.relay.RelayCapabilities? = null,
+    val dgramStatus: RelayDgramStatus = RelayDgramStatus.UNSUPPORTED,
 )

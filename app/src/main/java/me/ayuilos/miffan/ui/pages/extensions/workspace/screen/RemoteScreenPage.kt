@@ -394,7 +394,7 @@ internal fun RemoteScreenScaffold(
                                     onClick = { vm.setAudio(!on); menu = false })
                             }
                             // Through a relay Mac and Linux can trade the still pictures for the live picture.
-                            if (info?.relayMediaKbps != null && platform != RemoteScreenPlatform.WINDOWS) DropdownMenuItem(
+                            if (info?.relayMediaKbps != null && platform != RemoteScreenPlatform.WINDOWS && protocol != RemoteDesktopProtocol.STREAM) DropdownMenuItem(
                                 text = { Text(stringResource(if (relaySnapshots) R.string.workspace_screen_snapshot_live else R.string.workspace_screen_snapshot_use)) },
                                 onClick = { menu = false; vm.useRelaySnapshots(!relaySnapshots) })
                             when {

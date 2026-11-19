@@ -2,7 +2,7 @@
 // channel-validity checks happen earlier, while routing).
 
 import type { BudgetState } from "./budget.ts";
-import { HTTP_STATUS, type Channel, type Reason } from "./codes.ts";
+import { HTTP_STATUS, meterChannel, type Channel, type Reason } from "./codes.ts";
 import type { Policy } from "./config.ts";
 import { quotaStatus, type Counted } from "./ledger.ts";
 import { nextUtcMidnight, secondsUntil } from "./time.ts";
@@ -22,6 +22,10 @@ export interface SessionRequest {
   /** Sessions currently open on the host, paired or not. */
   sessions: number;
   now: number;
+  /** True when the relay supports `media-dgram` (`capabilities.dgram === "udp"`). */
+  dgramEnabled?: boolean;
+  /** True when the online connector declared `dgram: true` in `auth`. */
+  hostDgram?: boolean;
 }
 
 function reject(reason: Reason, retryAfter?: number): Rejection {
@@ -30,10 +34,15 @@ function reject(reason: Reason, retryAfter?: number): Rejection {
 
 export function checkNewSession(r: SessionRequest): Rejection | null {
   if (!r.hostOnline) return reject("host_offline", 30);
-  if (r.ch === "media" && !r.policy.media.allowed) return reject("media_disabled");
+  const mch = meterChannel(r.ch);
+  if (mch === "media" && !r.policy.media.allowed) return reject("media_disabled");
+  if (r.ch === "media-dgram") {
+    if (!r.dgramEnabled) return reject("dgram_disabled");
+    if (!r.hostDgram) return reject("dgram_unsupported");
+  }
   if (r.budget === "closed") return reject("relay_busy", secondsUntil(nextUtcMidnight(r.now), r.now));
-  if (r.ch === "media" && r.budget === "media_paused") return reject("relay_busy", secondsUntil(nextUtcMidnight(r.now), r.now));
-  const q = quotaStatus(r.policy, r.counted, r.ch, r.now);
+  if (mch === "media" && r.budget === "media_paused") return reject("relay_busy", secondsUntil(nextUtcMidnight(r.now), r.now));
+  const q = quotaStatus(r.policy, r.counted, mch, r.now);
   if (q.exhausted) return reject("quota_exhausted", secondsUntil(q.resetAt, r.now));
   const max = r.policy.limits.sessionsPerHost;
   if (max > 0 && r.sessions >= max) return reject("too_many_sessions");

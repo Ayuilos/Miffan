@@ -51,6 +51,8 @@ data class RelayUsage(
 @Serializable
 data class RelayCapabilities(
     val dgram: String = "none",
+    val udpPort: Int? = null,
+    val udpHost: String? = null,
     val stream: Boolean = false,
 )
 
@@ -68,12 +70,21 @@ data class RelayInfo(
 
 /** What the relay sent in `ready` for one session. */
 @Serializable
+data class RelayUdpEndpoint(
+    val port: Int,
+    val host: String? = null,
+    val token: String,
+)
+
+@Serializable
 data class RelayReady(
     val sid: String,
     val ch: String,
     val pace: RelayPace = RelayPace(),
+    val capabilities: RelayCapabilities? = null,
     val policy: RelayPolicy = RelayPolicy(),
     val usage: RelayUsage = RelayUsage(),
+    val udp: RelayUdpEndpoint? = null,
 )
 
 @Serializable
@@ -89,7 +100,11 @@ internal data class RelayText(
 @Serializable
 internal data class RelayAuth(val t: String = "auth", val device: String, val sig: String)
 
-enum class RelayChannel(val wire: String) { CONTROL("control"), MEDIA("media") }
+enum class RelayChannel(val wire: String) {
+    CONTROL("control"),
+    MEDIA("media"),
+    MEDIA_DGRAM("media-dgram"),
+}
 
 /**
  * A relay or connector refusal. [reason] is a protocol reason code (PROTOCOL §9), or [PLATFORM]

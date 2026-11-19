@@ -338,11 +338,11 @@ internal fun RemoteConnectionDetailsDialog(info: RemoteConnectionInfo, bytes: Lo
                 // A single window streams on its own; the computer's high-performance switch has no say.
                 if (info.protocol != RemoteDesktopProtocol.STREAM && !info.window) {
                     DetailRow(stringResource(R.string.workspace_screen_stream), when {
-                        info.relayMediaKbps != null -> stringResource(R.string.workspace_screen_details_stream_fallback,
-                            streamFallbackReason(resources, RemoteStreamFallbackReason.RELAY))
                         info.streamSkipped -> stringResource(R.string.workspace_screen_details_stream_skipped)
                         info.fallback != null -> stringResource(R.string.workspace_screen_details_stream_fallback,
                             streamFallbackReason(resources, info.fallback.reason))
+                        info.relayMediaKbps != null -> stringResource(R.string.workspace_screen_details_stream_fallback,
+                            streamFallbackReason(resources, RemoteStreamFallbackReason.RELAY))
                         else -> stringResource(R.string.workspace_screen_details_stream_off)
                     })
                 }

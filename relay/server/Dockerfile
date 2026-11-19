@@ -19,10 +19,11 @@ FROM oven/bun:1-slim
 COPY --from=build /out/miffan-relay /usr/local/bin/miffan-relay
 ENV HOST=0.0.0.0 \
     PORT=8787 \
+    UDP_PORT=0 \
     RELAY_CONFIG_FILE=/data/relay.config.json \
     RELAY_DB=/data/relay.sqlite
 VOLUME /data
 WORKDIR /data
-EXPOSE 8787
+EXPOSE 8787 8444/udp
 USER bun
 ENTRYPOINT ["/usr/local/bin/miffan-relay"]

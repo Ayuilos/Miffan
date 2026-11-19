@@ -40,8 +40,36 @@ data class RelayConnectorStatus(
     /** The connector version this computer's helper installs; empty from helpers before 34. */
     val pinnedVersion: String = "",
 ) {
-    /** An installed connector that answers with a version other than the one the helper pins. */
-    val outdated: Boolean get() = installed && version.isNotEmpty() && pinnedVersion.isNotEmpty() && version != pinnedVersion
+    /** An installed connector older than the helper's pinned version; `dev` and newer builds are kept. */
+    val outdated: Boolean get() = installed && isConnectorVersionOutdated(version, pinnedVersion)
+}
+
+internal fun isConnectorVersionOutdated(installedVersion: String, pinnedVersion: String): Boolean {
+    val installed = installedVersion.trim()
+    val pinned = pinnedVersion.trim()
+    if (installed.isEmpty() || pinned.isEmpty() || installed.equals("dev", ignoreCase = true)) return false
+    val installedSemver = parseConnectorSemver(installed)
+    val pinnedSemver = parseConnectorSemver(pinned)
+    if (installedSemver != null && pinnedSemver != null) {
+        return compareConnectorSemver(installedSemver, pinnedSemver) < 0
+    }
+    return installed != pinned
+}
+
+private fun parseConnectorSemver(raw: String): Triple<Int, Int, Int>? {
+    val core = raw.removePrefix("v").substringBefore('-').substringBefore('+')
+    val parts = core.split('.')
+    if (parts.size != 3) return null
+    val major = parts[0].toIntOrNull() ?: return null
+    val minor = parts[1].toIntOrNull() ?: return null
+    val patch = parts[2].toIntOrNull() ?: return null
+    return Triple(major, minor, patch)
+}
+
+private fun compareConnectorSemver(a: Triple<Int, Int, Int>, b: Triple<Int, Int, Int>): Int = when {
+    a.first != b.first -> a.first.compareTo(b.first)
+    a.second != b.second -> a.second.compareTo(b.second)
+    else -> a.third.compareTo(b.third)
 }
 
 @Serializable

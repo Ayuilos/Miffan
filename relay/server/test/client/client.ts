@@ -10,16 +10,30 @@ export const wsUrl = (base: string, path: string) => base.replace(/^http/, "ws")
 
 export interface Opts {
   token?: string;
+  dgram?: boolean;
 }
 
 const auth = (o?: Opts): Record<string, string> => (o?.token ? { authorization: `Bearer ${o.token}` } : {});
+
+export interface Capabilities {
+  dgram: string;
+  udpPort?: number;
+  udpHost?: string;
+  stream?: boolean;
+}
+
+export interface UdpSpec {
+  port: number;
+  host?: string;
+  token: string;
+}
 
 export interface HelloMsg {
   t: "hello";
   hostId: string;
   policy: Record<string, any>;
   usage: Usage;
-  capabilities: { dgram: string; stream?: boolean };
+  capabilities: Capabilities;
 }
 
 export interface Usage {
@@ -36,17 +50,20 @@ export interface Usage {
 export interface OpenMsg {
   t: "open";
   sid: string;
-  ch: "control" | "media";
+  ch: "control" | "media" | "media-dgram";
   pace: { kbps: number; burstKb: number };
+  udp?: UdpSpec;
 }
 
 export interface ReadyMsg {
   t: "ready";
   sid: string;
-  ch: "control" | "media";
+  ch: "control" | "media" | "media-dgram";
   pace: { kbps: number; burstKb: number };
+  capabilities?: Capabilities;
   policy: Record<string, any>;
   usage: Usage;
+  udp?: UdpSpec;
 }
 
 /** The connector's control connection. */
@@ -66,7 +83,7 @@ export class HostControl {
   static async connect(base: string, key?: HostKey, opts?: Opts): Promise<HostControl> {
     const k = key ?? (await newHostKey());
     const { conn, nonce, host } = await HostControl.connectRaw(base, k, opts);
-    conn.send(JSON.stringify({ t: "auth", sig: await k.signChallenge(host, nonce) }));
+    conn.send(JSON.stringify({ t: "auth", sig: await k.signChallenge(host, nonce), ...(opts?.dgram ? { dgram: true } : {}) }));
     const hello = await conn.nextJson<HelloMsg>();
     if (hello.t !== "hello") throw new Error("expected hello, got " + JSON.stringify(hello));
     return new HostControl(base, k, conn, hello);
@@ -105,7 +122,7 @@ export class HostControl {
 export async function connectApp(
   base: string,
   hostId: string,
-  ch: "control" | "media",
+  ch: "control" | "media" | "media-dgram",
   opts?: Opts,
 ): Promise<{ conn: Conn; open?: undefined }> {
   const conn = await Conn.open(wsUrl(base, `/v1/connect/${hostId}?ch=${ch}`), auth(opts));
@@ -121,7 +138,11 @@ export interface Session {
 }
 
 /** Full session setup: app connects, connector gets `open` and attaches, app gets `ready`. */
-export async function openSession(host: HostControl, ch: "control" | "media" = "control", opts?: Opts): Promise<Session> {
+export async function openSession(
+  host: HostControl,
+  ch: "control" | "media" | "media-dgram" = "control",
+  opts?: Opts,
+): Promise<Session> {
   const { conn: app } = await connectApp(host.base, host.hostId, ch, opts);
   const open = await host.nextOpen();
   const data = await host.openData(open.sid);

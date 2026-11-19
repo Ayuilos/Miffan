@@ -174,6 +174,9 @@ ADMIN_TOKEN=...
 | `ACCESS_TOKEN` | — | 访问码；`accessMode` 为 `token` 而没设置时拒绝启动 |
 | `ADMIN_TOKEN` | — | 管理口令，启用 `/v1/admin/stats` |
 | `PORT` / `HOST` | `8787` / `127.0.0.1` | 监听端口与地址（Docker 镜像里 `HOST` 为 `0.0.0.0`） |
+| `UDP_PORT` | `0`（关闭） | 原生 UDP 数据报转发端口（如 `8444`），用于中转下的 Sunshine 高性能模式；同时需在防火墙放行该 UDP 端口（绕过 Caddy） |
+| `UDP_HOST` | `::` / `0.0.0.0` | UDP 套接字监听地址（一般保持默认） |
+| `UDP_PUBLIC_HOST` / `UDP_PUBLIC_PORT` | URL 主机名 / `UDP_PORT` | 在 `/v1/info`、`hello`、`ready` 中对外宣告的 UDP 地址与端口（仅端口映射或分离域名时需要） |
 | `TRUSTED_IP_HEADER` | — | 在反向代理后面时，从哪个请求头取来源 IP（用于"每天注册次数"限制），例如 `x-forwarded-for`（取最后一个值）。不设置则使用直连地址——此时所有人都是反向代理的地址 |
 
 ### HTTPS / HTTP/3：Caddy 反向代理
@@ -196,6 +199,12 @@ relay-udp.example.com:8443 {
         flush_interval -1
     }
 }
+```
+
+若要为自部署 VPS 中转开启 **Sunshine 高性能模式（原生 UDP 转发 `ch=media-dgram`）**，请在 `miffan-relay` 进程中添加环境变量 `UDP_PORT=8444`（Docker 运行时追加 `-p 8444:8444/udp -e UDP_PORT=8444`），并在防火墙放行 `8444/udp`（该端口由 `miffan-relay` 直接监听，**不要**经由 Caddy 转发）：
+
+```ini
+Environment=UDP_PORT=8444
 ```
 
 > 反向代理必须**原样保留 `Host` 请求头**（Caddy 默认就是；nginx 要写 `proxy_set_header Host $host;`），因为 connector 的签名里包含它；同时注意不要缓存或缓冲流响应。nginx 如仅用于 WebSocket 需写 `proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; proxy_read_timeout 3600s;`，并建议配 `proxy_buffering off; proxy_request_buffering off;`。

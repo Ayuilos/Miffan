@@ -2,6 +2,7 @@ package me.ayuilos.miffan.data.repository.relay
 
 import java.io.File
 import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.util.Base64
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.createTempDirectory
@@ -165,6 +166,137 @@ class RelayPairingTest {
             assertTrue(!parsed.username.isNullOrBlank())
         } finally {
             tempHome.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun parsePinsPrefersOfficialR2MirrorBeforeGitHubRelease() {
+        val helperSh = locateHelperSh().readText(StandardCharsets.UTF_8)
+        val pins = RelaySetupScript.parsePins(helperSh)
+        assertEquals(
+            listOf(
+                "https://downloads.ayuilos.me/connector/v${pins.version}",
+                "https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v${pins.version}",
+            ),
+            pins.downloadBaseUrls,
+        )
+    }
+
+    @Test
+    fun relaySetupScriptDownloadsFromR2FirstAndFallsBackToGitHub() {
+        val fakeConnectorBytes = """
+            #!/bin/sh
+            case "${'$'}1" in
+              init) echo '{"success":true}' ;;
+              pair) echo '{"success":true,"hostId":"$sampleHostId","relay":"https://relay.example.com"}' ;;
+              status) echo '{"installed":true,"running":true,"hostId":"$sampleHostId"}' ;;
+            esac
+        """.trimIndent().plus("\n").toByteArray(StandardCharsets.UTF_8)
+        val fakeSha256 = MessageDigest.getInstance("SHA-256")
+            .digest(fakeConnectorBytes)
+            .joinToString("") { "%02x".format(it) }
+        val patchedHelperSh = locateHelperSh().readText(StandardCharsets.UTF_8).replace(
+            Regex("""(?m)^(MIFFAN_CONNECTOR_SHA256_(?:DARWIN_ARM64|DARWIN_AMD64|LINUX_AMD64|LINUX_ARM64))=[0-9a-f]{64}$"""),
+            "$1=$fakeSha256",
+        )
+        val phone = RelayPhoneIdentity(sampleDevicePub, "dev1234567890", "Pixel 9")
+        val endpoint = RelayEndpoint("https://relay.example.com")
+        val command = RelaySetupScript.render(patchedHelperSh, sampleSshPub, phone, endpoint)
+        assertTrue(command.startsWith("sh -c '") && command.endsWith("'"))
+        val body = command.removePrefix("sh -c '").removeSuffix("'")
+        assertTrue("Script body must contain no single quotes", '\'' !in body)
+        assertTrue("Script body must contain no backslashes", '\\' !in body)
+
+        val tempRoot = createTempDirectory("miffan-relay-dl-test").toFile()
+        try {
+            val mockBin = File(tempRoot, "bin").apply { mkdirs() }
+            val tempHome = File(tempRoot, "home").apply { mkdirs() }
+            val fakePayload = File(tempHome, "fake-connector").apply { writeBytes(fakeConnectorBytes) }
+            val mockCurl = File(mockBin, "curl").apply {
+                writeText(
+                    """
+                    #!/bin/sh
+                    out=""
+                    url=""
+                    while [ ${'$'}# -gt 0 ]; do
+                      if [ "${'$'}1" = "-o" ]; then
+                        out="${'$'}2"
+                        shift 2
+                        continue
+                      fi
+                      url="${'$'}1"
+                      shift
+                    done
+                    printf '%s\n' "${'$'}url" >> "${'$'}HOME/curl_calls"
+                    mode=${'$'}(cat "${'$'}HOME/curl_mode")
+                    case "${'$'}mode:${'$'}url" in
+                      r2_ok:https://downloads.ayuilos.me/*)
+                        cp "${'$'}HOME/fake-connector" "${'$'}out"
+                        ;;
+                      r2_fail:https://github.com/*)
+                        cp "${'$'}HOME/fake-connector" "${'$'}out"
+                        ;;
+                      r2_corrupt:https://downloads.ayuilos.me/*)
+                        printf 'corrupt' > "${'$'}out"
+                        ;;
+                      r2_corrupt:https://github.com/*)
+                        cp "${'$'}HOME/fake-connector" "${'$'}out"
+                        ;;
+                      *)
+                        exit 22
+                        ;;
+                    esac
+                    """.trimIndent() + "\n",
+                    StandardCharsets.UTF_8,
+                )
+                assertTrue(setExecutable(true))
+            }
+            assertTrue(mockCurl.canExecute())
+
+            for (mode in listOf("r2_ok", "r2_fail", "r2_corrupt")) {
+                File(tempHome, ".miffan").deleteRecursively()
+                File(tempHome, "curl_calls").delete()
+                File(tempHome, "curl_mode").writeText(mode, StandardCharsets.UTF_8)
+
+                val proc = ProcessBuilder("/bin/sh", "-c", body)
+                    .apply {
+                        environment()["HOME"] = tempHome.absolutePath
+                        environment()["PATH"] = "${mockBin.absolutePath}:${System.getenv("PATH").orEmpty()}"
+                        redirectErrorStream(true)
+                    }
+                    .start()
+                val (finished, output, exitCode) = try {
+                    proc.outputStream.close()
+                    val done = proc.waitFor(15, TimeUnit.SECONDS)
+                    if (!done) proc.destroyForcibly()
+                    val text = proc.inputStream.bufferedReader(StandardCharsets.UTF_8).readText()
+                    Triple(done, text, if (done) proc.exitValue() else -1)
+                } finally {
+                    proc.destroyForcibly()
+                }
+                assertTrue("[$mode] Script timed out: $output", finished)
+                assertEquals("[$mode] Script failed: $output", 0, exitCode)
+
+                val installed = File(tempHome, ".miffan/bin/miffan-connector")
+                assertTrue("[$mode] Connector not installed", installed.isFile && installed.canExecute())
+                assertEquals(fakeSha256, MessageDigest.getInstance("SHA-256").digest(installed.readBytes()).joinToString("") { "%02x".format(it) })
+
+                val calls = File(tempHome, "curl_calls").readLines(StandardCharsets.UTF_8)
+                if (mode == "r2_ok") {
+                    assertEquals(1, calls.size)
+                    assertTrue(calls[0].startsWith("https://downloads.ayuilos.me/connector/v"))
+                } else {
+                    assertEquals(2, calls.size)
+                    assertTrue(calls[0].startsWith("https://downloads.ayuilos.me/connector/v"))
+                    assertTrue(calls[1].startsWith("https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v"))
+                }
+                val parsed = parseRelayPairingInput(output)
+                assertNotNull("[$mode] Missing pairing URI in:\n$output", parsed)
+                assertEquals(sampleHostId, parsed!!.hostId)
+            }
+            assertTrue(fakePayload.exists())
+        } finally {
+            tempRoot.deleteRecursively()
         }
     }
 

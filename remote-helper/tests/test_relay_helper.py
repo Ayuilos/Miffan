@@ -237,30 +237,46 @@ def test_checksum_mismatch_installs_nothing(base):
 
 def test_download_order_and_mirrors(base):
     host = Host(base, arch="aarch64")
-    release = f"https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v{pinned_version()}/miffan-connector-linux-arm64"
-    mirror_base = "https://mirror.example/connector"
-    mirror = mirror_base + "/miffan-connector-linux-arm64"
-    patched = Path(base) / "miffan-with-mirror.sh"
+    ver = pinned_version()
+    official = f"https://downloads.ayuilos.me/connector/v{ver}/miffan-connector-linux-arm64"
+    github = f"https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v{ver}/miffan-connector-linux-arm64"
     text = HELPER.read_text()
-    assert 'MIFFAN_CONNECTOR_MIRRORS=""' in text
-    patched.write_text(text.replace('MIFFAN_CONNECTOR_MIRRORS=""', f'MIFFAN_CONNECTOR_MIRRORS="{mirror_base}"'))
-    host.helper = patched
+    assert 'MIFFAN_CONNECTOR_MIRRORS="https://downloads.ayuilos.me/connector/v$MIFFAN_CONNECTOR_VERSION"' in text
 
-    host.state(serve={release: str(host.connector)})
+    # Official Cloudflare R2 mirror succeeds first; GitHub is not called.
+    host.state(serve={official: str(host.connector), github: str(host.connector)})
     host.json("install", stdin=INSTALL, use_file=False)
     urls = [c[-1] for c in host.calls("curl")]
-    assert urls == [release]
+    assert urls == [official]
     assert host.installed().read_bytes() == host.connector.read_bytes()
 
-    # GitHub fails → the mirror is tried next.
+    # Official R2 mirror HTTP failure falls back to GitHub Release.
     host.json("uninstall")
     (host.base / "argv.jsonl").unlink()
-    host.state(serve={mirror: str(host.connector)})
+    host.state(serve={github: str(host.connector)})
     host.json("install", stdin=INSTALL, use_file=False)
-    assert [c[-1] for c in host.calls("curl")] == [release, mirror]
+    assert [c[-1] for c in host.calls("curl")] == [official, github]
+    assert host.installed().read_bytes() == host.connector.read_bytes()
 
-    # Everything fails.
+    # Official R2 mirror returning wrong SHA-256 bytes falls back to GitHub Release and succeeds.
+    bogus = Path(base) / "bogus-connector"
+    bogus.write_bytes(b"captive portal html")
     host.json("uninstall")
+    (host.base / "argv.jsonl").unlink()
+    host.state(serve={official: str(bogus), github: str(host.connector)})
+    host.json("install", stdin=INSTALL, use_file=False)
+    assert [c[-1] for c in host.calls("curl")] == [official, github]
+    assert host.installed().read_bytes() == host.connector.read_bytes()
+
+    # Official R2 mirror returns wrong SHA-256 bytes and GitHub fails -> checksum_mismatch, nothing installed.
+    host.json("uninstall")
+    (host.base / "argv.jsonl").unlink()
+    host.state(serve={official: str(bogus)})
+    failure = host.json("install", stdin=INSTALL, use_file=False, ok=False)
+    assert failure["reason"] == "checksum_mismatch" and not host.installed().exists() and host.leftovers() == []
+    assert [c[-1] for c in host.calls("curl")] == [official, github]
+
+    # Everything fails -> download_failed.
     host.state(serve={})
     failure = host.json("install", stdin=INSTALL, use_file=False, ok=False)
     assert failure["reason"] == "download_failed" and not host.installed().exists() and host.leftovers() == []
@@ -268,8 +284,8 @@ def test_download_order_and_mirrors(base):
 
 def test_same_version_skips_download(base):
     host = Host(base)
-    release = f"https://github.com/Ayuilos/Miffan/releases/download/relay-connector-v{pinned_version()}/miffan-connector-linux-amd64"
-    host.state(serve={release: str(host.connector)})
+    official = f"https://downloads.ayuilos.me/connector/v{pinned_version()}/miffan-connector-linux-amd64"
+    host.state(serve={official: str(host.connector)})
     current = {"FAKE_CONNECTOR_VERSION": pinned_version()}
     host.json("install", stdin=INSTALL, use_file=False, extra_env=current)
     assert len(host.calls("curl")) == 1

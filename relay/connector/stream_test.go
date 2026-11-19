@@ -376,7 +376,7 @@ func TestSessionFallsBackOnceFromFailedQUICToWS(t *testing.T) {
 
 	c := newConnector(paths, id, "test", env, newLogger(io.Discard))
 	l := &link{c: c, url: "https://relay.test:" + port}
-	c.session(context.Background(), l, "0123456789abcdef0123456789abcdef", "control", pace{Kbps: 1000, BurstKb: 1024}, []string{""}, nil, true, "", true, l.ensureH3Pool())
+	c.session(context.Background(), l, "0123456789abcdef0123456789abcdef", "control", pace{Kbps: 1000, BurstKb: 1024}, nil, []string{""}, nil, true, "", true, l.ensureH3Pool())
 	l.closeH3Pool()
 
 	if h3Attempts.Load() == 0 {

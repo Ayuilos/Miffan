@@ -4175,6 +4175,9 @@
   <string name="im_relay_rule_today_of">of %1$d min</string>
   <string name="im_relay_rule_today_unlimited">No limit</string>
   <string name="im_relay_rule_fast">High quality</string>
+  <string name="im_relay_rule_fast_on">Supported</string>
+  <string name="im_relay_rule_fast_upgrade">Update PC</string>
+  <string name="im_relay_rule_fast_udp_blocked">UDP blocked</string>
   <string name="im_relay_rule_fast_off">Not away</string>
   <string name="im_relay_test_again">Test again</string>
   <string name="im_relay_test_copy">Copy results</string>

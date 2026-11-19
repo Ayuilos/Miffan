@@ -367,7 +367,7 @@ func (l *link) controlOnce(ctx context.Context, forceProbe bool) (out outcome) {
 		return handshakeFailure(err, "protocol", c.timing)
 	}
 	sig := c.id.signHost(client.hostHeader(), ch.Nonce)
-	authMsg, _ := json.Marshal(map[string]string{"t": "auth", "sig": sig})
+	authMsg, _ := json.Marshal(map[string]any{"t": "auth", "sig": sig, "dgram": true})
 	if err := write(websocket.TextMessage, authMsg); err != nil {
 		return outcome{err: err, reason: "network", network: true}
 	}
@@ -444,6 +444,7 @@ func (l *link) controlOnce(ctx context.Context, forceProbe bool) (out outcome) {
 			Sid   string          `json:"sid"`
 			Ch    string          `json:"ch"`
 			Pace  pace            `json:"pace"`
+			UDP   *udpEndpoint    `json:"udp"`
 			Usage json.RawMessage `json:"usage"`
 		}
 		if json.Unmarshal(data, &m) != nil {
@@ -451,7 +452,7 @@ func (l *link) controlOnce(ctx context.Context, forceProbe bool) (out outcome) {
 		}
 		switch m.T {
 		case "open":
-			l.startSession(ctx, m.Sid, m.Ch, m.Pace)
+			l.startSession(ctx, m.Sid, m.Ch, m.Pace, m.UDP)
 		case "usage":
 			if len(m.Usage) > 0 && len(m.Usage) <= 4096 {
 				c.update(l.url, func(s *state) { s.Usage = m.Usage })
@@ -558,10 +559,14 @@ func (l *link) dialControl(streamCtx, dialCtx context.Context, client *relayClie
 	return conn, edge, false, err
 }
 
-func (l *link) startSession(ctx context.Context, sid, ch string, p pace) {
+func (l *link) startSession(ctx context.Context, sid, ch string, p pace, udpInfo *udpEndpoint) {
 	c := l.c
-	if !sidPattern.MatchString(sid) || (ch != "control" && ch != "media") {
+	if !sidPattern.MatchString(sid) || (ch != "control" && ch != "media" && ch != "media-dgram") {
 		c.log.printf("ignoring malformed open message")
+		return
+	}
+	if ch == "media-dgram" && (udpInfo == nil || udpInfo.Port <= 0 || udpInfo.Port > 65535 || udpInfo.Token == "") {
+		c.log.printf("ignoring malformed media-dgram open message")
 		return
 	}
 	select {
@@ -577,7 +582,7 @@ func (l *link) startSession(ctx context.Context, sid, ch string, p pace) {
 	go func() {
 		defer c.wg.Done()
 		defer func() { <-c.sessions }()
-		c.session(ctx, l, sid, ch, p, edges, warm, viaStream, activeEdge, streamCapable, h3)
+		c.session(ctx, l, sid, ch, p, udpInfo, edges, warm, viaStream, activeEdge, streamCapable, h3)
 	}()
 }
 

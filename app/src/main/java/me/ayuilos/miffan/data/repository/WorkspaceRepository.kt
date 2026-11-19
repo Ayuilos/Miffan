@@ -29,6 +29,7 @@ import me.ayuilos.miffan.data.db.entity.RemoteHostAddress
 import me.ayuilos.miffan.data.db.entity.RemoteHostRelay
 import me.ayuilos.miffan.data.db.entity.encodeRemoteHostRelay
 import me.ayuilos.miffan.data.repository.relay.RelayAccess
+import me.ayuilos.miffan.data.repository.relay.RelayDgramStatus
 import me.ayuilos.miffan.data.repository.relay.RelayPhoneIdentity
 import me.ayuilos.miffan.data.repository.relay.RouteWinner
 import me.ayuilos.miffan.data.repository.relay.raceRoutes
@@ -36,6 +37,7 @@ import me.ayuilos.miffan.data.repository.relay.relaySessionClose
 import me.ayuilos.miffan.data.repository.relay.shouldPreconnect
 import me.rerere.workspace.RemoteRoute
 import me.rerere.workspace.relay.RelayChannel
+import me.rerere.workspace.relay.RelayDatagramSession
 import me.rerere.workspace.relay.RelayEndpoint
 import me.rerere.workspace.relay.RelayException
 import me.rerere.workspace.relay.RelayIds
@@ -360,6 +362,47 @@ class WorkspaceRepository(
         return openThroughRelay(host.id, relay, host.config(), RelayChannel.MEDIA, sameHostAs = control)
     }
 
+    /** True when [control] runs through a relay whose `media` policy and `dgram = "udp"` are enabled. */
+    fun relaySupportsDatagram(control: RemoteWorkspaceSession): Boolean {
+        val route = control.route as? RemoteRoute.Relay ?: return false
+        return route.socket.ready.policy.media.allowed &&
+            route.socket.ready.capabilities?.dgram == "udp"
+    }
+
+    /** Opens a `ch=media-dgram` session alongside [control] for relayed Sunshine UDP streaming. */
+    suspend fun openRelayDatagramSession(hostId: String, control: RemoteWorkspaceSession): RelayDatagramSession? {
+        val route = control.route as? RemoteRoute.Relay ?: return null
+        if (!route.socket.ready.policy.media.allowed) throw RelayException("media_disabled")
+        if (route.socket.ready.capabilities?.dgram != "udp") throw RelayException("dgram_disabled")
+        val host = hostDao.getById(hostId) ?: return null
+        val relay = host.relay?.takeIf { it.hostId == route.hostId } ?: return null
+        val access = requireNotNull(relayAccess)
+        val signer = withContext(Dispatchers.IO) { access.deviceKeys.signer() }
+        val networkKey = access.network.current()
+        val session = withContext(Dispatchers.IO) {
+            runInterruptible {
+                access.client.openDatagram(
+                    relay.endpoint,
+                    relay.hostId,
+                    signer,
+                    networkKey,
+                    timeoutMillis = RELAY_OPEN_TIMEOUT_MILLIS,
+                )
+            }
+        }
+        try {
+            currentCoroutineContext().ensureActive()
+        } catch (error: Throwable) {
+            withContext(NonCancellable + Dispatchers.IO) { session.close() }
+            throw error
+        }
+        session.controlSocket.addCloseListener { closed ->
+            closed.closedByRelay?.let { access.recordClose(hostId, it) }
+        }
+        access.record(hostId, session.ready)
+        return session
+    }
+
     /**
      * Connects through the computer's relay only (no direct addresses), runs one trivial command
      * and closes again. For setup confirmation and relay diagnostics.
@@ -381,8 +424,40 @@ class WorkspaceRepository(
             val warmMillis = (System.nanoTime() - warmStarted) / 1_000_000
             val socket = (session.route as RemoteRoute.Relay).socket
             val ping = withContext(Dispatchers.IO) { List(3) { socket.ping() }.filterNotNull().sorted() }
+            val caps = socket.ready.capabilities
+            val access = relayAccess
+            val dgramStatus = if (!socket.ready.policy.media.allowed || caps?.dgram != "udp" || access == null) {
+                RelayDgramStatus.UNSUPPORTED
+            } else {
+                try {
+                    val signer = withContext(Dispatchers.IO) { access.deviceKeys.signer() }
+                    val networkKey = access.network.current()
+                    withContext(Dispatchers.IO) {
+                        access.client.openDatagram(
+                            relay.endpoint,
+                            relay.hostId,
+                            signer,
+                            networkKey,
+                            timeoutMillis = 5_000,
+                            probeTimeoutMillis = 2_000,
+                        ).close()
+                    }
+                    RelayDgramStatus.AVAILABLE
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    val reason = generateSequence<Throwable>(error) { it.cause }.take(16)
+                        .filterIsInstance<RelayException>().firstOrNull()?.reason
+                    when (reason) {
+                        "dgram_unsupported" -> RelayDgramStatus.CONNECTOR_OUTDATED
+                        "dgram_disabled", "media_disabled" -> RelayDgramStatus.UNSUPPORTED
+                        else -> RelayDgramStatus.UDP_BLOCKED
+                    }
+                }
+            }
             return RelayProbe(openMillis, commandMillis, socket.ready.policy, socket.ready.usage,
-                relayPingMillis = ping.getOrNull(ping.size / 2), relayOpenMillis = socket.openMillis, warmCommandMillis = warmMillis)
+                relayPingMillis = ping.getOrNull(ping.size / 2), relayOpenMillis = socket.openMillis, warmCommandMillis = warmMillis,
+                capabilities = caps, dgramStatus = dgramStatus)
         } finally {
             withContext(NonCancellable + Dispatchers.IO) { session.close() }
         }

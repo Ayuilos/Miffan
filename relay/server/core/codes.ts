@@ -4,6 +4,8 @@ export type Reason =
   | "bad_request"
   | "unauthorized"
   | "media_disabled"
+  | "dgram_disabled"
+  | "dgram_unsupported"
   | "denied"
   | "host_offline"
   | "host_timeout"
@@ -22,6 +24,8 @@ export const HTTP_STATUS: Partial<Record<Reason, number>> = {
   bad_request: 400,
   unauthorized: 401,
   media_disabled: 403,
+  dgram_disabled: 403,
+  dgram_unsupported: 403,
   host_offline: 404,
   quota_exhausted: 429,
   too_many_sessions: 429,
@@ -48,12 +52,16 @@ export const CLOSE_CODE = {
   unexpected_text: 1008,
 } as const;
 
-export type Channel = "control" | "media";
+export type Channel = "control" | "media" | "media-dgram";
 
-export const CHANNELS: readonly Channel[] = ["control", "media"];
+export const CHANNELS: readonly Channel[] = ["control", "media", "media-dgram"];
 
 export function isChannel(v: unknown): v is Channel {
-  return v === "control" || v === "media";
+  return v === "control" || v === "media" || v === "media-dgram";
+}
+
+export function meterChannel(ch: Channel): "control" | "media" {
+  return ch === "control" ? "control" : "media";
 }
 
 /** Protocol constants (PROTOCOL §4, §5.3). */

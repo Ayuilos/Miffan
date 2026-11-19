@@ -189,6 +189,16 @@ internal fun RemoteScreenQuality.streamConfig(hostWidth: Int? = null, hostHeight
     return if (this == RemoteScreenQuality.CUSTOM) capped.copy(bitrateKbps = customBitrate(capped.height, custom.fps)) else capped
 }
 
+/** Caps requested video bitrate under the relay media pace (keeping headroom for audio/control). */
+internal fun StreamConfig.cappedForRelay(relayPaceKbps: Int): StreamConfig {
+    val bitrate = if (relayPaceKbps > 0) {
+        minOf(bitrateKbps, (relayPaceKbps * 85 / 100).coerceAtLeast(1_000))
+    } else {
+        bitrateKbps
+    }
+    return copy(bitrateKbps = bitrate, connectTimeoutMillis = maxOf(connectTimeoutMillis, 12_000L))
+}
+
 /** Matches the presets at 720p30, 1080p60 and 1440p60; sizes between tiers use the next tier up. */
 private fun customBitrate(height: Int, fps: Int): Int {
     val at60 = when {
