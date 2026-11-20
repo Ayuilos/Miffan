@@ -77,16 +77,22 @@ import me.ayuilos.miffan.data.model.OWNER_PARTICIPANT_ID
 import me.ayuilos.miffan.data.model.PartnerChat
 import me.ayuilos.miffan.data.model.PartnerChatApproval
 import me.ayuilos.miffan.data.model.PartnerChatMessage
+import me.ayuilos.miffan.data.model.PartnerTurnActivity
 import me.ayuilos.miffan.Screen
+import me.ayuilos.miffan.ui.im.thread.PartnerLiveStatus
+import me.ayuilos.miffan.ui.im.thread.ThreadAvatar
 import me.ayuilos.miffan.ui.im.thread.ThreadPartnerMessage
+import me.ayuilos.miffan.ui.im.thread.ThreadStep
+import me.ayuilos.miffan.ui.im.thread.ThreadStepRecord
 import me.ayuilos.miffan.ui.im.thread.ThreadToolPrompt
 import me.ayuilos.miffan.ui.im.thread.isPartnerMessage
+import me.ayuilos.miffan.ui.im.thread.partnerTurnLiveStatus
+import me.ayuilos.miffan.ui.im.thread.threadSteps
 import me.ayuilos.miffan.data.partner.PartnerChatService
 import me.ayuilos.miffan.data.thread.ThreadListState
 import me.ayuilos.miffan.data.thread.ThreadTimeline
 import me.ayuilos.miffan.ui.components.richtext.MarkdownBlock
 import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
-import me.ayuilos.miffan.ui.components.ui.AssistantGenerationPhase
 import me.ayuilos.miffan.ui.components.ui.EdgeBlurScrim
 import me.ayuilos.miffan.ui.components.ui.EdgeScrimPosition
 import me.ayuilos.miffan.ui.components.ui.GlassIconButton
@@ -94,7 +100,6 @@ import me.ayuilos.miffan.ui.components.ui.GlassSurface
 import me.ayuilos.miffan.ui.context.LocalNavController
 import me.ayuilos.miffan.ui.im.thread.ThreadDateLabel
 import me.ayuilos.miffan.ui.im.thread.ThreadLiveStatusRow
-import me.ayuilos.miffan.ui.im.thread.waitingStatus
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowLeft01
 import me.rerere.hugeicons.stroke.ArrowUp02
@@ -113,6 +118,8 @@ data class PartnerChatState(
     val connected: Set<Uuid>,
     /** Members' tool calls waiting for the owner. */
     val approvals: List<PartnerChatApproval>,
+    /** Live progress of each typing member's perspective turn. */
+    val activity: Map<Uuid, PartnerTurnActivity> = emptyMap(),
 )
 
 class PartnerChatVM(
@@ -121,18 +128,23 @@ class PartnerChatVM(
     private val service: PartnerChatService,
     private val listState: ThreadListState,
 ) : ViewModel() {
-    private val running = combine(service.observeTyping(chatId), service.observeConnected(chatId)) { typing, connected -> typing to connected }
+    private val running = combine(service.observeTyping(chatId), service.observeActivity(chatId)) { typing, activity -> typing to activity }
 
     val state: StateFlow<PartnerChatState?> = combine(
         service.observeChat(chatId), service.observeMessages(chatId), running,
         service.observeApprovals(chatId), settingsStore.settingsFlow,
-    ) { chat, messages, (typing, connected), approvals, settings ->
+    ) { chat, messages, (typing, activity), approvals, settings ->
         chat ?: return@combine null
-        PartnerChatState(chat, chat.memberIds.mapNotNull { settings.getAssistantById(it) }, messages, typing, connected, approvals)
+        val connected = activity.filterValues { it.connected }.keys
+        PartnerChatState(chat, chat.memberIds.mapNotNull { settings.getAssistantById(it) }, messages, typing, connected, approvals, activity)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun answer(approval: PartnerChatApproval, toolCallId: String, approved: Boolean) {
         viewModelScope.launch { service.answerApproval(chatId, approval.memberId, toolCallId, approved) }
+    }
+
+    fun answerQuestion(approval: PartnerChatApproval, toolCallId: String, answer: String) {
+        viewModelScope.launch { service.answerApproval(chatId, approval.memberId, toolCallId, approved = true, answer = answer) }
     }
 
     fun send(text: String, mentions: List<Uuid>) {
@@ -163,7 +175,9 @@ internal fun PartnerChatPage(chatId: Uuid, vm: PartnerChatVM = koinViewModel { p
     val group = state?.chat?.isGroup == true
     val names = members.map { partnerName(it) }.joinToString(" · ")
     val title = if (group) "${state?.chat?.title?.takeIf { it.isNotBlank() } ?: names} (${members.size})" else names
-    val approvalCount = state?.approvals?.size ?: 0
+    val approvals = state?.approvals.orEmpty()
+    val approvalCount = approvals.size
+    val waitingApprovalMembers = remember(approvals) { approvals.mapTo(HashSet()) { it.memberId } }
     LaunchedEffect(messages.size, typing, approvalCount) {
         vm.markRead()
         // Date labels sit between messages, so follow the list's own last item rather than a message index.
@@ -191,17 +205,27 @@ internal fun PartnerChatPage(chatId: Uuid, vm: PartnerChatVM = koinViewModel { p
                 }
             }
             typing.mapNotNull { id -> members.firstOrNull { it.id == id } }.forEach { partner ->
+                if (partner.id in waitingApprovalMembers) return@forEach
+                val activity = state?.activity?.get(partner.id) ?: PartnerTurnActivity(connected = partner.id in state?.connected.orEmpty())
+                val liveStatus = partnerTurnLiveStatus(activity.parts, activity.connected, online) ?: return@forEach
                 item("typing-${partner.id}") {
-                    ThreadLiveStatusRow(partner, AssistantGenerationPhase.Waiting,
-                        waitingStatus(partner.id in state?.connected.orEmpty(), online).label)
+                    val steps = remember(activity.parts) { threadSteps(activity.parts) }
+                    if (steps.isNotEmpty()) {
+                        PartnerChatLiveStepsRow(partner, liveStatus, steps)
+                    } else {
+                        ThreadLiveStatusRow(partner, liveStatus.phase, liveStatus.label)
+                    }
                 }
             }
             // A member waiting for the owner stops until answered, so its request sits at the end where the owner looks.
-            state?.approvals.orEmpty().forEach { approval ->
+            approvals.forEach { approval ->
                 item("approval-${approval.tool.toolCallId}") {
-                    PartnerChatApprovalCard(approval, members.firstOrNull { it.id == approval.memberId }) { id, approved ->
-                        vm.answer(approval, id, approved)
-                    }
+                    PartnerChatApprovalCard(
+                        approval = approval,
+                        member = members.firstOrNull { it.id == approval.memberId },
+                        onApproval = { id, approved -> vm.answer(approval, id, approved) },
+                        onAnswer = { id, answer -> vm.answerQuestion(approval, id, answer) },
+                    )
                 }
             }
         }
@@ -353,9 +377,28 @@ internal fun ImStackedAvatars(partners: List<Assistant>, size: Dp, onClick: () -
     }
 }
 
+@Composable
+private fun PartnerChatLiveStepsRow(partner: Assistant, liveStatus: PartnerLiveStatus, steps: List<ThreadStep>) {
+    Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.Top) {
+        Box(Modifier.size(36.dp)) {
+            ThreadAvatar(partner, liveStatus.phase, modifier = Modifier.size(36.dp))
+        }
+        Column(Modifier.padding(start = 8.dp).widthIn(max = (LocalConfiguration.current.screenWidthDp * .78f).dp)) {
+            Text(partnerName(partner), style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
+            ThreadStepRecord(steps = steps, live = true, liveStatus = liveStatus.label)
+        }
+    }
+}
+
 /** A member's request for the owner's OK, under its avatar and name like its messages. */
 @Composable
-private fun PartnerChatApprovalCard(approval: PartnerChatApproval, member: Assistant?, onApproval: (String, Boolean) -> Unit) {
+private fun PartnerChatApprovalCard(
+    approval: PartnerChatApproval,
+    member: Assistant?,
+    onApproval: (String, Boolean) -> Unit,
+    onAnswer: (String, String) -> Unit,
+) {
     Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.Top) {
         Box(Modifier.size(36.dp)) { member?.let { AssistantAvatar(it.name, it.avatar, Modifier.size(36.dp)) } }
         Column(Modifier.padding(start = 8.dp).widthIn(max = (LocalConfiguration.current.screenWidthDp * .78f).dp)) {
@@ -364,7 +407,14 @@ private fun PartnerChatApprovalCard(approval: PartnerChatApproval, member: Assis
                     color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
             }
             if (approval.tool.isPartnerMessage()) ThreadPartnerMessage(approval.tool, member, onApproval)
-            else ThreadToolPrompt(approval.tool, onApproval, onAnswer = { _, _ -> }, assistant = member)
+            else ThreadToolPrompt(
+                tool = approval.tool,
+                onApproval = onApproval,
+                onAnswer = onAnswer,
+                assistant = member,
+                conversationId = approval.segmentId.toString(),
+                replyHint = false,
+            )
         }
     }
 }

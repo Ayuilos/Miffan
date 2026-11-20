@@ -17,9 +17,10 @@ internal class ChatServicePartnerRuntime(
     private val threadService: () -> ThreadService,
 ) : PartnerChatRuntime {
     override fun observeSegment(id: Uuid) = conversations.observeConversation(id)
-    override suspend fun answerApproval(segment: Conversation, toolCallId: String, approved: Boolean) {
+    override fun observeLiveSegment(segmentId: Uuid) = chatService().getConversationFlow(segmentId)
+    override suspend fun answerApproval(segment: Conversation, toolCallId: String, approved: Boolean, answer: String?) {
         chatService().openThreadSegment(segment.id, segment.assistantId)
-        chatService().handleToolApproval(segment.id, toolCallId, approved)
+        chatService().handleToolApproval(segment.id, toolCallId, approved, answer = answer)
     }
     override suspend fun loadSegment(id: Uuid): Conversation? = conversations.getConversationById(id)
     override suspend fun saveSegment(segment: Conversation) = chatService().saveConversation(segment.id, segment)

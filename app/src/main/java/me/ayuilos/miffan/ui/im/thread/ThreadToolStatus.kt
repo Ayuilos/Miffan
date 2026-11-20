@@ -79,6 +79,50 @@ internal fun threadLiveStatus(parts: List<UIMessagePart>, streaming: Boolean, co
     return waitingStatus(connected, online).label
 }
 
+/** What a partner in a partner chat is doing right now, or null while an approval card speaks for it. */
+internal data class PartnerLiveStatus(
+    @StringRes val label: Int,
+    val phase: AssistantGenerationPhase,
+)
+
+internal fun partnerTurnLiveStatus(
+    parts: List<UIMessagePart>,
+    connected: Boolean,
+    online: Boolean,
+): PartnerLiveStatus? {
+    if (parts.any { it is UIMessagePart.Tool && it.isPending }) return null
+    for (part in parts.asReversed()) {
+        when (part) {
+            is UIMessagePart.Text -> if (part.text.isNotBlank()) {
+                return PartnerLiveStatus(R.string.im_thread_typing, AssistantGenerationPhase.Responding)
+            }
+            is UIMessagePart.Image, is UIMessagePart.Audio, is UIMessagePart.Video -> {
+                return PartnerLiveStatus(R.string.im_thread_typing, AssistantGenerationPhase.Responding)
+            }
+            is UIMessagePart.Reasoning -> {
+                return PartnerLiveStatus(R.string.im_thread_status_thinking, AssistantGenerationPhase.Reasoning)
+            }
+            is UIMessagePart.Tool -> {
+                return when {
+                    !part.isExecuted -> PartnerLiveStatus(toolStatus(part.toolName), AssistantGenerationPhase.Waiting)
+                    connected -> PartnerLiveStatus(R.string.im_thread_status_thinking, AssistantGenerationPhase.Reasoning)
+                    !online -> PartnerLiveStatus(R.string.im_thread_status_offline, AssistantGenerationPhase.Waiting)
+                    else -> PartnerLiveStatus(R.string.im_thread_tools_working, AssistantGenerationPhase.Waiting)
+                }
+            }
+            is UIMessagePart.ServerTool -> {
+                return PartnerLiveStatus(toolStatus(part.toolName), AssistantGenerationPhase.Waiting)
+            }
+            else -> Unit
+        }
+    }
+    val waiting = waitingStatus(connected, online)
+    return PartnerLiveStatus(
+        label = waiting.label,
+        phase = if (waiting == ThreadHeaderStatus.Thinking) AssistantGenerationPhase.Reasoning else AssistantGenerationPhase.Waiting,
+    )
+}
+
 private fun toolStatus(name: String): Int =
     if (name.contains("search", true) || name.contains("web", true)) R.string.im_thread_tools_running else R.string.im_thread_tools_working
 
@@ -112,9 +156,10 @@ internal fun ThreadToolPrompt(
     assistant: Assistant? = null,
     /** The segment the tool call belongs to; an interactive terminal only opens for its own chat. */
     conversationId: String? = null,
+    replyHint: Boolean = true,
 ) {
     when {
-        tool.approvalState is ToolApprovalState.Pending && tool.toolName == ASK_USER -> ThreadQuestionCard(tool, onAnswer)
+        tool.approvalState is ToolApprovalState.Pending && tool.toolName == ASK_USER -> ThreadQuestionCard(tool, onAnswer, replyHint = replyHint)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName in me.ayuilos.miffan.data.appsettings.SECRET_CARD_TOOLS ->
             ThreadConnectProviderCard(tool, assistant, conversationId, onApproval)
         tool.approvalState is ToolApprovalState.Pending && tool.toolName == WORKSPACE_TERMINAL_TOOL_NAME ->

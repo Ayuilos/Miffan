@@ -1,5 +1,6 @@
 package me.ayuilos.miffan.ui.im.thread
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import me.ayuilos.miffan.data.repository.FavoriteRepository
 import me.ayuilos.miffan.data.model.FavoriteType
@@ -39,6 +40,8 @@ import me.ayuilos.miffan.data.thread.MergeResult
 import me.ayuilos.miffan.data.thread.UndoableMerge
 import me.ayuilos.miffan.data.thread.listPreviewText
 import me.ayuilos.miffan.data.model.MessageOrigin
+import me.ayuilos.miffan.data.model.PartnerChatKind
+import me.ayuilos.miffan.data.partner.PartnerChatService
 import me.ayuilos.miffan.data.db.dao.ThreadCatalogEntry
 import me.ayuilos.miffan.data.thread.LiveSegmentHandoff
 import me.ayuilos.miffan.data.thread.ThreadNotice
@@ -78,6 +81,19 @@ private data class IndexedThreadSegments(
  */
 data class ThreadTimelineState(val items: List<TimelineItem>, val loaded: Boolean)
 
+@Immutable
+data class ThreadPartnerApproval(
+    val chatId: Uuid,
+    val memberId: Uuid,
+)
+
+@Immutable
+data class ThreadPartnerChatState(
+    val directChatIds: Map<Uuid, Uuid> = emptyMap(),
+    val approvalMembersByChat: Map<Uuid, Set<Uuid>> = emptyMap(),
+    val pendingApprovals: List<ThreadPartnerApproval> = emptyList(),
+)
+
 /**
  * State and actions of one assistant's IM timeline. The UI renders [timeline] and never needs to
  * know about conversations: sending, replying and filtering are expressed in timeline terms.
@@ -93,6 +109,7 @@ class AgentThreadVM(
     private val revisionService: RevisionService,
     private val listState: ThreadListState,
     private val favoriteRepository: FavoriteRepository,
+    private val partnerChatService: PartnerChatService? = null,
 ) : ViewModel() {
     /** Messages the owner saved, by node, so the press menu offers to save or unsave. */
     val favoriteNodes: StateFlow<Set<Uuid>> = favoriteRepository.listByType(FavoriteType.NODE)
@@ -366,6 +383,47 @@ class AgentThreadVM(
         val ids = segments.mapTo(HashSet()) { it.id }
         errors.filter { it.conversationId in ids }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Partner-chat links and pending approvals involving this partner. */
+    val partnerChatState: StateFlow<ThreadPartnerChatState> = if (partnerChatService == null) {
+        MutableStateFlow(ThreadPartnerChatState()).asStateFlow()
+    } else {
+        combine(
+            partnerChatService.observeSummaries(),
+            partnerChatService.observeApprovalMembers(),
+        ) { summaries, approvals ->
+            val relevant = summaries.filter { assistantId in it.chat.memberIds }
+            val directChatIds = buildMap {
+                relevant.forEach { summary ->
+                    if (summary.chat.kind == PartnerChatKind.DIRECT) {
+                        summary.chat.memberIds.firstOrNull { it != assistantId }?.let { other ->
+                            put(other, summary.chat.id)
+                        }
+                    }
+                }
+            }
+            val relevantChatIds = relevant.mapTo(HashSet()) { it.chat.id }
+            val approvalMembersByChat = approvals
+                .filterKeys { it in relevantChatIds }
+                .filterValues { it.isNotEmpty() }
+            val pendingApprovals = approvalMembersByChat.entries
+                .flatMap { (chatId, members) ->
+                    members.map { memberId -> ThreadPartnerApproval(chatId, memberId) }
+                }
+                .sortedWith(
+                    compareBy<ThreadPartnerApproval> { it.memberId == assistantId }
+                        .thenBy { it.chatId.toString() }
+                        .thenBy { it.memberId.toString() }
+                )
+            ThreadPartnerChatState(
+                directChatIds = directChatIds,
+                approvalMembersByChat = approvalMembersByChat,
+                pendingApprovals = pendingApprovals,
+            )
+        }
+            .distinctUntilChanged()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ThreadPartnerChatState())
+    }
 
     /** Sends [parts] (text, images, files) to the thread; routing picks the segment. */
     fun send(parts: List<UIMessagePart>, freshStart: Boolean = false, reviewedHistory: Boolean = false) {

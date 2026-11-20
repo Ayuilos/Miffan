@@ -58,6 +58,13 @@ data class PartnerChatSummary(
 data class PartnerChatApproval(
     val memberId: Uuid,
     val tool: me.rerere.ai.ui.UIMessagePart.Tool,
+    val segmentId: Uuid,
+)
+
+/** Live progress of one partner's in-flight turn in a [PartnerChat]. */
+data class PartnerTurnActivity(
+    val connected: Boolean = false,
+    val parts: List<me.rerere.ai.ui.UIMessagePart> = emptyList(),
 )
 
 /** Group limits the owner works within. */

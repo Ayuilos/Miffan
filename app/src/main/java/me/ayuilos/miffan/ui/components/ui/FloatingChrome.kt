@@ -13,6 +13,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,11 +41,17 @@ import dev.chrisbanes.haze.blur.HazeColorEffect
 import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.blur.material3.Material3
 
+/** Lets Compose UI tests opt out of Haze blur without changing production behavior. */
+internal val LocalFloatingChromeBlurEnabled = staticCompositionLocalOf { true }
+
 /** Frosted glass for chrome floating over a scrolling `hazeSource`, shared by both chat modes. */
 @Composable
 fun Modifier.glass(hazeState: HazeState, shape: Shape): Modifier {
     // Keep the theme's hue, with a tonal step from the page (including AMOLED black).
     val glassColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    if (!LocalFloatingChromeBlurEnabled.current) {
+        return clip(shape).background(glassColor.copy(alpha = 0.9f))
+    }
     val style = HazeBlurStyle.Material3 {
         blurRadius(20.dp)
         noiseFactor(0.04f)
@@ -132,11 +139,16 @@ fun EdgeBlurScrim(hazeState: HazeState, position: EdgeScrimPosition, height: Dp,
     } else {
         Brush.verticalGradient(listOf(page.copy(alpha = 0f), page.copy(alpha = 0.8f)))
     }
+    val blur = if (LocalFloatingChromeBlurEnabled.current) {
+        Modifier.hazeBlur(input = HazeInput.Sources(hazeState), style = style)
+    } else {
+        Modifier
+    }
     Box(
         modifier
             .fillMaxWidth()
             .height(height)
-            .hazeBlur(input = HazeInput.Sources(hazeState), style = style)
+            .then(blur)
             .background(fade)
     )
 }

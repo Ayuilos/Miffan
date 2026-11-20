@@ -189,6 +189,7 @@ class ImHomeVM(
             val hiddenAt = prefs.hiddenAt[summary.chat.id.toString()]
             if (!pinned && hiddenAt != null && summary.lastActivity.toEpochMilli() <= hiddenAt) return@mapNotNull null
             val last = summary.last
+            val waitingMembers = approvals[summary.chat.id].orEmpty()
             ImChatItem(
                 assistant = members.first(),
                 preview = last?.text?.let(::listPreviewText).orEmpty(),
@@ -197,8 +198,8 @@ class ImHomeVM(
                 lastActivity = summary.lastActivity,
                 unread = summary.unread,
                 pinned = pinned,
-                typing = summary.typing.isNotEmpty(),
-                waiting = approvals[summary.chat.id].orEmpty().isNotEmpty(),
+                typing = (summary.typing - waitingMembers).isNotEmpty(),
+                waiting = waitingMembers.isNotEmpty(),
                 title = summary.chat.title.takeIf { summary.chat.kind == PartnerChatKind.GROUP && it.isNotBlank() },
                 partnerChatId = summary.chat.id,
                 members = members,

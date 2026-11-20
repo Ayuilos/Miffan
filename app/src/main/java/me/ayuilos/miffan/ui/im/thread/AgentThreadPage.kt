@@ -48,11 +48,14 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
+import me.ayuilos.miffan.ui.components.ui.AssistantAvatar
 import me.ayuilos.miffan.ui.components.ui.EdgeBlurScrim
 import me.ayuilos.miffan.ui.components.ui.EdgeScrimPosition
 import me.ayuilos.miffan.ui.components.ui.GlassIconButton
 import me.ayuilos.miffan.ui.components.ui.GlassSurface
 import me.ayuilos.miffan.ui.components.ui.assistantGenerationPhase
+import me.ayuilos.miffan.ui.im.RunningLight
+import me.ayuilos.miffan.ui.im.partnerName
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.hugeicons.stroke.ArrowDown01
@@ -126,6 +129,7 @@ fun AgentThreadPage(
     val delivery: me.ayuilos.miffan.data.remotetask.RemoteTaskDelivery = org.koin.compose.koinInject()
     val deliveries by delivery.summaries.collectAsStateWithLifecycle()
     val taskDelivery = deliveries[assistantId]
+    val partnerChatState by vm.partnerChatState.collectAsStateWithLifecycle()
     LaunchedEffect(loaded) { if (loaded) me.ayuilos.miffan.utils.ThreadOpenTrace.end() }
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -481,9 +485,12 @@ fun AgentThreadPage(
         assistant?.let { AssistantBackground(it, Modifier.fillMaxSize().hazeSource(hazeState, zIndex = -1f)) }
         SharedElementScope(enabled = inFlightScope, Modifier.fillMaxSize()) { flight ->
             // During a welcome the big partner moves into the live status row when the partner starts working.
-            CompositionLocalProvider(LocalThreadPartnerTransition provides flight?.let {
-                ThreadPartnerTransition(it, handOff = welcome != null && welcomeDecided && (status != null || partnerLeft))
-            }) {
+            CompositionLocalProvider(
+                LocalThreadPartnerTransition provides flight?.let {
+                    ThreadPartnerTransition(it, handOff = welcome != null && welcomeDecided && (status != null || partnerLeft))
+                },
+                LocalThreadPartnerChatState provides partnerChatState,
+            ) {
                 timelineList()
             }
         }
@@ -544,6 +551,39 @@ fun AgentThreadPage(
                         IconButton(onClick = { delivery.dismiss(assistantId) }) {
                             Icon(HugeIcons.Cancel01, stringResource(R.string.im_thread_dismiss), Modifier.size(18.dp))
                         }
+                    }
+                }
+            }
+            partnerChatState.pendingApprovals.forEach { pending ->
+                val waitingPartner = assistants.firstOrNull { it.id == pending.memberId } ?: return@forEach
+                GlassSurface(hazeState, RoundedCornerShape(18.dp), Modifier.fillMaxWidth(),
+                    onClick = { nav.navigate(Screen.PartnerChat(pending.chatId.toString())) }) {
+                    Row(
+                        Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Box(Modifier.size(28.dp)) {
+                            AssistantAvatar(waitingPartner.name, waitingPartner.avatar, Modifier.size(28.dp))
+                            RunningLight(
+                                running = false,
+                                avatarSize = 28.dp,
+                                ring = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                waiting = true,
+                            )
+                        }
+                        Text(
+                            stringResource(R.string.im_gc_needs_ok, partnerName(waitingPartner)),
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            stringResource(R.string.im_thread_view),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                     }
                 }
             }

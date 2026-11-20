@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,6 +42,8 @@ import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.ToolDecision
 import me.rerere.ai.ui.UIMessagePart
 import kotlin.uuid.Uuid
+
+internal val LocalThreadPartnerChatState = staticCompositionLocalOf { ThreadPartnerChatState() }
 
 internal fun UIMessagePart.Tool.isPartnerMessage(): Boolean = toolName == PartnerMessageTool.NAME
 
@@ -76,23 +79,30 @@ internal fun ThreadPartnerMessage(tool: UIMessagePart.Tool, sender: Assistant?, 
         return
     }
     val nav = LocalNavController.current
+    val partnerChatState = LocalThreadPartnerChatState.current
     val declined = tool.approvalRecord?.decision == ToolDecision.DECLINED || tool.approvalState is ToolApprovalState.Denied
     val running = !declined && !tool.isExecuted
+    val chatId = call.chatId ?: if (running) call.to?.let { partnerChatState.directChatIds[it] } else null
+    val waitingForOwner = chatId != null && call.to != null &&
+        (running || call.status == PartnerMessageTool.STATUS_PENDING) &&
+        call.to in partnerChatState.approvalMembersByChat[chatId].orEmpty()
     val label = when {
         declined -> stringResource(R.string.im_partner_msg_declined, targetName)
+        waitingForOwner -> stringResource(R.string.im_gc_needs_ok, targetName)
         running -> stringResource(R.string.im_partner_msg_asking, targetName)
         call.status == PartnerMessageTool.STATUS_REPLIED -> stringResource(R.string.im_partner_msg_replied, targetName)
         call.status == PartnerMessageTool.STATUS_PENDING -> stringResource(R.string.im_partner_msg_pending, targetName)
         else -> stringResource(R.string.im_partner_msg_refused, targetName)
     }
-    val chatId = call.chatId
     Surface(onClick = { chatId?.let { nav.navigate(Screen.PartnerChat(it.toString())) } }, enabled = chatId != null,
         color = Color.Transparent, shape = MaterialTheme.shapes.small) {
         Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             target?.let { AssistantAvatar(it.name, it.avatar, Modifier.size(22.dp)) }
-            Text(label, Modifier.weight(1f, fill = false).shimmer(isLoading = running), style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(label, Modifier.weight(1f, fill = false).shimmer(isLoading = running && !waitingForOwner),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (waitingForOwner) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (chatId != null) Text(stringResource(R.string.im_thread_view), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.primary)
         }

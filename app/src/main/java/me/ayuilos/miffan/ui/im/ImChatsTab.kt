@@ -354,6 +354,7 @@ private fun ImChatRow(chat: ImChatItem, actions: ImChatActions) {
                     Text(
                         modifier = Modifier.weight(1f),
                         text = when {
+                            chat.waiting -> stringResource(R.string.im_partner_waiting)
                             chat.typing -> stringResource(R.string.im_chats_typing)
                             chat.previewFromUser -> stringResource(R.string.im_p5_you_prefix, preview)
                             chat.previewSender != null && preview.isNotEmpty() ->
@@ -361,7 +362,11 @@ private fun ImChatRow(chat: ImChatItem, actions: ImChatActions) {
                             else -> preview
                         },
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (chat.typing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = when {
+                            chat.waiting -> MaterialTheme.colorScheme.tertiary
+                            chat.typing -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )

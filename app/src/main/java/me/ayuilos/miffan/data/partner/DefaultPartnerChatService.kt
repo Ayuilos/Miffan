@@ -13,6 +13,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.coroutineScope
 import me.ayuilos.miffan.data.thread.ThreadListPrefs
+import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessagePart
 import me.ayuilos.miffan.service.pendingApprovalTools
 import kotlinx.coroutines.flow.flatMapLatest
@@ -41,7 +42,8 @@ import kotlin.uuid.Uuid
 internal interface PartnerChatRuntime {
     suspend fun loadSegment(id: Uuid): Conversation?
     fun observeSegment(id: Uuid): Flow<Conversation?>
-    suspend fun answerApproval(segment: Conversation, toolCallId: String, approved: Boolean)
+    fun observeLiveSegment(segmentId: Uuid): Flow<Conversation?> = observeSegment(segmentId)
+    suspend fun answerApproval(segment: Conversation, toolCallId: String, approved: Boolean, answer: String? = null)
     suspend fun saveSegment(segment: Conversation)
     /** Waits across approval pauses; returns only the final assistant text. */
     suspend fun generate(segment: Conversation): String
@@ -65,9 +67,11 @@ internal class DefaultPartnerChatService(
     private val listPrefs: Flow<ThreadListPrefs> = MutableStateFlow(ThreadListPrefs()),
     private val notifications: PartnerGroupNotifications = PartnerGroupNotifications { _, _, _ -> },
 ) : PartnerChatService {
+    private data class ActiveTurn(val segmentId: Uuid, val baselineMessageId: Uuid?)
+
     private val typing = MutableStateFlow<Map<Uuid, Set<Uuid>>>(emptyMap())
     // The perspective segment each typing member generates in, keyed by chat and member.
-    private val turnSegments = MutableStateFlow<Map<Pair<Uuid, Uuid>, Uuid>>(emptyMap())
+    private val turnSegments = MutableStateFlow<Map<Pair<Uuid, Uuid>, ActiveTurn>>(emptyMap())
     private val memberLocks = ConcurrentHashMap<Pair<Uuid, Uuid>, Mutex>()
     private val ownerLocks = ConcurrentHashMap<Uuid, Mutex>()
     private val deleted = ConcurrentHashMap.newKeySet<Uuid>()
@@ -104,13 +108,30 @@ internal class DefaultPartnerChatService(
     override fun observeTyping(chatId: Uuid): Flow<Set<Uuid>> = typing.map { it[chatId].orEmpty() }.distinctUntilChanged()
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override fun observeConnected(chatId: Uuid): Flow<Set<Uuid>> = combine(typing.map { it[chatId].orEmpty() }, turnSegments) { ids, segments ->
-        ids.mapNotNull { id -> segments[chatId to id]?.let { id to it } }
+        ids.mapNotNull { id -> segments[chatId to id]?.let { id to it.segmentId } }
     }.distinctUntilChanged().flatMapLatest { running ->
         if (running.isEmpty()) flowOf(emptySet())
         else combine(running.map { (id, segmentId) -> runtime.observeConnected(segmentId).map { connected -> id to connected } }) { states ->
             states.filter { it.second }.mapTo(HashSet()) { it.first }
         }
     }
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    override fun observeActivity(chatId: Uuid): Flow<Map<Uuid, PartnerTurnActivity>> =
+        combine(typing.map { it[chatId].orEmpty() }, turnSegments) { ids, segments ->
+            ids.mapNotNull { id -> segments[chatId to id]?.let { id to it } }
+        }.distinctUntilChanged().flatMapLatest { running ->
+            if (running.isEmpty()) flowOf(emptyMap())
+            else combine(running.map { (id, turn) ->
+                combine(runtime.observeConnected(turn.segmentId), runtime.observeLiveSegment(turn.segmentId)) { connected, conversation ->
+                    val reply = conversation?.currentMessages?.lastOrNull()
+                        ?.takeIf { it.role == MessageRole.ASSISTANT && it.id != turn.baselineMessageId }
+                    id to PartnerTurnActivity(
+                        connected = connected,
+                        parts = reply?.parts?.let(::normalizeActivityParts).orEmpty(),
+                    )
+                }.distinctUntilChanged()
+            }) { entries -> entries.toMap() }
+        }.distinctUntilChanged()
     override fun observeContacts(assistantId: Uuid): Flow<List<Uuid>> = settingsStore.settingsFlow.map { settings ->
         settings.partnerContactGrants.mapNotNull { pair -> when (assistantId) {
             pair.first -> pair.second
@@ -291,8 +312,9 @@ internal class DefaultPartnerChatService(
             check(assistantId in chat.memberIds) { "Member was removed" }
             val (member, old) = perspective(chat, assistantId)
             val release = runtime.keepAlive(old.id)
+            val baselineMessageId = old.currentMessages.lastOrNull()?.id
             typing.update { it + (chatId to (it[chatId].orEmpty() + assistantId)) }
-            turnSegments.update { it + ((chatId to assistantId) to old.id) }
+            turnSegments.update { it + ((chatId to assistantId) to ActiveTurn(old.id, baselineMessageId)) }
             try {
                 val messages = store.messages(chatId)
                 val segment = synchronizePerspective(old, messages, member.syncedMessageId, settingsStore.settingsFlow.value, mirrorOutgoing = true)
@@ -361,7 +383,7 @@ internal class DefaultPartnerChatService(
                 segments.filterNotNull().flatMap { segment ->
                     segment.currentMessages.flatMap { message ->
                         message.parts.filterIsInstance<UIMessagePart.Tool>().filter { it.isPending }
-                            .map { message.createdAt to PartnerChatApproval(segment.assistantId, it) }
+                            .map { message.createdAt to PartnerChatApproval(segment.assistantId, it, segment.id) }
                     }
                 }.sortedBy { it.first }.map { it.second }
             }
@@ -380,14 +402,14 @@ internal class DefaultPartnerChatService(
         }
     }.distinctUntilChanged()
 
-    override suspend fun answerApproval(chatId: Uuid, memberId: Uuid, toolCallId: String, approved: Boolean) {
+    override suspend fun answerApproval(chatId: Uuid, memberId: Uuid, toolCallId: String, approved: Boolean, answer: String?) {
         val chat = requireNotNull(store.chat(chatId))
         require(memberId in chat.memberIds)
         val id = requireNotNull(store.member(chatId, memberId).segmentId)
         val segment = requireNotNull(runtime.loadSegment(id))
         require(segment.chatId == chatId && segment.assistantId == memberId)
         if (segment.pendingApprovalTools().none { it.toolCallId == toolCallId }) return
-        runtime.answerApproval(segment, toolCallId, approved)
+        runtime.answerApproval(segment, toolCallId, approved, answer)
     }
 
     private suspend fun validateMembers(ids: List<Uuid>) {
@@ -479,6 +501,26 @@ internal class DefaultPartnerChatService(
             settings.copy(partnerContactGrants = settings.partnerContactGrants.filterNot { it.first == assistantId || it.second == assistantId },
                 chatOrganization = settings.chatOrganization.retainChats((settings.assistants.map { it.id }.toSet() - assistantId) + remainingChatIds))
         }
+    }
+}
+
+private val STREAMING_TEXT_MARKER = UIMessagePart.Text(" ")
+private val BLANK_TEXT_MARKER = UIMessagePart.Text("")
+private val STREAMING_REASONING_MARKER = UIMessagePart.Reasoning(
+    " ",
+    createdAt = kotlin.time.Instant.fromEpochMilliseconds(0),
+    finishedAt = null,
+)
+
+/**
+ * Collapses streaming prose and reasoning deltas so partner chat observers re-emit only when
+ * the active phase or tool list changes rather than on every streamed token.
+ */
+internal fun normalizeActivityParts(parts: List<UIMessagePart>): List<UIMessagePart> = parts.map { part ->
+    when (part) {
+        is UIMessagePart.Text -> if (part.text.isNotBlank()) STREAMING_TEXT_MARKER else BLANK_TEXT_MARKER
+        is UIMessagePart.Reasoning -> STREAMING_REASONING_MARKER
+        else -> part
     }
 }
 

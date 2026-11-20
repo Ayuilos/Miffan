@@ -71,6 +71,7 @@ val viewModelModule = module {
             revisionService = get(),
             listState = get(),
             favoriteRepository = get(),
+            partnerChatService = get(),
         )
     }
     viewModelOf(::SettingVM)

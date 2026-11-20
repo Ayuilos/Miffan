@@ -1,10 +1,12 @@
 package me.ayuilos.miffan.data.partner
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import me.ayuilos.miffan.data.model.PartnerChat
 import me.ayuilos.miffan.data.model.PartnerChatApproval
 import me.ayuilos.miffan.data.model.PartnerChatMessage
 import me.ayuilos.miffan.data.model.PartnerChatSummary
+import me.ayuilos.miffan.data.model.PartnerTurnActivity
 import kotlin.uuid.Uuid
 
 /**
@@ -27,6 +29,10 @@ interface PartnerChatService {
     /** The typing partners of [chatId] whose model has answered the request; the others are still connecting. */
     fun observeConnected(chatId: Uuid): Flow<Set<Uuid>>
 
+    /** Live progress of each typing partner in [chatId], keyed by assistant id. */
+    fun observeActivity(chatId: Uuid): Flow<Map<Uuid, PartnerTurnActivity>> =
+        observeConnected(chatId).map { ids -> ids.associateWith { PartnerTurnActivity(connected = true) } }
+
     /**
      * The owner speaks in [chatId]. DIRECT mentions answer in order, or the last speaker answers.
      * GROUP mentions answer concurrently, or the host answers when nobody is mentioned.
@@ -47,7 +53,7 @@ interface PartnerChatService {
     fun observeApprovalMembers(): Flow<Map<Uuid, Set<Uuid>>>
 
     /** The owner answers a member's pending tool call inside [chatId]. */
-    suspend fun answerApproval(chatId: Uuid, memberId: Uuid, toolCallId: String, approved: Boolean)
+    suspend fun answerApproval(chatId: Uuid, memberId: Uuid, toolCallId: String, approved: Boolean, answer: String? = null)
 
     /** Creates a group of [memberIds] (2–6 partners) hosted by the first member; returns its id. */
     suspend fun createGroup(memberIds: List<Uuid>, title: String): Uuid

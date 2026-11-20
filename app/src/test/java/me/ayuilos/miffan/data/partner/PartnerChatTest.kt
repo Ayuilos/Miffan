@@ -41,6 +41,8 @@ class PartnerChatTest {
         val prefs = MutableStateFlow(me.ayuilos.miffan.data.thread.ThreadListPrefs())
         val notifications = mutableListOf<PartnerChatMessage>()
         val segmentFlows = mutableMapOf<Uuid, MutableStateFlow<Conversation?>>()
+        val liveSegmentFlows = mutableMapOf<Uuid, MutableStateFlow<Conversation?>>()
+        val connectedFlows = mutableMapOf<Uuid, MutableStateFlow<Boolean>>()
         val service: DefaultPartnerChatService
         init {
             every { settingsStore.settingsFlow } returns settings
@@ -48,7 +50,9 @@ class PartnerChatTest {
                 settings.value = firstArg<(Settings) -> Settings>()(settings.value)
             }
             every { runtime.observeSegment(any()) } answers { segmentFlows.getOrPut(firstArg()) { MutableStateFlow(segments[firstArg()]) } }
-            coEvery { runtime.answerApproval(any(), any(), any()) } just Runs
+            every { runtime.observeLiveSegment(any()) } answers { liveSegmentFlows.getOrPut(firstArg()) { MutableStateFlow(segments[firstArg()]) } }
+            every { runtime.observeConnected(any()) } answers { connectedFlows.getOrPut(firstArg()) { MutableStateFlow(false) } }
+            coEvery { runtime.answerApproval(any(), any(), any(), any()) } just Runs
             coEvery { runtime.loadSegment(any()) } coAnswers { segments[firstArg()] }
             coEvery { runtime.saveSegment(any()) } coAnswers { segments[firstArg<Conversation>().id] = firstArg() }
             coEvery { runtime.generate(any()) } coAnswers {
@@ -515,7 +519,7 @@ class PartnerChatTest {
         val approvals = f.service.observeApprovals(id).first()
         assertEquals(listOf("a", "b"), approvals.map { it.tool.toolCallId })
         f.service.answerApproval(id, b.id, "b", false)
-        coVerify { f.runtime.answerApproval(second, "b", false) }
+        coVerify { f.runtime.answerApproval(second, "b", false, null) }
         f.segmentFlows.getValue(sb).value = second.copy(messageNodes = emptyList())
         assertEquals(listOf("a"), f.service.observeApprovals(id).first().map { it.tool.toolCallId })
     }
@@ -575,7 +579,7 @@ class PartnerChatTest {
             f.segmentFlows.getOrPut(segment.id) { MutableStateFlow(saved) }.value = saved
             gate.await()
         }
-        coEvery { f.runtime.answerApproval(any(), any(), any()) } coAnswers { gate.complete("continued"); Unit }
+        coEvery { f.runtime.answerApproval(any(), any(), any(), any()) } coAnswers { check(gate.complete("continued")) }
         f.service.sendFromOwner(id, "contact please"); runCurrent()
         assertEquals(listOf("contact"), f.service.observeApprovals(id).first().map { it.tool.toolCallId })
         assertEquals(1, f.store.allMessages.size)
@@ -674,12 +678,88 @@ class PartnerChatTest {
         val chat = mockk<me.ayuilos.miffan.service.ChatService>()
         val segment = caller(chatId = Uuid.random())
         coEvery { chat.openThreadSegment(segment.id, segment.assistantId) } just Runs
-        every { chat.handleToolApproval(segment.id, "tool", true, any(), any(), any()) } just Runs
+        every { chat.handleToolApproval(segment.id, any(), true, any(), any(), any()) } just Runs
         val runtime = ChatServicePartnerRuntime(mockk(), mockk(), { chat }, { mockk() })
         runtime.answerApproval(segment, "tool", true)
         coVerifyOrder {
             chat.openThreadSegment(segment.id, segment.assistantId)
             chat.handleToolApproval(segment.id, "tool", true, "", null, me.rerere.ai.ui.ToolDecisionVia.CARD)
+        }
+        val answerJson = """{"answers":{"q":"yes"}}"""
+        runtime.answerApproval(segment, "ask", true, answerJson)
+        coVerifyOrder {
+            chat.openThreadSegment(segment.id, segment.assistantId)
+            chat.handleToolApproval(segment.id, "ask", true, "", answerJson, me.rerere.ai.ui.ToolDecisionVia.CARD)
+        }
+    }
+
+    @Test fun approvalIncludesSegmentIdAndForwardsInteractiveAnswer() = runTest {
+        val f = Fixture(this)
+        val id = f.store.direct(a.id, b.id).id
+        f.service.sendFromOwner(id, "hello", listOf(b.id)); runCurrent()
+        val sb = f.store.member(id, b.id).segmentId!!
+        val pending = UIMessagePart.Tool("term", "workspace_terminal", "{}", approvalState = me.rerere.ai.ui.ToolApprovalState.Pending)
+        val saved = f.segments.getValue(sb).appendMessage(UIMessage.assistant("").copy(parts = listOf(pending)))
+        f.segments[sb] = saved
+        val approval = f.service.observeApprovals(id).first().single()
+        assertEquals(sb, approval.segmentId)
+        val payload = """{"status":"completed","terminalRequestId":"req-1"}"""
+        f.service.answerApproval(id, b.id, "term", approved = true, answer = payload)
+        coVerify { f.runtime.answerApproval(saved, "term", true, payload) }
+    }
+
+    @Test fun observeActivityIgnoresPreviousReplyTracksToolsAndClearsOnFinish() = runTest {
+        val f = Fixture(this)
+        val chat = f.store.direct(a.id, b.id)
+        // Turn 1 finishes so b's perspective segment already ends with an ASSISTANT message.
+        f.service.sendFromOwner(chat.id, "first", listOf(b.id)); runCurrent()
+        val sb = f.store.member(chat.id, b.id).segmentId!!
+        val baseline = f.segments.getValue(sb)
+
+        val gate = CompletableDeferred<String>()
+        coEvery { f.runtime.generate(any()) } coAnswers { gate.await() }
+
+        val emissions = mutableListOf<Map<Uuid, PartnerTurnActivity>>()
+        val collector = launch(UnconfinedTestDispatcher(testScheduler)) {
+            f.service.observeActivity(chat.id).collect { emissions += it }
+        }
+        try {
+            f.service.sendFromOwner(chat.id, "second", listOf(b.id)); runCurrent()
+            // While the live flow still shows the previous turn's reply, activity must report no parts yet.
+            f.liveSegmentFlows.getValue(sb).value = baseline
+            runCurrent()
+            assertEquals(PartnerTurnActivity(connected = false, parts = emptyList()), emissions.last()[b.id])
+
+            f.connectedFlows.getValue(sb).value = true
+            val thinkingReply = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Reasoning("step 1", finishedAt = null)))
+            f.liveSegmentFlows.getValue(sb).value = baseline.appendMessage(thinkingReply)
+            runCurrent()
+            val afterReasoning = emissions.size
+            // Additional reasoning/text text deltas collapse to the same normalized marker without re-emitting.
+            f.liveSegmentFlows.getValue(sb).value = baseline.appendMessage(thinkingReply.copy(parts = listOf(UIMessagePart.Reasoning("step 1 more", finishedAt = null))))
+            runCurrent()
+            assertEquals(afterReasoning, emissions.size)
+
+            val textReply = thinkingReply.copy(parts = listOf(UIMessagePart.Text("hi")))
+            f.liveSegmentFlows.getValue(sb).value = baseline.appendMessage(textReply)
+            runCurrent()
+            val afterFirstText = emissions.size
+            f.liveSegmentFlows.getValue(sb).value = baseline.appendMessage(textReply.copy(parts = listOf(UIMessagePart.Text("hi there"))))
+            runCurrent()
+            assertEquals(afterFirstText, emissions.size)
+
+            val toolPart = UIMessagePart.Tool("call-1", "workspace_read_file", "{}")
+            f.connectedFlows.getValue(sb).value = false
+            f.liveSegmentFlows.getValue(sb).value = baseline.appendMessage(textReply.copy(parts = listOf(toolPart)))
+            runCurrent()
+            val toolActivity = emissions.last().getValue(b.id)
+            assertFalse(toolActivity.connected)
+            assertEquals(listOf(toolPart), toolActivity.parts)
+
+            gate.complete("done"); runCurrent()
+            assertTrue(emissions.last().isEmpty())
+        } finally {
+            collector.cancel()
         }
     }
 
