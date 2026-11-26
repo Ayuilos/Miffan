@@ -66,6 +66,8 @@ import me.rerere.ai.util.removeElements
 import me.rerere.ai.util.stringSafe
 import me.rerere.ai.util.toHeaders
 import me.rerere.common.http.await
+import me.rerere.common.http.jsonArrayOrNull
+import me.rerere.common.http.jsonObjectOrNull
 import me.rerere.common.http.jsonPrimitiveOrNull
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -139,26 +141,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             if (response.isSuccessful) {
                 val body = response.body?.string() ?: error("empty body")
                 Log.d(TAG, "listModels: $body")
-                val bodyObject = json.parseToJsonElement(body).jsonObject
-                val models = bodyObject["models"]?.jsonArray ?: return@withContext emptyList()
-
-                models.mapNotNull {
-                    val modelObject = it.jsonObject
-
-                    // 忽略非chat/embedding模型
-                    val supportedGenerationMethods =
-                        modelObject["supportedGenerationMethods"]!!.jsonArray
-                            .map { method -> method.jsonPrimitive.content }
-                    if ("generateContent" !in supportedGenerationMethods && "embedContent" !in supportedGenerationMethods) {
-                        return@mapNotNull null
-                    }
-
-                    Model(
-                        modelId = modelObject["name"]!!.jsonPrimitive.content.substringAfter("/"),
-                        displayName = modelObject["displayName"]!!.jsonPrimitive.content,
-                        type = if ("generateContent" in supportedGenerationMethods) ModelType.CHAT else ModelType.EMBEDDING,
-                    )
-                }
+                parseGoogleModels(body)
             } else {
                 throw ModelListException(response.code, response.body?.string().orEmpty())
             }
@@ -894,6 +877,39 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             completionTokens = candidatesTokens + thoughtTokens,
             totalTokens = totalTokens,
             cachedTokens = cachedTokens
+        )
+    }
+}
+
+internal fun parseGoogleModels(body: String): List<Model> {
+    if (body.isBlank()) return emptyList()
+    val parsed = json.parseToJsonElement(body)
+    val models = parsed.jsonObjectOrNull?.get("models")?.jsonArrayOrNull
+        ?: parsed.jsonArrayOrNull
+        ?: return emptyList()
+
+    return models.mapNotNull { modelJson ->
+        val modelObject = modelJson.jsonObjectOrNull ?: return@mapNotNull null
+
+        // 忽略非chat/embedding模型
+        val supportedGenerationMethods =
+            modelObject["supportedGenerationMethods"]?.jsonArrayOrNull
+                ?.mapNotNull { method -> method.jsonPrimitiveOrNull?.contentOrNull }
+                ?: return@mapNotNull null
+        if ("generateContent" !in supportedGenerationMethods && "embedContent" !in supportedGenerationMethods) {
+            return@mapNotNull null
+        }
+
+        val rawName = modelObject["name"]?.jsonPrimitiveOrNull?.contentOrNull?.takeIf { it.isNotBlank() }
+            ?: return@mapNotNull null
+        val modelId = rawName.substringAfter("/").takeIf { it.isNotBlank() } ?: rawName
+        val displayName = modelObject["displayName"]?.jsonPrimitiveOrNull?.contentOrNull?.takeIf { it.isNotBlank() }
+            ?: modelId
+
+        Model(
+            modelId = modelId,
+            displayName = displayName,
+            type = if ("generateContent" in supportedGenerationMethods) ModelType.CHAT else ModelType.EMBEDDING,
         )
     }
 }

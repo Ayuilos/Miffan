@@ -318,4 +318,90 @@ class OpenAIProviderModelsTest {
         assertEquals(listOf(Modality.TEXT), model.outputModalities)
         assertEquals(listOf(ModelAbility.TOOL), model.abilities)
     }
+
+    @Test
+    fun `Non-primitive optional metadata fields do not fail model list parsing`() {
+        val models = parseOpenAIModels(
+            """
+            {
+              "data": [
+                {
+                  "id": "internlm/internlm3-8b-instruct",
+                  "kind": {"category": "chat"},
+                  "supported_in_api": {"default": true},
+                  "visibility": {"scope": "public"},
+                  "slug": {"en": "internlm3"},
+                  "model": {"alias": "internlm3"},
+                  "display_name": {"zh": "书生"},
+                  "name": {"zh": "书生", "en": "InternLM"},
+                  "architecture": {
+                    "input_modalities": ["text", {"type": "image"}],
+                    "output_modalities": ["text", ["extra"]]
+                  },
+                  "modalities": {
+                    "input": [{"type": "text"}],
+                    "output": [{"type": "text"}]
+                  },
+                  "reasoning": {
+                    "supported_efforts": ["high", {"level": "medium"}],
+                    "default_effort": {"value": "medium"},
+                    "default_enabled": {"value": true},
+                    "supports_max_tokens": {"value": false},
+                    "mandatory": {"value": true}
+                  },
+                  "supported_parameters": ["tools", {"name": "reasoning"}]
+                },
+                "stray-string-entry",
+                {
+                  "id": "",
+                  "slug": "fallback-slug",
+                  "display_name": "",
+                  "name": "Fallback Slug"
+                }
+              ]
+            }
+            """.trimIndent()
+        )
+
+        assertEquals(listOf("internlm/internlm3-8b-instruct", "fallback-slug"), models.map { it.modelId })
+        val first = models.first()
+        assertEquals("internlm/internlm3-8b-instruct", first.displayName)
+        assertEquals(ModelType.CHAT, first.type)
+        assertEquals(listOf(Modality.TEXT), first.discoveredCapabilities?.inputModalities)
+        assertEquals(listOf(Modality.TEXT), first.discoveredCapabilities?.outputModalities)
+        assertEquals(listOf(ModelAbility.TOOL), first.discoveredCapabilities?.abilities)
+        assertEquals(listOf("high"), first.reasoningCapabilities?.supportedEfforts)
+        assertNull(first.reasoningCapabilities?.defaultEffort)
+        assertNull(first.reasoningCapabilities?.defaultEnabled)
+        assertNull(first.reasoningCapabilities?.supportsMaxTokens)
+        assertEquals(false, first.reasoningCapabilities?.mandatory)
+
+        assertEquals("Fallback Slug", models[1].displayName)
+    }
+
+    @Test
+    fun `Null data falls back to models array and supports top-level array`() {
+        val fromModelsFallback = parseOpenAIModels(
+            """
+            {
+              "data": null,
+              "models": [
+                {"id": "gpt-4.1", "name": {"en": "GPT-4.1"}}
+              ]
+            }
+            """.trimIndent()
+        )
+        assertEquals(listOf("gpt-4.1"), fromModelsFallback.map { it.modelId })
+        assertEquals(listOf("gpt-4.1"), fromModelsFallback.map { it.displayName })
+
+        val fromTopLevelArray = parseOpenAIModels(
+            """
+            [
+              {"id": "deepseek-chat", "display_name": "DeepSeek Chat"}
+            ]
+            """.trimIndent()
+        )
+        assertEquals(listOf("deepseek-chat"), fromTopLevelArray.map { it.modelId })
+        assertEquals(listOf("DeepSeek Chat"), fromTopLevelArray.map { it.displayName })
+    }
 }

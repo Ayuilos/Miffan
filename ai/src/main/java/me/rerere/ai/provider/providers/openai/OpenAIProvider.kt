@@ -45,6 +45,7 @@ import me.rerere.common.http.await
 import me.rerere.common.http.getByKey
 import me.rerere.common.http.jsonArrayOrNull
 import me.rerere.common.http.jsonObjectOrNull
+import me.rerere.common.http.jsonPrimitiveOrNull
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
@@ -407,27 +408,27 @@ internal fun openAIModelsUrl(providerSetting: ProviderSetting.OpenAI): HttpUrl =
         .build()
 
 internal fun parseOpenAIModels(body: String): List<Model> {
-    val bodyJson = json.parseToJsonElement(body).jsonObject
-    val data = bodyJson["data"]?.jsonArray
-        ?: bodyJson["models"]?.jsonArray
-        ?: return emptyList()
+    val parsed = json.parseToJsonElement(body)
+    val data = parsed.jsonObjectOrNull?.let { bodyJson ->
+        bodyJson["data"]?.jsonArrayOrNull ?: bodyJson["models"]?.jsonArrayOrNull
+    } ?: parsed.jsonArrayOrNull ?: return emptyList()
 
     return data.mapNotNull { modelJson ->
-        val modelObj = modelJson.jsonObject
-        val kind = modelObj["kind"]?.jsonPrimitive?.contentOrNull
+        val modelObj = modelJson.jsonObjectOrNull ?: return@mapNotNull null
+        val kind = modelObj["kind"]?.jsonPrimitiveOrNull?.contentOrNull
         if (kind == "video" || kind == "decision") return@mapNotNull null
-        if (modelObj["supported_in_api"]?.jsonPrimitive?.booleanOrNull == false) {
+        if (modelObj["supported_in_api"]?.jsonPrimitiveOrNull?.booleanOrNull == false) {
             return@mapNotNull null
         }
-        if (modelObj["visibility"]?.jsonPrimitive?.contentOrNull == "hide") {
+        if (modelObj["visibility"]?.jsonPrimitiveOrNull?.contentOrNull == "hide") {
             return@mapNotNull null
         }
-        val id = modelObj["id"]?.jsonPrimitive?.contentOrNull
-            ?: modelObj["slug"]?.jsonPrimitive?.contentOrNull
-            ?: modelObj["model"]?.jsonPrimitive?.contentOrNull
+        val id = modelObj["id"]?.jsonPrimitiveOrNull?.contentOrNull?.takeIf { it.isNotBlank() }
+            ?: modelObj["slug"]?.jsonPrimitiveOrNull?.contentOrNull?.takeIf { it.isNotBlank() }
+            ?: modelObj["model"]?.jsonPrimitiveOrNull?.contentOrNull?.takeIf { it.isNotBlank() }
             ?: return@mapNotNull null
-        val displayName = modelObj["display_name"]?.jsonPrimitive?.contentOrNull
-            ?: modelObj["name"]?.jsonPrimitive?.contentOrNull
+        val displayName = modelObj["display_name"]?.jsonPrimitiveOrNull?.contentOrNull?.takeIf { it.isNotBlank() }
+            ?: modelObj["name"]?.jsonPrimitiveOrNull?.contentOrNull?.takeIf { it.isNotBlank() }
             ?: id
         val architecture = modelObj["architecture"]?.jsonObjectOrNull
         val modalities = modelObj["modalities"]?.jsonObjectOrNull
@@ -466,7 +467,7 @@ internal fun parseOpenAIModels(body: String): List<Model> {
 private fun JsonObject.modalities(key: String): List<Modality>? {
     val values = this[key]?.jsonArrayOrNull ?: return null
     val parsed = values.mapNotNull { element ->
-        when (element.jsonPrimitive.contentOrNull?.lowercase()) {
+        when (element.jsonPrimitiveOrNull?.contentOrNull?.lowercase()) {
             "text" -> Modality.TEXT
             "image" -> Modality.IMAGE
             "audio" -> Modality.AUDIO
@@ -484,18 +485,18 @@ private fun JsonObject.reasoningCapabilities(): ReasoningCapabilities? {
     val reasoning = this["reasoning"]?.jsonObjectOrNull ?: return null
     return ReasoningCapabilities(
         supportedEfforts = reasoning["supported_efforts"]?.jsonArrayOrNull
-            ?.mapNotNull { it.jsonPrimitive.contentOrNull?.lowercase() }
+            ?.mapNotNull { it.jsonPrimitiveOrNull?.contentOrNull?.lowercase() }
             ?.distinct(),
-        defaultEffort = reasoning["default_effort"]?.jsonPrimitive?.contentOrNull?.lowercase(),
-        defaultEnabled = reasoning["default_enabled"]?.jsonPrimitive?.booleanOrNull,
-        supportsMaxTokens = reasoning["supports_max_tokens"]?.jsonPrimitive?.booleanOrNull,
-        mandatory = reasoning["mandatory"]?.jsonPrimitive?.booleanOrNull == true,
+        defaultEffort = reasoning["default_effort"]?.jsonPrimitiveOrNull?.contentOrNull?.lowercase(),
+        defaultEnabled = reasoning["default_enabled"]?.jsonPrimitiveOrNull?.booleanOrNull,
+        supportsMaxTokens = reasoning["supports_max_tokens"]?.jsonPrimitiveOrNull?.booleanOrNull,
+        mandatory = reasoning["mandatory"]?.jsonPrimitiveOrNull?.booleanOrNull == true,
     )
 }
 
 private fun JsonObject.supportedAbilities(): List<ModelAbility>? {
     val parameters = this["supported_parameters"]?.jsonArrayOrNull
-        ?.mapNotNull { it.jsonPrimitive.contentOrNull?.lowercase() }
+        ?.mapNotNull { it.jsonPrimitiveOrNull?.contentOrNull?.lowercase() }
         ?.toSet()
         ?: return null
     return buildList {

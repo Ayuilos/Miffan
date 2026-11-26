@@ -67,6 +67,8 @@ import me.rerere.ai.util.parseErrorDetail
 import me.rerere.ai.util.stringSafe
 import me.rerere.ai.util.toHeaders
 import me.rerere.common.http.await
+import me.rerere.common.http.jsonArrayOrNull
+import me.rerere.common.http.jsonObjectOrNull
 import me.rerere.common.http.jsonPrimitiveOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -259,19 +261,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             }
 
             val bodyStr = response.body?.string() ?: ""
-            val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
-            val data = bodyJson["data"]?.jsonArray ?: return@withContext emptyList()
-
-            data.mapNotNull { modelJson ->
-                val modelObj = modelJson.jsonObject
-                val id = modelObj["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                val displayName = modelObj["display_name"]?.jsonPrimitive?.contentOrNull ?: id
-
-                Model(
-                    modelId = id,
-                    displayName = displayName,
-                )
-            }
+            parseClaudeModels(bodyStr)
         }
 
     override suspend fun generateImage(
@@ -909,6 +899,27 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             completionTokens = completionTokens,
             totalTokens = promptTokens + completionTokens,
             cachedTokens = cachedInputTokens,
+        )
+    }
+}
+
+internal fun parseClaudeModels(body: String): List<Model> {
+    if (body.isBlank()) return emptyList()
+    val parsed = json.parseToJsonElement(body)
+    val data = parsed.jsonObjectOrNull?.get("data")?.jsonArrayOrNull
+        ?: parsed.jsonArrayOrNull
+        ?: return emptyList()
+
+    return data.mapNotNull { modelJson ->
+        val modelObj = modelJson.jsonObjectOrNull ?: return@mapNotNull null
+        val id = modelObj["id"]?.jsonPrimitiveOrNull?.contentOrNull?.takeIf { it.isNotBlank() }
+            ?: return@mapNotNull null
+        val displayName = modelObj["display_name"]?.jsonPrimitiveOrNull?.contentOrNull?.takeIf { it.isNotBlank() }
+            ?: id
+
+        Model(
+            modelId = id,
+            displayName = displayName,
         )
     }
 }
